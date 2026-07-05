@@ -1,0 +1,6 @@
+{
+  "name": "MasterMind Qureshi Enterprise",
+  "description": "ماسٹر مائینڈ قریشی انٹرپرائز - پاکستان بانڈ اور تھائی لینڈ لاٹری بکنگ اور کسٹمر والٹ مینجمنٹ سسٹم",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
