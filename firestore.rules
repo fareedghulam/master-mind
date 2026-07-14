@@ -1,0 +1,105 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Check if ID is valid
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() < 100;
+    }
+
+    // Helper to validate User
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'name', 'phone', 'city', 'balance'])
+        && data.email is string
+        && data.name is string && data.name.size() < 150
+        && data.phone is string && data.phone.size() < 30
+        && data.city is string && data.city.size() < 100
+        && data.balance is number
+        && (!data.keys().hasAny(['isAdmin']) || data.isAdmin is bool);
+    }
+
+    // Helper to validate Booking
+    function isValidBooking(data) {
+      return data.keys().hasAll(['id', 'userEmail', 'category', 'number', 'firstAmount', 'secondAmount', 'timestamp'])
+        && data.id is string
+        && data.userEmail is string
+        && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery')
+        && data.number is string
+        && data.firstAmount is number
+        && data.secondAmount is number
+        && data.timestamp is string;
+    }
+
+    // Helper to validate NumberLimit
+    function isValidLimit(data) {
+      return data.keys().hasAll(['id', 'category', 'number', 'maxAmount'])
+        && data.id is string
+        && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery')
+        && data.number is string
+        && data.maxAmount is number;
+    }
+
+    // Helper to validate Demand
+    function isValidDemand(data) {
+      return data.keys().hasAll(['id', 'userEmail', 'category', 'number', 'firstAmount', 'secondAmount', 'timestamp', 'status'])
+        && data.id is string
+        && data.userEmail is string
+        && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery')
+        && data.number is string
+        && data.firstAmount is number
+        && data.secondAmount is number
+        && data.timestamp is string
+        && (data.status == 'pending' || data.status == 'approved' || data.status == 'rejected');
+    }
+
+    // Helper to validate DrawDeadline
+    function isValidDeadline(data) {
+      return data.keys().hasAll(['category', 'titleUrdu', 'deadlineIso', 'status'])
+        && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery')
+        && data.titleUrdu is string
+        && data.deadlineIso is string
+        && (data.status == 'open' || data.status == 'closed');
+    }
+
+    // Helper to validate Settings
+    function isValidSettings(data) {
+      return data.keys().hasAll(['adminEmail', 'whatsappNumber'])
+        && data.adminEmail is string
+        && data.whatsappNumber is string;
+    }
+
+    match /users/{email} {
+      allow read: if true;
+      allow create, update: if isValidId(email) && isValidUser(request.resource.data);
+      allow delete: if false;
+    }
+
+    match /bookings/{bookingId} {
+      allow read: if true;
+      allow create: if isValidId(bookingId) && isValidBooking(request.resource.data);
+      allow update, delete: if isValidId(bookingId);
+    }
+
+    match /limits/{limitId} {
+      allow read: if true;
+      allow write: if isValidId(limitId) && isValidLimit(request.resource.data);
+    }
+
+    match /demands/{demandId} {
+      allow read: if true;
+      allow create: if isValidId(demandId) && isValidDemand(request.resource.data);
+      allow update: if isValidId(demandId) && isValidDemand(request.resource.data);
+      allow delete: if isValidId(demandId);
+    }
+
+    match /deadlines/{category} {
+      allow read: if true;
+      allow write: if isValidId(category) && isValidDeadline(request.resource.data);
+    }
+
+    match /settings/{configId} {
+      allow read: if true;
+      allow write: if isValidId(configId) && isValidSettings(request.resource.data);
+    }
+  }
+}

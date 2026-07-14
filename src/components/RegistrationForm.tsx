@@ -140,67 +140,6 @@ export default function RegistrationForm({ onRegister, onLoginWithEmail, adminCo
         </div>
 
         <div className="p-6 sm:p-8">
-          {/* Admin Activation Panel */}
-          <div className="mb-6 p-4 bg-amber-50 border-2 border-amber-300 text-right">
-            <button
-              id="activation-toggle-btn"
-              type="button"
-              onClick={() => {
-                setIsActivationOpen(!isActivationOpen);
-                setActivationSuccess('');
-                setError('');
-              }}
-              className="w-full flex items-center justify-between text-xs font-bold text-amber-950 focus:outline-none cursor-pointer"
-            >
-              <span className="bg-amber-200 text-amber-900 px-2 py-0.5 font-mono text-[10px]">
-                {isActivationOpen ? 'بند کریں' : 'تبدیل کریں'}
-              </span>
-              <div className="flex items-center gap-1.5">
-                <span>ایپلی کیشن فعال اور ایڈمن ای میل سیٹنگز</span>
-                <Shield className="w-4 h-4 text-amber-600" />
-              </div>
-            </button>
-
-            {isActivationOpen ? (
-              <form onSubmit={handleActivateSubmit} className="mt-3 pt-3 border-t border-amber-200 space-y-3">
-                <p className="text-[10px] text-amber-900 leading-relaxed">
-                  ایپ کو فعال کرتے وقت ایڈمن اپنی ای میل یہاں درج کرے۔ صرف اسی ای میل کے حامل شخص کو ایڈمن پینل کا کنٹرول حاصل ہوگا اور کوئی بھی عام کسٹمر ایڈمن پینل نہیں دیکھ سکے گا۔
-                </p>
-                <div className="text-xs text-amber-950 font-semibold">
-                  موجودہ فعال ایڈمن ای میل: <span className="font-mono text-blue-700 font-bold bg-amber-100 px-1 py-0.5">{adminConfiguredEmail}</span>
-                </div>
-                
-                {activationSuccess && (
-                  <div className="p-2 bg-emerald-50 text-emerald-800 text-[11px] font-medium border border-emerald-300">
-                    ✓ {activationSuccess}
-                  </div>
-                )}
-
-                <div className="flex gap-2">
-                  <button
-                    id="submit-activation"
-                    type="submit"
-                    className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-3 py-2 transition-all cursor-pointer border-b-2 border-amber-800"
-                  >
-                    فعال کریں (Activate)
-                  </button>
-                  <input
-                    id="activation-email-input"
-                    type="email"
-                    placeholder="admin@example.com"
-                    value={activationEmail}
-                    onChange={(e) => setActivationEmail(e.target.value)}
-                    className="flex-1 text-left bg-white border border-amber-300 py-1.5 px-3 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  />
-                </div>
-              </form>
-            ) : (
-              <div className="mt-1 text-[11px] text-amber-800">
-                فعال ایڈمن ای میل: <span className="font-mono font-bold text-blue-700">{adminConfiguredEmail}</span>
-              </div>
-            )}
-          </div>
-
           {error && (
             <div className="mb-5 p-3 rounded-none bg-red-50 border-r-4 border-red-500 border-l border-t border-b border-slate-200 text-red-700 text-xs leading-relaxed text-right font-sans">
               ⚠️ {error}
@@ -335,38 +274,38 @@ export default function RegistrationForm({ onRegister, onLoginWithEmail, adminCo
                 <span>اپنے اکاؤنٹ میں لاگ ان کریں</span>
                 <LogIn className="w-4 h-4 text-blue-400" />
               </button>
+
+              {/* Quick Access Portal Login */}
+              <div className="mt-6 pt-5 border-t border-slate-200 text-center">
+                <h4 className="text-slate-700 text-[11px] font-bold mb-3 font-sans flex items-center justify-center gap-1.5 flex-row-reverse">
+                  <span>فوری پورٹل لاگ ان (Quick Access Portal)</span>
+                  <Shield className="w-3.5 h-3.5 text-slate-500" />
+                </h4>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <button
+                    id="prefill-ghulam"
+                    type="button"
+                    onClick={() => handlePrefill('fareed.ghulam@gmail.com')}
+                    className="p-2.5 border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 rounded-none transition-all text-center flex flex-col items-center justify-center gap-1 cursor-pointer"
+                  >
+                    <span className="font-bold text-[11px] text-slate-800">غلام فرید (ٹیسٹر)</span>
+                    <span className="text-[10px] text-slate-500 font-mono">fareed.ghulam@gmail.com</span>
+                  </button>
+                  <button
+                    id="prefill-admin"
+                    type="button"
+                    onClick={() => handlePrefill('mastermaindqureshi110@gmail.com')}
+                    className="p-2.5 border border-amber-200 bg-amber-50/50 hover:bg-amber-100/30 text-amber-950 rounded-none transition-all text-center flex flex-col items-center justify-center gap-1 cursor-pointer"
+                  >
+                    <span className="font-bold text-[11px] text-amber-900">ایڈمن لاگ ان (Admin)</span>
+                    <span className="text-[10px] text-amber-700 font-mono">رقم ریچارج و لمٹ پورٹل</span>
+                  </button>
+                </div>
+              </div>
             </form>
           )}
 
-          {/* Quick Sandbox Tester section */}
-          <div className="mt-8 pt-6 border-t border-slate-300 text-center">
-            <h4 className="text-slate-500 text-xs font-bold mb-3 font-sans">
-              سپیڈ ٹیسٹ کے لئے بنے اکاؤنٹ استعمال کریں:
-            </h4>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <button
-                id="prefill-ghulam"
-                type="button"
-                onClick={() => handlePrefill('fareed.ghulam@gmail.com')}
-                className="p-2 border border-blue-300 bg-blue-50 text-blue-800 rounded-none hover:bg-blue-100 transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer"
-              >
-                <span className="font-bold text-[11px]">غلام فرید (ٹیسٹر)</span>
-                <span className="text-[10px] font-mono opacity-80">Rs. 15,000</span>
-              </button>
-              <button
-                id="prefill-admin"
-                type="button"
-                onClick={() => handlePrefill(adminConfiguredEmail)}
-                className="p-2 border border-slate-300 bg-slate-100 text-slate-800 rounded-none hover:bg-slate-200 transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer"
-              >
-                <div className="flex items-center gap-1">
-                  <span className="font-bold text-[11px]">ایڈمن پورٹل ({adminConfiguredEmail})</span>
-                  <div className="w-1.5 h-1.5 bg-blue-500 rounded-none"></div>
-                </div>
-                <span className="text-[10px] font-mono opacity-80">رقم ریچارج و لمٹ</span>
-              </button>
-            </div>
-          </div>
+
 
           {/* WhatsApp Support Box */}
           <div className="mt-6 pt-5 border-t border-slate-200 text-center">

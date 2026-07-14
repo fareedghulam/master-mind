@@ -421,7 +421,7 @@ export function generateProjectCodePDF() {
     '  const users = getUsers();',
     '  const existing = users.find(u => u.email.toLowerCase() === email.toLowerCase());',
     '  if (existing) return existing;',
-    '  const newUser: User = { email, name, phone, city, balance: 500, isAdmin: false };',
+    '  const newUser: User = { email, name, phone, city, balance: 100, isAdmin: false };',
     '  users.push(newUser);',
     '  saveUsers(users);',
     '  return newUser;',

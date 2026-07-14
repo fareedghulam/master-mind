@@ -1,6 +1,6 @@
 import React, { useState, useEffect, FormEvent } from 'react';
-import { User, NumberLimit, Demand, DrawDeadline } from '../types';
-import { Shield, Plus, Trash, Check, X, UserCheck, AlertTriangle, ShieldCheck, HelpCircle, Sparkles, Clock, MessageCircle } from 'lucide-react';
+import { User, NumberLimit, Demand, DrawDeadline, Booking } from '../types';
+import { Shield, Plus, Trash, Check, X, UserCheck, AlertTriangle, ShieldCheck, HelpCircle, Sparkles, Clock, MessageCircle, Search } from 'lucide-react';
 import { getSupportWhatsAppNumber, setSupportWhatsAppNumber } from '../utils/store';
 
 interface AdminPortalProps {
@@ -8,6 +8,8 @@ interface AdminPortalProps {
   limits: NumberLimit[];
   demands: Demand[];
   deadlines: DrawDeadline[];
+  bookings: Booking[];
+  onCancelBookingByAdmin: (bookingId: string) => { success: boolean; error?: string };
   onRecharge: (email: string, amount: number) => boolean;
   onSetLimit: (category: 'pakistan_bond' | 'thailand_lottery', number: string, maxAmount: number) => void;
   onDeleteLimit: (id: string) => void;
@@ -21,6 +23,8 @@ export default function AdminPortal({
   limits,
   demands = [],
   deadlines = [],
+  bookings = [],
+  onCancelBookingByAdmin,
   onRecharge,
   onSetLimit,
   onDeleteLimit,
@@ -62,6 +66,12 @@ export default function AdminPortal({
   // Demand management state
   const [demandError, setDemandError] = useState('');
   const [demandSuccess, setDemandSuccess] = useState('');
+
+  // Master Bookings states
+  const [bookingSearchQuery, setBookingSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'pakistan_bond' | 'thailand_lottery'>('all');
+  const [cancelSuccess, setCancelSuccess] = useState('');
+  const [cancelError, setCancelError] = useState('');
 
   // WhatsApp configuration states
   const [whatsappVal, setWhatsappVal] = useState('');
@@ -107,6 +117,17 @@ export default function AdminPortal({
       setDemandSuccess(`کامیاب: نمبر ${num} کے لئے بھیجی گئی ڈیمانڈ کو مسترد کر دیا گیا ہے۔`);
     } else {
       setDemandError(res.error || 'ڈیمانڈ مسترد کرنے میں غلطی پیش آئی۔');
+    }
+  };
+
+  const handleCancelBookingClick = (bookingId: string, number: string) => {
+    setCancelSuccess('');
+    setCancelError('');
+    const res = onCancelBookingByAdmin(bookingId);
+    if (res.success) {
+      setCancelSuccess(`کامیاب: نمبر (${number}) کی بکنگ کامیابی سے منسوخ کر دی گئی ہے اور رقم کسٹمر کے والٹ میں واپس جمع ہو گئی ہے!`);
+    } else {
+      setCancelError(res.error || 'بکنگ منسوخ کرنے میں کوئی خامی پیش آئی۔');
     }
   };
 
@@ -266,7 +287,7 @@ export default function AdminPortal({
                        </td>
 
                        {/* Breakdown First/Second */}
-                       <td className="py-3 px-3 font-mono text-slate-500 text-xs">
+                       <td className="py-3 px-3 font-mono text-slate-550 text-xs">
                          F: {d.firstAmount} / S: {d.secondAmount}
                        </td>
 
@@ -292,6 +313,163 @@ export default function AdminPortal({
             </table>
           </div>
         )}
+      </div>
+
+      {/* Master Booking Control Panel Module */}
+      <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            <button
+              onClick={() => setCategoryFilter('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                categoryFilter === 'all' ? 'bg-slate-900 text-amber-400 font-bold' : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              تمام بکنگز ({bookings.length})
+            </button>
+            <button
+              onClick={() => setCategoryFilter('pakistan_bond')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                categoryFilter === 'pakistan_bond' ? 'bg-slate-900 text-amber-400 font-bold' : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              پاکستان بانڈ ({bookings.filter(b => b.category === 'pakistan_bond').length})
+            </button>
+            <button
+              onClick={() => setCategoryFilter('thailand_lottery')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                categoryFilter === 'thailand_lottery' ? 'bg-slate-900 text-amber-400 font-bold' : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              تھائی لینڈ لاٹری ({bookings.filter(b => b.category === 'thailand_lottery').length})
+            </button>
+          </div>
+
+          <h4 className="text-base font-bold text-slate-800 flex items-center justify-end gap-2">
+            <span>تمام کسٹمرز کی بکنگز کا پینل (Master Booking Control)</span>
+            <Clock className="w-5 h-5 text-amber-500" />
+          </h4>
+        </div>
+
+        {/* Filter and Search Box */}
+        <div className="grid grid-cols-1 gap-3">
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="کسٹمر کی ای میل یا بکنگ نمبر سے تلاش کریں..."
+              value={bookingSearchQuery}
+              onChange={(e) => setBookingSearchQuery(e.target.value)}
+              className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 pl-4 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
+            />
+            <Search className="w-5 h-5 text-slate-400 absolute right-4 top-3.5" />
+          </div>
+        </div>
+
+        {cancelError && (
+          <div className="p-3 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs text-right">
+            ⚠️ {cancelError}
+          </div>
+        )}
+        {cancelSuccess && (
+          <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs text-right font-sans">
+            ✓ {cancelSuccess}
+          </div>
+        )}
+
+        {(() => {
+          const filteredBookings = bookings.filter((b) => {
+            const matchesCategory = categoryFilter === 'all' || b.category === categoryFilter;
+            const matchesSearch =
+              !bookingSearchQuery ||
+              b.number.includes(bookingSearchQuery) ||
+              b.userEmail.toLowerCase().includes(bookingSearchQuery.toLowerCase());
+            return matchesCategory && matchesSearch;
+          }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+          if (filteredBookings.length === 0) {
+            return <p className="text-slate-400 text-xs text-center py-6 font-sans">کوئی بکنگ ریکارڈ نہیں ملا۔</p>;
+          }
+
+          return (
+            <div className="overflow-x-auto">
+              <table className="w-full text-right border-collapse text-xs sm:text-sm">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100">
+                    <th className="py-2.5 px-3 font-semibold text-slate-600 text-left">منسوخ کریں (Cancel)</th>
+                    <th className="py-2.5 px-3 font-semibold text-slate-600 font-mono text-[10px]">ٹائم اسٹیمپ</th>
+                    <th className="py-2.5 px-3 font-semibold text-slate-600">کل لاگت</th>
+                    <th className="py-2.5 px-3 font-semibold text-slate-600">سیکنڈ</th>
+                    <th className="py-2.5 px-3 font-semibold text-slate-600">فرسٹ</th>
+                    <th className="py-2.5 px-3 font-semibold text-slate-600">بک شدہ نمبر</th>
+                    <th className="py-2.5 px-3 font-semibold text-slate-600">کیٹیگری</th>
+                    <th className="py-2.5 px-3 font-semibold text-slate-600 text-right">کسٹمر تفصیل</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredBookings.map((b) => {
+                    const customer = users.find(u => u.email.toLowerCase() === b.userEmail.toLowerCase());
+                    return (
+                      <tr key={b.id} className="hover:bg-slate-50/50 transition-colors">
+                        {/* Cancel Action Button */}
+                        <td className="py-3 px-3 text-left">
+                          <button
+                            onClick={() => handleCancelBookingClick(b.id, b.number)}
+                            className="bg-red-50 hover:bg-red-100 text-red-700 font-bold px-2.5 py-1 rounded-xl transition-all flex items-center gap-1 border border-red-200 cursor-pointer text-[10px]"
+                          >
+                            <Trash className="w-3 h-3" />
+                            <span>منسوخ کریں</span>
+                          </button>
+                        </td>
+
+                        {/* Timestamp */}
+                        <td className="py-3 px-3 text-slate-400 font-mono text-[10px]">
+                          {new Date(b.timestamp).toLocaleString('en-US', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            month: 'short',
+                            day: 'numeric'
+                          })}
+                        </td>
+
+                        {/* Total Amount */}
+                        <td className="py-3 px-3 font-mono font-semibold text-slate-700">
+                          Rs. {(b.firstAmount + b.secondAmount).toLocaleString()}
+                        </td>
+
+                        {/* Breakdown Second */}
+                        <td className="py-3 px-3 font-mono text-slate-550 text-xs">
+                          Rs. {b.secondAmount.toLocaleString()}
+                        </td>
+
+                        {/* Breakdown First */}
+                        <td className="py-3 px-3 font-mono text-slate-550 text-xs">
+                          Rs. {b.firstAmount.toLocaleString()}
+                        </td>
+
+                        {/* Target Number */}
+                        <td className="py-3 px-3 font-mono font-bold text-red-600 text-sm">
+                          {b.number}
+                        </td>
+
+                        {/* Category Type */}
+                        <td className="py-3 px-3 text-slate-600 text-xs font-semibold">
+                          {b.category === 'pakistan_bond' ? 'پاکستان بانڈ' : 'تھائی لاٹری'}
+                        </td>
+
+                        {/* Customer Details info */}
+                        <td className="py-3 px-3 text-right">
+                          <span className="font-semibold block text-slate-800">{customer?.name || 'نامعلوم'}</span>
+                          <span className="text-[10px] text-slate-400 font-mono block">{b.userEmail}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -586,26 +764,64 @@ export default function AdminPortal({
               {deadlines.map((d) => {
                 const isOver = d.status === 'closed' || new Date(d.deadlineIso).getTime() <= Date.now();
                 return (
-                  <div key={d.category} className="p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
-                    <div className="flex justify-between items-center">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        isOver ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
-                      }`}>
-                        {isOver ? 'بند ہے (Closed)' : 'اوپن ہے (Open)'}
-                      </span>
-                      <span className="font-bold text-xs text-slate-800">
-                        {d.category === 'pakistan_bond' ? 'پاکستان بانڈ' : 'تھائی لینڈ لاٹری'}
-                      </span>
+                  <div key={d.category} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-2 flex flex-col justify-between">
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          isOver ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                        }`}>
+                          {isOver ? 'بند ہے (Closed)' : 'اوپن ہے (Open)'}
+                        </span>
+                        <span className="font-bold text-xs text-slate-800">
+                          {d.category === 'pakistan_bond' ? 'پاکستان بانڈ' : 'تھائی لینڈ لاٹری'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600">
+                        مینوئل کنٹرول: <strong className={d.status === 'closed' ? 'text-red-600' : 'text-emerald-600'}>{d.status === 'closed' ? 'بند (Closed)' : 'اوپن (Open)'}</strong>
+                      </p>
+                      <p className="text-[11px] text-slate-600">
+                        عنوان: <strong className="text-slate-800">{d.titleUrdu}</strong>
+                      </p>
+                      <p className="text-[11px] text-slate-500 font-mono">
+                        تاریخ: {new Date(d.deadlineIso).toLocaleString('en-US')}
+                      </p>
                     </div>
-                    <p className="text-[11px] text-slate-600">
-                      مینوئل کنٹرول: <strong className={d.status === 'closed' ? 'text-red-600' : 'text-emerald-600'}>{d.status === 'closed' ? 'بند (Closed)' : 'اوپن (Open)'}</strong>
-                    </p>
-                    <p className="text-[11px] text-slate-600">
-                      عنوان: <strong className="text-slate-800">{d.titleUrdu}</strong>
-                    </p>
-                    <p className="text-[11px] text-slate-500 font-mono">
-                      تاریخ: {new Date(d.deadlineIso).toLocaleString('en-US')}
-                    </p>
+
+                    {/* Quick action buttons to instantly toggle booking status */}
+                    <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-200/60">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                          const isoStr = futureDate.toISOString().slice(0, 16);
+                          onSetDeadline(d.category, isoStr, 'بکنگ فائنل کھل گئی ہے', 'open');
+                        }}
+                        className={`py-1.5 px-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer text-center flex items-center justify-center gap-1 border ${
+                          !isOver 
+                            ? 'bg-emerald-600 text-white border-emerald-600' 
+                            : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'
+                        }`}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse"></span>
+                        <span>بکنگ کھولیں (Open)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+                          const isoStr = pastDate.toISOString().slice(0, 16);
+                          onSetDeadline(d.category, isoStr, 'بکنگ فائنل بند ہے', 'closed');
+                        }}
+                        className={`py-1.5 px-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer text-center flex items-center justify-center gap-1 border ${
+                          isOver 
+                            ? 'bg-red-600 text-white border-red-600' 
+                            : 'bg-white text-red-600 border-red-200 hover:bg-red-50'
+                        }`}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+                        <span>بکنگ بند کریں (Close)</span>
+                      </button>
+                    </div>
                   </div>
                 );
               })}

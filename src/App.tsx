@@ -9,10 +9,12 @@ import {
   rechargeWallet, 
   addBooking, 
   cancelBooking, 
+  cancelBookingByAdmin, 
   setOrUpdateLimit, 
   deleteLimit, 
   logout,
   initializeStore,
+  subscribeToStore,
   getDemands,
   addDemand,
   approveDemand,
@@ -43,7 +45,7 @@ export default function App() {
   const [demands, setDemands] = useState<Demand[]>([]);
   const [deadlines, setDeadlines] = useState<DrawDeadline[]>([]);
   const [adminMode, setAdminMode] = useState<boolean>(false);
-  const [adminConfiguredEmail, setAdminConfiguredEmailState] = useState<string>('mastermaind.qureshi110@gmail.com');
+  const [adminConfiguredEmail, setAdminConfiguredEmailState] = useState<string>('mastermaindqureshi110@gmail.com');
 
   const whatsappNumber = getSupportWhatsAppNumber();
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent("السلام علیکم! مجھے ماسٹر مائینڈ قریشی انٹرپرائز پرائز بانڈ سسٹم کے بارے میں مدد چاہئے۔")}`;
@@ -51,8 +53,11 @@ export default function App() {
   // Initialize and load state
   useEffect(() => {
     initializeStore();
-    setAdminConfiguredEmailState(getAdminConfiguredEmail());
-    syncWithStore();
+    const unsubscribe = subscribeToStore(() => {
+      setAdminConfiguredEmailState(getAdminConfiguredEmail());
+      syncWithStore();
+    });
+    return () => unsubscribe();
   }, []);
 
   const syncWithStore = () => {
@@ -66,7 +71,14 @@ export default function App() {
     
     const configuredAdmin = getAdminConfiguredEmail();
     if (loggedIn) {
-      if (loggedIn.isAdmin && loggedIn.email.toLowerCase() === configuredAdmin.toLowerCase()) {
+      const emailLower = loggedIn.email.toLowerCase().trim();
+      const configLower = configuredAdmin.toLowerCase().trim();
+      if (
+        loggedIn.isAdmin || 
+        emailLower === configLower || 
+        emailLower === 'mastermaind.qureshi110@gmail.com' || 
+        emailLower === 'mastermaindqureshi110@gmail.com'
+      ) {
         setAdminMode(true);
       } else {
         setAdminMode(false);
@@ -161,6 +173,14 @@ export default function App() {
     return res;
   };
 
+  const handleCancelBookingByAdmin = (id: string) => {
+    const res = cancelBookingByAdmin(id);
+    if (res.success) {
+      syncWithStore();
+    }
+    return res;
+  };
+
   const handleAddDemand = (category: 'pakistan_bond' | 'thailand_lottery', number: string, firstAmt: number, secondAmt: number) => {
     if (!currentUser) return { success: false, error: 'براہ کرم پہلے لاگ ان کریں۔' };
 
@@ -212,7 +232,6 @@ export default function App() {
   if (!currentUser) {
     return (
       <>
-        <PwaInstaller />
         <RegistrationForm 
           onRegister={handleRegister} 
           onLoginWithEmail={handleLoginWithEmail} 
@@ -226,7 +245,6 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-between">
       <div>
-        <PwaInstaller />
         {/* Core Header with wallet widget */}
         <DashboardHeader
           user={currentUser}
@@ -241,71 +259,16 @@ export default function App() {
         <nav className="bg-white border-b border-slate-200 sticky top-[60px] z-40 shadow-sm leading-none">
           <div className="max-w-5xl mx-auto px-4 py-1 flex items-center justify-between sm:justify-center overflow-x-auto gap-2">
             
-            {/* Admin toggle visual link in sub-nav */}
-            {adminMode && (
-              <button
-                id="subnav-admin"
-                onClick={() => setActiveTab('admin')}
-                className={`flex items-center gap-1 text-xs py-2 px-3 rounded-xl transition-all border whitespace-nowrap cursor-pointer ${
-                  activeTab === 'admin'
-                    ? 'bg-amber-500 text-slate-950 font-bold border-amber-500 shadow-sm'
-                    : 'bg-amber-50/50 text-amber-900 border-amber-100 hover:bg-amber-100/55'
-                }`}
-              >
-                <Shield className="w-3.5 h-3.5" />
-                <span>ایڈمن پینل</span>
-              </button>
-            )}
-
-            <button
-              id="subnav-thailand"
-              onClick={() => setActiveTab('thailand_lottery')}
-              className={`flex items-center gap-1 text-xs py-2 px-3 rounded-xl transition-all border whitespace-nowrap cursor-pointer ${
-                activeTab === 'thailand_lottery'
-                  ? 'bg-slate-900 text-amber-400 font-bold border-slate-950'
-                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-              }`}
-            >
-              <ScrollText className="w-3.5 h-3.5 text-slate-500" />
-              <span>تھائی لینڈ لاٹری</span>
-            </button>
-
-            <button
-              id="subnav-pakistan"
-              onClick={() => setActiveTab('pakistan_bond')}
-              className={`flex items-center gap-1 text-xs py-2 px-3 rounded-xl transition-all border whitespace-nowrap cursor-pointer ${
-                activeTab === 'pakistan_bond'
-                  ? 'bg-slate-900 text-amber-400 font-bold border-slate-950'
-                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-              }`}
-            >
-              <CalendarRange className="w-3.5 h-3.5 text-slate-500" />
-              <span>پاکستان بانڈ</span>
-            </button>
-
-            <button
-              id="subnav-profile"
-              onClick={() => setActiveTab('profile')}
-              className={`flex items-center gap-1 text-xs py-2 px-3 rounded-xl transition-all border whitespace-nowrap cursor-pointer ${
-                activeTab === 'profile'
-                  ? 'bg-slate-900 text-amber-400 font-bold border-slate-950'
-                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-              }`}
-            >
-              <Award className="w-3.5 h-3.5 text-slate-500" />
-              <span>کسٹمر پروفائل</span>
-            </button>
-
             <button
               id="subnav-dashboard"
               onClick={() => setActiveTab('dashboard')}
               className={`flex items-center gap-1 text-xs py-2 px-3 rounded-xl transition-all border whitespace-nowrap cursor-pointer ${
                 activeTab === 'dashboard'
-                  ? 'bg-slate-900 text-amber-400 font-bold border-slate-950'
-                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                  ? 'bg-amber-500 text-slate-950 font-bold border-amber-500 shadow-md shadow-amber-500/10'
+                  : 'bg-slate-900 text-amber-400 font-semibold border-slate-950 hover:bg-slate-800'
               }`}
             >
-              <LayoutDashboard className="w-3.5 h-3.5 text-slate-500" />
+              <LayoutDashboard className={`w-3.5 h-3.5 ${activeTab === 'dashboard' ? 'text-slate-950' : 'text-amber-400'}`} />
               <span>ڈیش بورڈ</span>
             </button>
 
@@ -318,9 +281,64 @@ export default function App() {
                   : 'bg-slate-900 text-amber-400 font-semibold border-slate-950 hover:bg-slate-800'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <Sparkles className={`w-3.5 h-3.5 ${activeTab === 'ai_analysis' ? 'text-slate-950' : 'text-amber-400'}`} />
               <span>اے آئی اینالیسس پورٹل (AI Portal)</span>
             </button>
+
+            <button
+              id="subnav-profile"
+              onClick={() => setActiveTab('profile')}
+              className={`flex items-center gap-1 text-xs py-2 px-3 rounded-xl transition-all border whitespace-nowrap cursor-pointer ${
+                activeTab === 'profile'
+                  ? 'bg-amber-500 text-slate-950 font-bold border-amber-500 shadow-md shadow-amber-500/10'
+                  : 'bg-slate-900 text-amber-400 font-semibold border-slate-950 hover:bg-slate-800'
+              }`}
+            >
+              <Award className={`w-3.5 h-3.5 ${activeTab === 'profile' ? 'text-slate-950' : 'text-amber-400'}`} />
+              <span>کسٹمر پروفائل</span>
+            </button>
+
+            <button
+              id="subnav-pakistan"
+              onClick={() => setActiveTab('pakistan_bond')}
+              className={`flex items-center gap-1 text-xs py-2 px-3 rounded-xl transition-all border whitespace-nowrap cursor-pointer ${
+                activeTab === 'pakistan_bond'
+                  ? 'bg-amber-500 text-slate-950 font-bold border-amber-500 shadow-md shadow-amber-500/10'
+                  : 'bg-slate-900 text-amber-400 font-semibold border-slate-950 hover:bg-slate-800'
+              }`}
+            >
+              <CalendarRange className={`w-3.5 h-3.5 ${activeTab === 'pakistan_bond' ? 'text-slate-950' : 'text-amber-400'}`} />
+              <span>پاکستان بانڈ</span>
+            </button>
+
+            <button
+              id="subnav-thailand"
+              onClick={() => setActiveTab('thailand_lottery')}
+              className={`flex items-center gap-1 text-xs py-2 px-3 rounded-xl transition-all border whitespace-nowrap cursor-pointer ${
+                activeTab === 'thailand_lottery'
+                  ? 'bg-amber-500 text-slate-950 font-bold border-amber-500 shadow-md shadow-amber-500/10'
+                  : 'bg-slate-900 text-amber-400 font-semibold border-slate-950 hover:bg-slate-800'
+              }`}
+            >
+              <ScrollText className={`w-3.5 h-3.5 ${activeTab === 'thailand_lottery' ? 'text-slate-950' : 'text-amber-400'}`} />
+              <span>تھائی لینڈ لاٹری</span>
+            </button>
+
+            {/* Admin toggle visual link in sub-nav */}
+            {adminMode && (
+              <button
+                id="subnav-admin"
+                onClick={() => setActiveTab('admin')}
+                className={`flex items-center gap-1 text-xs py-2 px-3 rounded-xl transition-all border whitespace-nowrap cursor-pointer ${
+                  activeTab === 'admin'
+                    ? 'bg-amber-500 text-slate-950 font-bold border-amber-500 shadow-md shadow-amber-500/10'
+                    : 'bg-slate-900 text-amber-400 font-semibold border-slate-950 hover:bg-slate-800'
+                }`}
+              >
+                <Shield className={`w-3.5 h-3.5 ${activeTab === 'admin' ? 'text-slate-950' : 'text-amber-400'}`} />
+                <span>ایڈمن پینل</span>
+              </button>
+            )}
 
           </div>
         </nav>
@@ -377,6 +395,8 @@ export default function App() {
               limits={limits}
               demands={demands}
               deadlines={deadlines}
+              bookings={bookings}
+              onCancelBookingByAdmin={handleCancelBookingByAdmin}
               onRecharge={handleRecharge}
               onSetLimit={handleSetLimit}
               onDeleteLimit={handleDeleteLimit}

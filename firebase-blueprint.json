@@ -1,0 +1,109 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account information and balance",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email", "description": "Email address of the user" },
+        "name": { "type": "string", "description": "Full name of the user" },
+        "phone": { "type": "string", "description": "Phone number" },
+        "city": { "type": "string", "description": "City of residence" },
+        "balance": { "type": "number", "description": "Current wallet balance" },
+        "isAdmin": { "type": "boolean", "description": "Admin privileges indicator" }
+      },
+      "required": ["email", "name", "phone", "city", "balance"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "A coupon booking made by a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique booking ID" },
+        "userEmail": { "type": "string", "format": "email", "description": "Email of the booking owner" },
+        "category": { "type": "string", "enum": ["pakistan_bond", "thailand_lottery"], "description": "Bond/Lottery category" },
+        "number": { "type": "string", "description": "The selected 3 or 4-digit number" },
+        "firstAmount": { "type": "number", "description": "Amount for first prize" },
+        "secondAmount": { "type": "number", "description": "Amount for second prize" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Timestamp of the booking" }
+      },
+      "required": ["id", "userEmail", "category", "number", "firstAmount", "secondAmount", "timestamp"]
+    },
+    "NumberLimit": {
+      "title": "Number Limit",
+      "description": "Admin configured investment limit for a specific number",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique limit ID" },
+        "category": { "type": "string", "enum": ["pakistan_bond", "thailand_lottery"], "description": "Category" },
+        "number": { "type": "string", "description": "Target limited number" },
+        "maxAmount": { "type": "number", "description": "Maximum allowed amount" }
+      },
+      "required": ["id", "category", "number", "maxAmount"]
+    },
+    "Demand": {
+      "title": "Demand",
+      "description": "Pending purchase demand requested by a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique demand ID" },
+        "userEmail": { "type": "string", "format": "email", "description": "User email requesting demand" },
+        "category": { "type": "string", "enum": ["pakistan_bond", "thailand_lottery"], "description": "Category" },
+        "number": { "type": "string", "description": "Target number" },
+        "firstAmount": { "type": "number", "description": "Requested first amount" },
+        "secondAmount": { "type": "number", "description": "Requested second amount" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Timestamp of request" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"], "description": "Status of the demand" }
+      },
+      "required": ["id", "userEmail", "category", "number", "firstAmount", "secondAmount", "timestamp", "status"]
+    },
+    "DrawDeadline": {
+      "title": "Draw Deadline",
+      "description": "Deadline and status configurations for draws",
+      "type": "object",
+      "properties": {
+        "category": { "type": "string", "enum": ["pakistan_bond", "thailand_lottery"], "description": "Category" },
+        "titleUrdu": { "type": "string", "description": "Urdu message showing status or title" },
+        "deadlineIso": { "type": "string", "description": "ISO format date-time string" },
+        "status": { "type": "string", "enum": ["open", "closed"], "description": "Draw status" }
+      },
+      "required": ["category", "titleUrdu", "deadlineIso", "status"]
+    },
+    "AppSetting": {
+      "title": "App Setting",
+      "description": "General system-wide configurations",
+      "type": "object",
+      "properties": {
+        "adminEmail": { "type": "string", "format": "email", "description": "Admin email" },
+        "whatsappNumber": { "type": "string", "description": "Support WhatsApp phone number" }
+      },
+      "required": ["adminEmail", "whatsappNumber"]
+    }
+  },
+  "firestore": {
+    "users/{email}": {
+      "schema": "User",
+      "description": "Users of MasterMind Qureshi Enterprise"
+    },
+    "bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Bookings created by customers"
+    },
+    "limits/{limitId}": {
+      "schema": "NumberLimit",
+      "description": "Investment limits enforced by admin"
+    },
+    "demands/{demandId}": {
+      "schema": "Demand",
+      "description": "Purchase demands requiring approval"
+    },
+    "deadlines/{category}": {
+      "schema": "DrawDeadline",
+      "description": "Draw deadline status settings"
+    },
+    "settings/general": {
+      "schema": "AppSetting",
+      "description": "System config settings"
+    }
+  }
+}

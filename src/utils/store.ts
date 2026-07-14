@@ -1,31 +1,34 @@
 import { User, Booking, NumberLimit, Demand, DrawDeadline } from '../types';
+import { db } from '../lib/firebase';
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  deleteDoc, 
+  onSnapshot 
+} from 'firebase/firestore';
 
-// Standard storage keys
-const USERS_KEY = 'mqe_users';
-const BOOKINGS_KEY = 'mqe_bookings';
-const LIMITS_KEY = 'mqe_limits';
+// Standard storage keys for local preferences
 const LOGGED_IN_EMAIL_KEY = 'mqe_logged_in_email';
-const DEMANDS_KEY = 'mqe_demands';
-const DEADLINES_KEY = 'mqe_deadlines';
 
 const DEFAULT_DEADLINES: DrawDeadline[] = [
   {
     category: 'pakistan_bond',
     titleUrdu: 'بکنگ فائنل کھل گئی ہے',
-    deadlineIso: '2026-06-30T18:00',
+    deadlineIso: '2026-08-30T18:00',
     status: 'open'
   },
   {
     category: 'thailand_lottery',
     titleUrdu: 'بکنگ فائنل کھل گئی ہے',
-    deadlineIso: '2026-07-02T12:00',
+    deadlineIso: '2026-09-02T12:00',
     status: 'open'
   }
 ];
 
 const DEFAULT_USERS: User[] = [
   {
-    email: 'mastermaind.qureshi110@gmail.com',
+    email: 'mastermaindqureshi110@gmail.com',
     name: 'ایڈمن قریشی صاحب',
     phone: '03453090146',
     city: 'لاہور',
@@ -79,7 +82,7 @@ const DEFAULT_BOOKINGS: Booking[] = [
     number: '456',
     firstAmount: 100,
     secondAmount: 50,
-    timestamp: new Date(Date.now() - 45000).toISOString() // 45 seconds ago, can still be cancelled
+    timestamp: new Date(Date.now() - 45000).toISOString()
   },
   {
     id: 'booking-mock-2',
@@ -88,73 +91,135 @@ const DEFAULT_BOOKINGS: Booking[] = [
     number: '999',
     firstAmount: 300,
     secondAmount: 300,
-    timestamp: new Date(Date.now() - 300000).toISOString() // 5 mins ago, cannot be cancelled
+    timestamp: new Date(Date.now() - 300000).toISOString()
   }
 ];
 
+// Memory caches
+let cachedUsers: User[] = [];
+let cachedBookings: Booking[] = [];
+let cachedLimits: NumberLimit[] = [];
+let cachedDemands: Demand[] = [];
+let cachedDeadlines: DrawDeadline[] = [];
+let cachedSupportWhatsApp = '923453090146';
+let cachedAdminEmail = 'mastermaindqureshi110@gmail.com';
+
+const listeners: Set<() => void> = new Set();
+let started = false;
+
+export function subscribeToStore(callback: () => void): () => void {
+  listeners.add(callback);
+  // Trigger once immediately
+  callback();
+  return () => {
+    listeners.delete(callback);
+  };
+}
+
+function notifyListeners() {
+  listeners.forEach(cb => {
+    try {
+      cb();
+    } catch (e) {
+      console.error("Error in store listener:", e);
+    }
+  });
+}
+
 export function initializeStore() {
-  if (!localStorage.getItem('mqe_admin_configured_email') || localStorage.getItem('mqe_admin_configured_email') === 'admin@qureshi.com') {
-    localStorage.setItem('mqe_admin_configured_email', 'mastermaind.qureshi110@gmail.com');
+  if (started) return;
+  started = true;
+  
+  // Set local helper default keys if not set
+  if (!localStorage.getItem('mqe_admin_configured_email')) {
+    localStorage.setItem('mqe_admin_configured_email', 'mastermaindqureshi110@gmail.com');
   }
-  if (!localStorage.getItem('mqe_whatsapp_number') || localStorage.getItem('mqe_whatsapp_number') === '923001234567') {
+  if (!localStorage.getItem('mqe_whatsapp_number')) {
     localStorage.setItem('mqe_whatsapp_number', '923453090146');
   }
-  if (!localStorage.getItem(USERS_KEY)) {
-    localStorage.setItem(USERS_KEY, JSON.stringify(DEFAULT_USERS));
-  } else {
-    // Dynamic migration to ensure mastermaind.qureshi110@gmail.com is present in existing DB and set as Admin
-    try {
-      const users: User[] = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
-      const adminEmail = localStorage.getItem('mqe_admin_configured_email') || 'mastermaind.qureshi110@gmail.com';
-      const normalizedAdminEmail = adminEmail.trim().toLowerCase();
-      
-      let foundAdmin = false;
-      const updatedUsers = users.map(u => {
-        const isCurrentAdmin = u.email.toLowerCase() === normalizedAdminEmail;
-        if (isCurrentAdmin) {
-          foundAdmin = true;
-          return { ...u, isAdmin: true };
-        }
-        // Demote old admin if needed, or keep them. Let's just make sure they are not standard admin unless configured
-        if (u.email.toLowerCase() === 'admin@qureshi.com' && normalizedAdminEmail !== 'admin@qureshi.com') {
-          return { ...u, isAdmin: false };
-        }
-        return u;
-      });
 
-      if (!foundAdmin) {
-        updatedUsers.push({
-          email: normalizedAdminEmail,
-          name: 'ایڈمن قریشی صاحب',
-          phone: '03453090146',
-          city: 'لاہور',
-          balance: 500000,
-          isAdmin: true
-        });
-      }
-      localStorage.setItem(USERS_KEY, JSON.stringify(updatedUsers));
-    } catch (e) {
-      console.error(e);
+  // 1. Listen to users
+  onSnapshot(collection(db, 'users'), (snapshot) => {
+    if (snapshot.empty) {
+      DEFAULT_USERS.forEach(async (user) => {
+        await setDoc(doc(db, 'users', user.email.toLowerCase()), user);
+      });
+    } else {
+      cachedUsers = snapshot.docs.map(doc => doc.data() as User);
+      notifyListeners();
     }
-  }
-  if (!localStorage.getItem(LIMITS_KEY)) {
-    localStorage.setItem(LIMITS_KEY, JSON.stringify(DEFAULT_LIMITS));
-  }
-  if (!localStorage.getItem(BOOKINGS_KEY)) {
-    localStorage.setItem(BOOKINGS_KEY, JSON.stringify(DEFAULT_BOOKINGS));
-  }
-  if (!localStorage.getItem(DEADLINES_KEY)) {
-    localStorage.setItem(DEADLINES_KEY, JSON.stringify(DEFAULT_DEADLINES));
-  }
-  // Automatically log in the tester to save them steps, but allow switching users
-  if (!localStorage.getItem(LOGGED_IN_EMAIL_KEY) && !localStorage.getItem('mqe_user_logged_out_manually')) {
-    localStorage.setItem(LOGGED_IN_EMAIL_KEY, 'fareed.ghulam@gmail.com');
-  }
+  });
+
+  // 2. Listen to bookings
+  onSnapshot(collection(db, 'bookings'), (snapshot) => {
+    if (snapshot.empty) {
+      DEFAULT_BOOKINGS.forEach(async (booking) => {
+        await setDoc(doc(db, 'bookings', booking.id), booking);
+      });
+    } else {
+      const list = snapshot.docs.map(doc => doc.data() as Booking);
+      cachedBookings = list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      notifyListeners();
+    }
+  });
+
+  // 3. Listen to limits
+  onSnapshot(collection(db, 'limits'), (snapshot) => {
+    if (snapshot.empty) {
+      DEFAULT_LIMITS.forEach(async (limit) => {
+        await setDoc(doc(db, 'limits', limit.id), limit);
+      });
+    } else {
+      cachedLimits = snapshot.docs.map(doc => doc.data() as NumberLimit);
+      notifyListeners();
+    }
+  });
+
+  // 4. Listen to demands
+  onSnapshot(collection(db, 'demands'), (snapshot) => {
+    const list = snapshot.docs.map(doc => doc.data() as Demand);
+    cachedDemands = list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    notifyListeners();
+  });
+
+  // 5. Listen to deadlines
+  onSnapshot(collection(db, 'deadlines'), (snapshot) => {
+    if (snapshot.empty) {
+      DEFAULT_DEADLINES.forEach(async (deadline) => {
+        await setDoc(doc(db, 'deadlines', deadline.category), deadline);
+      });
+    } else {
+      cachedDeadlines = snapshot.docs.map(doc => doc.data() as DrawDeadline);
+      notifyListeners();
+    }
+  });
+
+  // 6. Listen to settings/general
+  onSnapshot(doc(db, 'settings', 'general'), async (snapshot) => {
+    if (!snapshot.exists()) {
+      await setDoc(doc(db, 'settings', 'general'), {
+        adminEmail: 'mastermaindqureshi110@gmail.com',
+        whatsappNumber: '923453090146'
+      });
+    } else {
+      const data = snapshot.data();
+      let adminEmail = data?.adminEmail || 'mastermaindqureshi110@gmail.com';
+      if (adminEmail === 'mastermaind.qureshi110@gmail.com') {
+        adminEmail = 'mastermaindqureshi110@gmail.com';
+        // Auto-migrate in Firestore
+        await setDoc(doc(db, 'settings', 'general'), { adminEmail }, { merge: true });
+      }
+      cachedAdminEmail = adminEmail;
+      cachedSupportWhatsApp = data?.whatsappNumber || '923453090146';
+      notifyListeners();
+    }
+  });
+
+
 }
 
 export function getSupportWhatsAppNumber(): string {
-  initializeStore();
-  return localStorage.getItem('mqe_whatsapp_number') || '923453090146';
+  return cachedSupportWhatsApp;
 }
 
 export function setSupportWhatsAppNumber(num: string) {
@@ -162,79 +227,80 @@ export function setSupportWhatsAppNumber(num: string) {
   if (cleaned.startsWith('03')) {
     cleaned = '92' + cleaned.substring(1);
   }
-  localStorage.setItem('mqe_whatsapp_number', cleaned);
+  setDoc(doc(db, 'settings', 'general'), {
+    adminEmail: cachedAdminEmail,
+    whatsappNumber: cleaned
+  }, { merge: true });
 }
 
 export function getUsers(): User[] {
-  initializeStore();
-  return JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+  return cachedUsers;
 }
 
 export function saveUsers(users: User[]) {
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
+  users.forEach(u => {
+    setDoc(doc(db, 'users', u.email.toLowerCase()), u);
+  });
 }
 
 export function getBookings(): Booking[] {
-  initializeStore();
-  return JSON.parse(localStorage.getItem(BOOKINGS_KEY) || '[]');
+  return cachedBookings;
 }
 
 export function saveBookings(bookings: Booking[]) {
-  localStorage.setItem(BOOKINGS_KEY, JSON.stringify(bookings));
+  bookings.forEach(b => {
+    setDoc(doc(db, 'bookings', b.id), b);
+  });
 }
 
 export function getNumberLimits(): NumberLimit[] {
-  initializeStore();
-  return JSON.parse(localStorage.getItem(LIMITS_KEY) || '[]');
+  return cachedLimits;
 }
 
 export function saveNumberLimits(limits: NumberLimit[]) {
-  localStorage.setItem(LIMITS_KEY, JSON.stringify(limits));
+  limits.forEach(l => {
+    setDoc(doc(db, 'limits', l.id), l);
+  });
 }
 
 export function getLoggedInUser(): User | null {
-  initializeStore();
   const email = localStorage.getItem(LOGGED_IN_EMAIL_KEY);
   if (!email) return null;
-  const users = getUsers();
-  return users.find((u) => u.email.toLowerCase() === email.toLowerCase()) || null;
+  return cachedUsers.find((u) => u.email.toLowerCase() === email.toLowerCase()) || null;
 }
 
 export function setLoggedInUser(email: string) {
   localStorage.setItem(LOGGED_IN_EMAIL_KEY, email);
   localStorage.removeItem('mqe_user_logged_out_manually');
+  notifyListeners();
 }
 
 export function logout() {
   localStorage.removeItem(LOGGED_IN_EMAIL_KEY);
   localStorage.setItem('mqe_user_logged_out_manually', 'true');
+  notifyListeners();
 }
 
 export function getAdminConfiguredEmail(): string {
-  initializeStore();
-  return localStorage.getItem('mqe_admin_configured_email') || 'mastermaind.qureshi110@gmail.com';
+  return cachedAdminEmail;
 }
 
 export function setAdminConfiguredEmail(email: string) {
   const normalizedEmail = email.trim().toLowerCase();
-  localStorage.setItem('mqe_admin_configured_email', normalizedEmail);
   
-  const users = getUsers();
-  let found = false;
+  setDoc(doc(db, 'settings', 'general'), {
+    adminEmail: normalizedEmail,
+    whatsappNumber: cachedSupportWhatsApp
+  }, { merge: true });
   
-  const updatedUsers = users.map(user => {
-    const isThisAdmin = user.email.toLowerCase() === normalizedEmail;
-    if (isThisAdmin) {
-      found = true;
-    }
-    return {
+  const user = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
+  if (user) {
+    setDoc(doc(db, 'users', normalizedEmail), {
       ...user,
-      isAdmin: isThisAdmin
-    };
-  });
-  
-  if (!found) {
-    updatedUsers.push({
+      isAdmin: true
+    });
+  } else {
+    setDoc(doc(db, 'users', normalizedEmail), {
       email: normalizedEmail,
       name: 'ایڈمن قریشی صاحب',
       phone: '03453090146',
@@ -243,37 +309,37 @@ export function setAdminConfiguredEmail(email: string) {
       isAdmin: true
     });
   }
-  
-  saveUsers(updatedUsers);
 }
 
 // Business actions
 export function registerUser(name: string, phone: string, city: string, email: string): User {
-  const users = getUsers();
-  const existing = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  const normalizedEmail = email.toLowerCase();
+  const existing = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
   if (existing) {
     return existing;
   }
-  const adminEmail = getAdminConfiguredEmail();
+  const isAdmin = normalizedEmail === cachedAdminEmail.toLowerCase();
   const newUser: User = {
-    email,
+    email: normalizedEmail,
     name,
     phone,
     city,
-    balance: 500, // Good warm welcome bonus starting balance!
-    isAdmin: email.toLowerCase() === adminEmail.toLowerCase()
+    balance: 100, // starting balance
+    isAdmin
   };
-  users.push(newUser);
-  saveUsers(users);
+  setDoc(doc(db, 'users', normalizedEmail), newUser);
   return newUser;
 }
 
 export function rechargeWallet(email: string, amount: number): boolean {
-  const users = getUsers();
-  const userIndex = users.findIndex(u => u.email.toLowerCase() === email.toLowerCase());
-  if (userIndex === -1) return false;
-  users[userIndex].balance += amount;
-  saveUsers(users);
+  const normalizedEmail = email.toLowerCase();
+  const user = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
+  if (!user) return false;
+  
+  setDoc(doc(db, 'users', normalizedEmail), {
+    ...user,
+    balance: user.balance + amount
+  });
   return true;
 }
 
@@ -284,18 +350,16 @@ export function addBooking(
   firstAmount: number,
   secondAmount: number
 ): { success: boolean; error?: string } {
-  const users = getUsers();
-  const userIndex = users.findIndex(u => u.email.toLowerCase() === email.toLowerCase());
-  if (userIndex === -1) return { success: false, error: 'کسٹمر ریکارڈ نہیں ملا' };
+  const normalizedEmail = email.toLowerCase();
+  const user = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
+  if (!user) return { success: false, error: 'کسٹمر ریکارڈ نہیں ملا' };
 
   const totalCost = firstAmount + secondAmount;
-  if (users[userIndex].balance < totalCost) {
+  if (user.balance < totalCost) {
     return { success: false, error: 'آپ کے والٹ میں کافی رقم موجود نہیں ہے' };
   }
 
-  // Check limits
-  const limits = getNumberLimits();
-  const limit = limits.find(l => l.category === category && l.number === number);
+  const limit = cachedLimits.find(l => l.category === category && l.number === number);
   if (limit) {
     if (firstAmount > limit.maxAmount) {
       return { 
@@ -312,84 +376,92 @@ export function addBooking(
   }
 
   // Deduct balance
-  users[userIndex].balance -= totalCost;
-  saveUsers(users);
+  setDoc(doc(db, 'users', normalizedEmail), {
+    ...user,
+    balance: user.balance - totalCost
+  });
 
-  // Add booking
-  const bookings = getBookings();
+  const bookingId = 'booking-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
   const newBooking: Booking = {
-    id: 'booking-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
-    userEmail: email,
+    id: bookingId,
+    userEmail: normalizedEmail,
     category,
     number,
     firstAmount,
     secondAmount,
     timestamp: new Date().toISOString()
   };
-  bookings.unshift(newBooking);
-  saveBookings(bookings);
+  setDoc(doc(db, 'bookings', bookingId), newBooking);
 
   return { success: true };
 }
 
 export function cancelBooking(bookingId: string): { success: boolean; error?: string } {
-  const bookings = getBookings();
-  const index = bookings.findIndex(b => b.id === bookingId);
-  if (index === -1) return { success: false, error: 'بکنگ کا ریکارڈ نہیں ملا' };
+  const booking = cachedBookings.find(b => b.id === bookingId);
+  if (!booking) return { success: false, error: 'بکنگ کا ریکارڈ نہیں ملا' };
 
-  const booking = bookings[index];
   const timeDiffMs = Date.now() - new Date(booking.timestamp).getTime();
-  const limitMs = 2 * 60 * 1000; // 2 minutes in milliseconds
+  const limitMs = 2 * 60 * 1000;
 
   if (timeDiffMs > limitMs) {
     return { success: false, error: 'کینسل کرنے کا وقت (2 منٹ) ختم ہو چکا ہے' };
   }
 
-  // Refund wallet
-  const users = getUsers();
-  const userIndex = users.findIndex(u => u.email.toLowerCase() === booking.userEmail.toLowerCase());
-  if (userIndex !== -1) {
-    users[userIndex].balance += (booking.firstAmount + booking.secondAmount);
-    saveUsers(users);
+  const user = cachedUsers.find(u => u.email.toLowerCase() === booking.userEmail.toLowerCase());
+  if (user) {
+    setDoc(doc(db, 'users', booking.userEmail.toLowerCase()), {
+      ...user,
+      balance: user.balance + (booking.firstAmount + booking.secondAmount)
+    });
   }
 
-  // Remove booking
-  bookings.splice(index, 1);
-  saveBookings(bookings);
+  deleteDoc(doc(db, 'bookings', bookingId));
+
+  return { success: true };
+}
+
+export function cancelBookingByAdmin(bookingId: string): { success: boolean; error?: string } {
+  const booking = cachedBookings.find(b => b.id === bookingId);
+  if (!booking) return { success: false, error: 'بکنگ کا ریکارڈ نہیں ملا' };
+
+  const user = cachedUsers.find(u => u.email.toLowerCase() === booking.userEmail.toLowerCase());
+  if (user) {
+    setDoc(doc(db, 'users', booking.userEmail.toLowerCase()), {
+      ...user,
+      balance: user.balance + (booking.firstAmount + booking.secondAmount)
+    });
+  }
+
+  deleteDoc(doc(db, 'bookings', bookingId));
 
   return { success: true };
 }
 
 export function setOrUpdateLimit(category: 'pakistan_bond' | 'thailand_lottery', number: string, maxAmount: number) {
-  const limits = getNumberLimits();
-  const existingIndex = limits.findIndex(l => l.category === category && l.number === number);
-  if (existingIndex !== -1) {
-    limits[existingIndex].maxAmount = maxAmount;
-  } else {
-    limits.push({
-      id: 'limit-' + Date.now(),
-      category,
-      number,
-      maxAmount
-    });
-  }
-  saveNumberLimits(limits);
+  const existing = cachedLimits.find(l => l.category === category && l.number === number);
+  const limitId = existing ? existing.id : 'limit-' + Date.now();
+  
+  const limit: NumberLimit = {
+    id: limitId,
+    category,
+    number,
+    maxAmount
+  };
+  setDoc(doc(db, 'limits', limitId), limit);
 }
 
 export function deleteLimit(id: string) {
-  const limits = getNumberLimits();
-  const filtered = limits.filter(l => l.id !== id);
-  saveNumberLimits(filtered);
+  deleteDoc(doc(db, 'limits', id));
 }
 
-// Demand functions
 export function getDemands(): Demand[] {
-  initializeStore();
-  return JSON.parse(localStorage.getItem(DEMANDS_KEY) || '[]');
+  return cachedDemands;
 }
 
 export function saveDemands(demands: Demand[]) {
-  localStorage.setItem(DEMANDS_KEY, JSON.stringify(demands));
+  demands.forEach(d => {
+    setDoc(doc(db, 'demands', d.id), d);
+  });
 }
 
 export function addDemand(
@@ -399,8 +471,8 @@ export function addDemand(
   firstAmount: number,
   secondAmount: number
 ): { success: boolean; error?: string } {
-  const users = getUsers();
-  const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  const normalizedEmail = email.toLowerCase();
+  const user = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
   if (!user) return { success: false, error: 'کسٹمر ریکارڈ نہیں ملا' };
 
   const totalCost = firstAmount + secondAmount;
@@ -408,10 +480,10 @@ export function addDemand(
     return { success: false, error: 'آپ کے والٹ میں کافی رقم موجود نہیں ہے' };
   }
 
-  const demands = getDemands();
+  const demandId = 'demand-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
   const newDemand: Demand = {
-    id: 'demand-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
-    userEmail: email,
+    id: demandId,
+    userEmail: normalizedEmail,
     category,
     number,
     firstAmount,
@@ -420,39 +492,36 @@ export function addDemand(
     status: 'pending'
   };
 
-  demands.unshift(newDemand);
-  saveDemands(demands);
+  setDoc(doc(db, 'demands', demandId), newDemand);
 
   return { success: true };
 }
 
 export function approveDemand(demandId: string): { success: boolean; error?: string } {
-  const demands = getDemands();
-  const demandIndex = demands.findIndex(d => d.id === demandId);
-  if (demandIndex === -1) return { success: false, error: 'ڈیمانڈ ریکارڈ نہیں ملا' };
+  const demand = cachedDemands.find(d => d.id === demandId);
+  if (!demand) return { success: false, error: 'ڈیمانڈ ریکارڈ نہیں ملا' };
 
-  const demand = demands[demandIndex];
   if (demand.status !== 'pending') {
     return { success: false, error: 'یہ ڈیمانڈ پہلے ہی عمل میں لائی جا چکی ہے' };
   }
 
-  const users = getUsers();
-  const userIndex = users.findIndex(u => u.email.toLowerCase() === demand.userEmail.toLowerCase());
-  if (userIndex === -1) return { success: false, error: 'کسٹمر ریکارڈ نہیں ملا' };
+  const user = cachedUsers.find(u => u.email.toLowerCase() === demand.userEmail.toLowerCase());
+  if (!user) return { success: false, error: 'کسٹمر ریکارڈ نہیں ملا' };
 
   const totalCost = demand.firstAmount + demand.secondAmount;
-  if (users[userIndex].balance < totalCost) {
+  if (user.balance < totalCost) {
     return { success: false, error: 'کسٹمر کے والٹ میں کافی رقم موجود نہیں ہے' };
   }
 
   // Deduct balance
-  users[userIndex].balance -= totalCost;
-  saveUsers(users);
+  setDoc(doc(db, 'users', demand.userEmail.toLowerCase()), {
+    ...user,
+    balance: user.balance - totalCost
+  });
 
-  // Convert to Booking
-  const bookings = getBookings();
+  const bookingId = 'booking-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
   const newBooking: Booking = {
-    id: 'booking-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+    id: bookingId,
     userEmail: demand.userEmail,
     category: demand.category,
     number: demand.number,
@@ -460,44 +529,40 @@ export function approveDemand(demandId: string): { success: boolean; error?: str
     secondAmount: demand.secondAmount,
     timestamp: new Date().toISOString()
   };
-  bookings.unshift(newBooking);
-  saveBookings(bookings);
+  setDoc(doc(db, 'bookings', bookingId), newBooking);
 
-  // Update status
-  demands[demandIndex].status = 'approved';
-  saveDemands(demands);
+  setDoc(doc(db, 'demands', demandId), {
+    ...demand,
+    status: 'approved'
+  });
 
   return { success: true };
 }
 
 export function rejectDemand(demandId: string): { success: boolean; error?: string } {
-  const demands = getDemands();
-  const demandIndex = demands.findIndex(d => d.id === demandId);
-  if (demandIndex === -1) return { success: false, error: 'ڈیمانڈ ریکارڈ نہیں ملا' };
+  const demand = cachedDemands.find(d => d.id === demandId);
+  if (!demand) return { success: false, error: 'ڈیمانڈ ریکارڈ نہیں ملا' };
 
-  const demand = demands[demandIndex];
   if (demand.status !== 'pending') {
     return { success: false, error: 'یہ ڈیمانڈ پہلے ہی عمل میں لائی جا چکی ہے' };
   }
 
-  demands[demandIndex].status = 'rejected';
-  saveDemands(demands);
+  setDoc(doc(db, 'demands', demandId), {
+    ...demand,
+    status: 'rejected'
+  });
 
   return { success: true };
 }
 
-// Deadline configurations
 export function getDrawDeadlines(): DrawDeadline[] {
-  initializeStore();
-  const list = JSON.parse(localStorage.getItem(DEADLINES_KEY) || '[]');
-  return list.map((d: any) => ({
-    ...d,
-    status: d.status || 'open'
-  }));
+  return cachedDeadlines;
 }
 
 export function saveDrawDeadlines(deadlines: DrawDeadline[]) {
-  localStorage.setItem(DEADLINES_KEY, JSON.stringify(deadlines));
+  deadlines.forEach(d => {
+    setDoc(doc(db, 'deadlines', d.category), d);
+  });
 }
 
 export function setDrawDeadline(
@@ -506,21 +571,11 @@ export function setDrawDeadline(
   titleUrdu: string,
   status: 'open' | 'closed'
 ) {
-  const deadlines = getDrawDeadlines();
-  const index = deadlines.findIndex(d => d.category === category);
-  if (index !== -1) {
-    deadlines[index].deadlineIso = deadlineIso;
-    deadlines[index].titleUrdu = titleUrdu;
-    deadlines[index].status = status;
-  } else {
-    deadlines.push({
-      category,
-      deadlineIso,
-      titleUrdu,
-      status
-    });
-  }
-  saveDrawDeadlines(deadlines);
+  const deadline: DrawDeadline = {
+    category,
+    deadlineIso,
+    titleUrdu,
+    status
+  };
+  setDoc(doc(db, 'deadlines', category), deadline);
 }
-
-
