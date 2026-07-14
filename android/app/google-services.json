@@ -1,21 +1,26 @@
 {
   "project_info": {
-    "project_number": "343587675373",
-    "project_id": "master-mind-qureshi-enterprise",
-    "storage_bucket": "master-mind-qureshi-enterprise.firebasestorage.app"
+    "project_number": "719868641304",
+    "project_id": "cool-segment-c79b0",
+    "storage_bucket": "cool-segment-c79b0.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:343587675373:android:6de5a3e31e3d63ba4e40e4",
+        "mobilesdk_app_id": "1:719868641304:android:5cbf78a48b945d8b",
         "android_client_info": {
           "package_name": "com.mastermindqureshi.enterprise"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "719868641304-qk7a122smhuhaur6d9unj0qipapcdqet.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyD_et4-TN9B6tFYuDN5RicqH3UtQfw9jXk"
+          "current_key": "AIzaSyAdxB4gKa6AB9mrOuE6PeQGzbUVUtXKBKs"
         }
       ],
       "services": {
