@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Master Mind Qureshi Enterprise</string>
+    <string name="title_activity_main">Master Mind Qureshi Enterprise</string>
+    <string name="package_name">com.mastermindqureshi.enterprise</string>
+    <string name="custom_url_scheme">com.mastermindqureshi.enterprise</string>
+</resources>
