@@ -10,9 +10,9 @@ interface BookingPageProps {
   demands: Demand[];
   deadlines?: DrawDeadline[];
   category: 'pakistan_bond' | 'thailand_lottery';
-  onAddBooking: (number: string, firstAmt: number, secondAmt: number) => { success: boolean; error?: string };
-  onCancelBooking: (id: string) => { success: boolean; error?: string };
-  onAddDemand: (number: string, firstAmt: number, secondAmt: number) => { success: boolean; error?: string };
+  onAddBooking: (number: string, firstAmt: number, secondAmt: number) => Promise<{ success: boolean; error?: string }>;
+  onCancelBooking: (id: string) => Promise<{ success: boolean; error?: string }>;
+  onAddDemand: (number: string, firstAmt: number, secondAmt: number) => Promise<{ success: boolean; error?: string }>;
 }
 
 export default function BookingPage({
@@ -91,7 +91,7 @@ export default function BookingPage({
   const currentSecondAmt = parseInt(secondAmtInput || '0', 10);
   const currentTotalCost = currentFirstAmt + currentSecondAmt;
 
-  const handleDemandClick = (e: React.MouseEvent) => {
+  const handleDemandClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     setErrorStatus('');
     setSuccessStatus('');
@@ -125,7 +125,7 @@ export default function BookingPage({
       return;
     }
 
-    const res = onAddDemand(numInput, firstAmt, secondAmt);
+    const res = await onAddDemand(numInput, firstAmt, secondAmt);
     if (res.success) {
       setSuccessStatus(`کامیاب: نمبر ${numInput} کے لئے Rs. ${totalCost.toLocaleString()} کی ڈیمانڈ ایڈمن کو بھیج دی گئی ہے!`);
       setNumInput('');
@@ -136,7 +136,7 @@ export default function BookingPage({
     }
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setErrorStatus('');
     setSuccessStatus('');
@@ -165,7 +165,7 @@ export default function BookingPage({
       return;
     }
 
-    const res = onAddBooking(numInput, firstAmt, secondAmt);
+    const res = await onAddBooking(numInput, firstAmt, secondAmt);
     if (res.success) {
       setSuccessStatus(`کامیاب: نمبر ${numInput} کی بکنگ رجسٹر ہو گئی ہے!`);
       setNumInput('');
@@ -176,11 +176,11 @@ export default function BookingPage({
     }
   };
 
-  const handleCancelClick = (id: string, number: string) => {
+  const handleCancelClick = async (id: string, number: string) => {
     setErrorStatus('');
     setSuccessStatus('');
 
-    const res = onCancelBooking(id);
+    const res = await onCancelBooking(id);
     if (res.success) {
       setSuccessStatus(`منسوخ: نمبر ${number} کو منسوخ کر کے رقم والٹ میں جمع کر دی گئی ہے!`);
     } else {

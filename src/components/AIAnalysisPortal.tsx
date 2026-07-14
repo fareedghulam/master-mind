@@ -13,8 +13,8 @@ import { generateDrawHistoryPDF } from '../utils/pdfGenerator';
 interface AIAnalysisPortalProps {
   user: User;
   bookings: Booking[];
-  onAddBooking: (number: string, firstAmt: number, secondAmt: number) => { success: boolean; error?: string };
-  onAddDemand: (number: string, firstAmt: number, secondAmt: number) => { success: boolean; error?: string };
+  onAddBooking: (number: string, firstAmt: number, secondAmt: number) => Promise<{ success: boolean; error?: string }>;
+  onAddDemand: (number: string, firstAmt: number, secondAmt: number) => Promise<{ success: boolean; error?: string }>;
 }
 
 export default function AIAnalysisPortal({ user, bookings, onAddBooking, onAddDemand }: AIAnalysisPortalProps) {
@@ -308,7 +308,7 @@ export default function AIAnalysisPortal({ user, bookings, onAddBooking, onAddDe
     }, 1200);
   };
 
-  const handleQuickBook = (isDemand: boolean) => {
+  const handleQuickBook = async (isDemand: boolean) => {
     if (!generatedNumber) return;
     setBookingStatus(null);
 
@@ -326,14 +326,14 @@ export default function AIAnalysisPortal({ user, bookings, onAddBooking, onAddDe
         setBookingStatus({ type: 'error', message: 'ڈیمانڈ کے لئے مجموعی رقم 500 روپے سے زائد ہونی چاہیے۔' });
         return;
       }
-      const res = onAddDemand(generatedNumber, first, second);
+      const res = await onAddDemand(generatedNumber, first, second);
       if (res.success) {
         setBookingStatus({ type: 'success', message: `کامیابی: نمبر ${generatedNumber} کی Rs. ${total.toLocaleString()} کی ڈیمانڈ ایڈمن کو بھیج دی گئی ہے۔` });
       } else {
         setBookingStatus({ type: 'error', message: res.error || 'غلطی پیش آئی۔' });
       }
     } else {
-      const res = onAddBooking(generatedNumber, first, second);
+      const res = await onAddBooking(generatedNumber, first, second);
       if (res.success) {
         setBookingStatus({ type: 'success', message: `کامیابی: نمبر ${generatedNumber} کامیابی سے بک کر لیا گیا ہے اور والٹ سے رقم منہا کر دی گئی ہے۔` });
       } else {

@@ -23,7 +23,8 @@ import {
   setDrawDeadline,
   getAdminConfiguredEmail,
   setAdminConfiguredEmail,
-  getSupportWhatsAppNumber
+  getSupportWhatsAppNumber,
+  checkInternetConnection
 } from './utils/store';
 import { User, Booking, NumberLimit, Demand, DrawDeadline } from './types';
 import DashboardHeader from './components/DashboardHeader';
@@ -46,6 +47,45 @@ export default function App() {
   const [deadlines, setDeadlines] = useState<DrawDeadline[]>([]);
   const [adminMode, setAdminMode] = useState<boolean>(false);
   const [adminConfiguredEmail, setAdminConfiguredEmailState] = useState<string>('mastermaindqureshi110@gmail.com');
+
+  // Network and Wallet Protection states
+  const [isOfflineModalOpen, setIsOfflineModalOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{
+    execute: () => Promise<any>;
+    resolve: (val: any) => void;
+  } | null>(null);
+  const [retryStatus, setRetryStatus] = useState<'idle' | 'checking' | 'failed'>('idle');
+
+  const verifyNetworkAndExecute = async <T,>(action: () => Promise<T>): Promise<T | { success: false; error: string }> => {
+    const online = await checkInternetConnection();
+    if (!online) {
+      setIsOfflineModalOpen(true);
+      setRetryStatus('idle');
+      return new Promise<T | { success: false; error: string }>((resolve) => {
+        setPendingAction({
+          execute: action,
+          resolve: resolve as (val: any) => void
+        });
+      });
+    }
+    return await action();
+  };
+
+  const handleRetryConnection = async () => {
+    setRetryStatus('checking');
+    const online = await checkInternetConnection();
+    if (online) {
+      setIsOfflineModalOpen(false);
+      setRetryStatus('idle');
+      if (pendingAction) {
+        const result = await pendingAction.execute();
+        pendingAction.resolve(result);
+        setPendingAction(null);
+      }
+    } else {
+      setRetryStatus('failed');
+    }
+  };
 
   const whatsappNumber = getSupportWhatsAppNumber();
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent("السلام علیکم! مجھے ماسٹر مائینڈ قریشی انٹرپرائز پرائز بانڈ سسٹم کے بارے میں مدد چاہئے۔")}`;
@@ -88,22 +128,37 @@ export default function App() {
     }
   };
 
-  const handleUpdateAdminEmail = (email: string) => {
-    setAdminConfiguredEmail(email);
-    setAdminConfiguredEmailState(email);
-    syncWithStore();
+  const handleUpdateAdminEmail = async (email: string) => {
+    const action = async () => {
+      setAdminConfiguredEmail(email);
+      setAdminConfiguredEmailState(email);
+      syncWithStore();
+      return true;
+    };
+    return await verifyNetworkAndExecute(action);
   };
 
-  const handleSetDeadline = (category: 'pakistan_bond' | 'thailand_lottery', deadlineIso: string, titleUrdu: string, status: 'open' | 'closed') => {
-    setDrawDeadline(category, deadlineIso, titleUrdu, status);
-    syncWithStore();
+  const handleSetDeadline = async (category: 'pakistan_bond' | 'thailand_lottery', deadlineIso: string, titleUrdu: string, status: 'open' | 'closed') => {
+    const action = async () => {
+      await setDrawDeadline(category, deadlineIso, titleUrdu, status);
+      syncWithStore();
+      return true;
+    };
+    return await verifyNetworkAndExecute(action);
   };
 
-  const handleRegister = (name: string, phone: string, city: string, email: string) => {
-    const newUser = registerUser(name, phone, city, email);
-    setLoggedInUser(newUser.email);
-    syncWithStore();
-    setActiveTab('dashboard');
+  const handleRegister = async (name: string, phone: string, city: string, email: string) => {
+    const action = async () => {
+      const newUser = await registerUser(name, phone, city, email);
+      if (newUser) {
+        setLoggedInUser(newUser.email);
+        syncWithStore();
+        setActiveTab('dashboard');
+        return newUser;
+      }
+      return null;
+    };
+    return await verifyNetworkAndExecute(action);
   };
 
   const handleLoginWithEmail = (email: string): boolean => {
@@ -124,25 +179,37 @@ export default function App() {
     setActiveTab('dashboard');
   };
 
-  const handleRecharge = (email: string, amount: number): boolean => {
-    const success = rechargeWallet(email, amount);
-    if (success) {
+  const handleRecharge = async (email: string, amount: number): Promise<boolean> => {
+    const action = async () => {
+      const success = await rechargeWallet(email, amount);
+      if (success) {
+        syncWithStore();
+      }
+      return success;
+    };
+    const res = await verifyNetworkAndExecute(action);
+    return typeof res === 'boolean' ? res : false;
+  };
+
+  const handleSetLimit = async (category: 'pakistan_bond' | 'thailand_lottery', number: string, maxAmount: number) => {
+    const action = async () => {
+      await setOrUpdateLimit(category, number, maxAmount);
       syncWithStore();
-    }
-    return success;
+      return true;
+    };
+    return await verifyNetworkAndExecute(action);
   };
 
-  const handleSetLimit = (category: 'pakistan_bond' | 'thailand_lottery', number: string, maxAmount: number) => {
-    setOrUpdateLimit(category, number, maxAmount);
-    syncWithStore();
+  const handleDeleteLimit = async (id: string) => {
+    const action = async () => {
+      await deleteLimit(id);
+      syncWithStore();
+      return true;
+    };
+    return await verifyNetworkAndExecute(action);
   };
 
-  const handleDeleteLimit = (id: string) => {
-    deleteLimit(id);
-    syncWithStore();
-  };
-
-  const handleAddBooking = (category: 'pakistan_bond' | 'thailand_lottery', number: string, firstAmt: number, secondAmt: number) => {
+  const handleAddBooking = async (category: 'pakistan_bond' | 'thailand_lottery', number: string, firstAmt: number, secondAmt: number) => {
     if (!currentUser) return { success: false, error: 'براہ کرم پہلے لاگ ان کریں۔' };
     
     // Secure deadline check
@@ -158,30 +225,40 @@ export default function App() {
       }
     }
 
-    const res = addBooking(currentUser.email, category, number, firstAmt, secondAmt);
-    if (res.success) {
-      syncWithStore();
-    }
-    return res;
+    const action = async () => {
+      const res = await addBooking(currentUser.email, category, number, firstAmt, secondAmt);
+      if (res.success) {
+        syncWithStore();
+      }
+      return res;
+    };
+
+    return await verifyNetworkAndExecute(action);
   };
 
-  const handleCancelBooking = (id: string) => {
-    const res = cancelBooking(id);
-    if (res.success) {
-      syncWithStore();
-    }
-    return res;
+  const handleCancelBooking = async (id: string) => {
+    const action = async () => {
+      const res = await cancelBooking(id);
+      if (res.success) {
+        syncWithStore();
+      }
+      return res;
+    };
+    return await verifyNetworkAndExecute(action);
   };
 
-  const handleCancelBookingByAdmin = (id: string) => {
-    const res = cancelBookingByAdmin(id);
-    if (res.success) {
-      syncWithStore();
-    }
-    return res;
+  const handleCancelBookingByAdmin = async (id: string) => {
+    const action = async () => {
+      const res = await cancelBookingByAdmin(id);
+      if (res.success) {
+        syncWithStore();
+      }
+      return res;
+    };
+    return await verifyNetworkAndExecute(action);
   };
 
-  const handleAddDemand = (category: 'pakistan_bond' | 'thailand_lottery', number: string, firstAmt: number, secondAmt: number) => {
+  const handleAddDemand = async (category: 'pakistan_bond' | 'thailand_lottery', number: string, firstAmt: number, secondAmt: number) => {
     if (!currentUser) return { success: false, error: 'براہ کرم پہلے لاگ ان کریں۔' };
 
     // Secure deadline check
@@ -197,27 +274,37 @@ export default function App() {
       }
     }
 
-    const res = addDemand(currentUser.email, category, number, firstAmt, secondAmt);
-    if (res.success) {
-      syncWithStore();
-    }
-    return res;
+    const action = async () => {
+      const res = await addDemand(currentUser.email, category, number, firstAmt, secondAmt);
+      if (res.success) {
+        syncWithStore();
+      }
+      return res;
+    };
+
+    return await verifyNetworkAndExecute(action);
   };
 
-  const handleApproveDemand = (id: string) => {
-    const res = approveDemand(id);
-    if (res.success) {
-      syncWithStore();
-    }
-    return res;
+  const handleApproveDemand = async (id: string) => {
+    const action = async () => {
+      const res = await approveDemand(id);
+      if (res.success) {
+        syncWithStore();
+      }
+      return res;
+    };
+    return await verifyNetworkAndExecute(action);
   };
 
-  const handleRejectDemand = (id: string) => {
-    const res = rejectDemand(id);
-    if (res.success) {
-      syncWithStore();
-    }
-    return res;
+  const handleRejectDemand = async (id: string) => {
+    const action = async () => {
+      const res = await rejectDemand(id);
+      if (res.success) {
+        syncWithStore();
+      }
+      return res;
+    };
+    return await verifyNetworkAndExecute(action);
   };
 
   const toggleAdminView = () => {
@@ -441,6 +528,51 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Beautiful Offline / No Internet modal overlay */}
+      {isOfflineModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white max-w-md w-full rounded-3xl border-2 border-red-500 shadow-2xl p-6 sm:p-8 text-right font-sans flex flex-col items-center">
+            <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mb-4 border border-red-200">
+              <span className="text-red-500 text-3xl font-bold font-mono animate-pulse">!</span>
+            </div>
+            
+            <h3 className="text-xl font-bold text-slate-900 mb-2 font-sans">انٹرنیٹ کنکشن موجود نہیں ہے</h3>
+            <h4 className="text-sm font-semibold text-red-600 mb-4 font-sans uppercase tracking-wider">No Internet Connection</h4>
+            
+            <p className="text-slate-600 text-sm leading-relaxed mb-6 text-center">
+              "No internet connection. Please turn on Wi-Fi or Mobile Data and try again."
+              <br />
+              <span className="text-xs text-slate-500 block mt-2">
+                انٹرنیٹ کنکشن غائب ہے۔ براہ کرم اپنا وائی فائی یا موبائل ڈیٹا آن کریں اور دوبارہ کوشش کریں۔
+              </span>
+            </p>
+
+            {retryStatus === 'failed' && (
+              <div className="w-full bg-red-50 border border-red-200 rounded-2xl p-3 text-red-700 text-xs text-center mb-4">
+                انٹرنیٹ ابھی بھی منقطع ہے۔ براہ کرم دوبارہ چیک کریں۔
+                <br />
+                Connection still offline. Please check and retry.
+              </div>
+            )}
+
+            <button
+              onClick={handleRetryConnection}
+              disabled={retryStatus === 'checking'}
+              className="w-full bg-slate-900 hover:bg-slate-800 disabled:bg-slate-700 text-amber-400 font-bold py-3.5 px-4 rounded-2xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
+            >
+              {retryStatus === 'checking' ? (
+                <>
+                  <span className="animate-spin rounded-full h-4 w-4 border-2 border-amber-400 border-t-transparent"></span>
+                  <span>رابطہ چیک کیا جا رہا ہے...</span>
+                </>
+              ) : (
+                <span>دوبارہ کوشش کریں (Retry)</span>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

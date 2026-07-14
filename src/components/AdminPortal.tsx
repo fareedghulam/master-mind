@@ -9,12 +9,12 @@ interface AdminPortalProps {
   demands: Demand[];
   deadlines: DrawDeadline[];
   bookings: Booking[];
-  onCancelBookingByAdmin: (bookingId: string) => { success: boolean; error?: string };
-  onRecharge: (email: string, amount: number) => boolean;
-  onSetLimit: (category: 'pakistan_bond' | 'thailand_lottery', number: string, maxAmount: number) => void;
-  onDeleteLimit: (id: string) => void;
-  onApproveDemand: (id: string) => { success: boolean; error?: string };
-  onRejectDemand: (id: string) => { success: boolean; error?: string };
+  onCancelBookingByAdmin: (bookingId: string) => Promise<{ success: boolean; error?: string }>;
+  onRecharge: (email: string, amount: number) => Promise<boolean>;
+  onSetLimit: (category: 'pakistan_bond' | 'thailand_lottery', number: string, maxAmount: number) => Promise<any>;
+  onDeleteLimit: (id: string) => Promise<any>;
+  onApproveDemand: (id: string) => Promise<{ success: boolean; error?: string }>;
+  onRejectDemand: (id: string) => Promise<{ success: boolean; error?: string }>;
   onSetDeadline: (category: 'pakistan_bond' | 'thailand_lottery', deadlineIso: string, titleUrdu: string, status: 'open' | 'closed') => void;
 }
 
@@ -98,10 +98,10 @@ export default function AdminPortal({
     setWhatsappSuccess(`کامیاب: واٹس ایپ سپورٹ نمبر تبدیل کر کے +${updated} کر دیا گیا ہے۔ تمام کسٹمرز کے رابطہ لنکس اپ ڈیٹ ہو چکے ہیں۔`);
   };
 
-  const handleApprove = (id: string, num: string) => {
+  const handleApprove = async (id: string, num: string) => {
     setDemandError('');
     setDemandSuccess('');
-    const res = onApproveDemand(id);
+    const res = await onApproveDemand(id);
     if (res.success) {
       setDemandSuccess(`کامیاب: نمبر ${num} کے لئے ڈیمانڈ کامیابی سے منظور کر کے بکنگ شیٹ میں شامل کر دی گئی ہے۔`);
     } else {
@@ -109,10 +109,10 @@ export default function AdminPortal({
     }
   };
 
-  const handleReject = (id: string, num: string) => {
+  const handleReject = async (id: string, num: string) => {
     setDemandError('');
     setDemandSuccess('');
-    const res = onRejectDemand(id);
+    const res = await onRejectDemand(id);
     if (res.success) {
       setDemandSuccess(`کامیاب: نمبر ${num} کے لئے بھیجی گئی ڈیمانڈ کو مسترد کر دیا گیا ہے۔`);
     } else {
@@ -120,10 +120,10 @@ export default function AdminPortal({
     }
   };
 
-  const handleCancelBookingClick = (bookingId: string, number: string) => {
+  const handleCancelBookingClick = async (bookingId: string, number: string) => {
     setCancelSuccess('');
     setCancelError('');
-    const res = onCancelBookingByAdmin(bookingId);
+    const res = await onCancelBookingByAdmin(bookingId);
     if (res.success) {
       setCancelSuccess(`کامیاب: نمبر (${number}) کی بکنگ کامیابی سے منسوخ کر دی گئی ہے اور رقم کسٹمر کے والٹ میں واپس جمع ہو گئی ہے!`);
     } else {
@@ -131,7 +131,7 @@ export default function AdminPortal({
     }
   };
 
-  const handleRechargeSubmit = (e: FormEvent) => {
+  const handleRechargeSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setRechargeError('');
     setRechargeSuccess('');
@@ -147,7 +147,7 @@ export default function AdminPortal({
       return;
     }
 
-    const ok = onRecharge(rechargeEmail, amountNum);
+    const ok = await onRecharge(rechargeEmail, amountNum);
     if (ok) {
       const updatedUser = users.find(u => u.email.toLowerCase() === rechargeEmail.toLowerCase());
       setRechargeSuccess(` Rs. ${amountNum.toLocaleString()} والٹ میں کامیابی سے جمع کر دیئے گئے۔ کسٹمر کا نیا والٹ بیلنس: Rs. ${updatedUser?.balance.toLocaleString() || ''}`);
@@ -157,7 +157,7 @@ export default function AdminPortal({
     }
   };
 
-  const handleLimitSubmit = (e: FormEvent) => {
+  const handleLimitSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLimitError('');
     setLimitSuccess('');
@@ -173,7 +173,7 @@ export default function AdminPortal({
       return;
     }
 
-    onSetLimit(limitCategory, limitNumber, limitNumVal);
+    await onSetLimit(limitCategory, limitNumber, limitNumVal);
     setLimitSuccess(`کامیاب: نمبر ${limitNumber} کی حد Rs. ${limitNumVal} مقرر کر دی گئی ہے۔`);
     setLimitNumber('');
     setLimitAmount('');

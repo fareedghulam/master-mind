@@ -5,8 +5,24 @@ import {
   doc, 
   setDoc, 
   deleteDoc, 
-  onSnapshot 
+  onSnapshot,
+  runTransaction
 } from 'firebase/firestore';
+
+export async function checkInternetConnection(): Promise<boolean> {
+  if (!navigator.onLine) {
+    return false;
+  }
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
+    const response = await fetch('/index.html', { method: 'HEAD', cache: 'no-store', signal: controller.signal });
+    clearTimeout(timeoutId);
+    return response.ok;
+  } catch (e) {
+    return false;
+  }
+}
 
 // Standard storage keys for local preferences
 const LOGGED_IN_EMAIL_KEY = 'mqe_logged_in_email';
@@ -312,7 +328,11 @@ export function setAdminConfiguredEmail(email: string) {
 }
 
 // Business actions
-export function registerUser(name: string, phone: string, city: string, email: string): User {
+export async function registerUser(name: string, phone: string, city: string, email: string): Promise<User | null> {
+  const online = await checkInternetConnection();
+  if (!online) {
+    return null;
+  }
   const normalizedEmail = email.toLowerCase();
   const existing = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
   if (existing) {
@@ -327,76 +347,110 @@ export function registerUser(name: string, phone: string, city: string, email: s
     balance: 100, // starting balance
     isAdmin
   };
-  setDoc(doc(db, 'users', normalizedEmail), newUser);
-  return newUser;
+  try {
+    await setDoc(doc(db, 'users', normalizedEmail), newUser);
+    return newUser;
+  } catch (e) {
+    console.error(e);
+    return null;
+  }
 }
 
-export function rechargeWallet(email: string, amount: number): boolean {
+export async function rechargeWallet(email: string, amount: number): Promise<boolean> {
+  const online = await checkInternetConnection();
+  if (!online) return false;
+
   const normalizedEmail = email.toLowerCase();
-  const user = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
-  if (!user) return false;
-  
-  setDoc(doc(db, 'users', normalizedEmail), {
-    ...user,
-    balance: user.balance + amount
-  });
-  return true;
+  const userRef = doc(db, 'users', normalizedEmail);
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const userDoc = await transaction.get(userRef);
+      if (!userDoc.exists()) {
+        throw new Error('کسٹمر ریکارڈ نہیں ملا');
+      }
+      const user = userDoc.data() as User;
+      transaction.update(userRef, {
+        balance: user.balance + amount
+      });
+    });
+    return true;
+  } catch (e) {
+    console.error(e);
+    return false;
+  }
 }
 
-export function addBooking(
+export async function addBooking(
   email: string,
   category: 'pakistan_bond' | 'thailand_lottery',
   number: string,
   firstAmount: number,
   secondAmount: number
-): { success: boolean; error?: string } {
+): Promise<{ success: boolean; error?: string }> {
+  const online = await checkInternetConnection();
+  if (!online) {
+    return { success: false, error: 'NO_INTERNET' };
+  }
+
   const normalizedEmail = email.toLowerCase();
-  const user = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
-  if (!user) return { success: false, error: 'کسٹمر ریکارڈ نہیں ملا' };
-
-  const totalCost = firstAmount + secondAmount;
-  if (user.balance < totalCost) {
-    return { success: false, error: 'آپ کے والٹ میں کافی رقم موجود نہیں ہے' };
-  }
-
-  const limit = cachedLimits.find(l => l.category === category && l.number === number);
-  if (limit) {
-    if (firstAmount > limit.maxAmount) {
-      return { 
-        success: false, 
-        error: `اس نمبر (${number}) کے لئے فرسٹ کی انفرادی حد Rs. ${limit.maxAmount} ہے` 
-      };
-    }
-    if (secondAmount > limit.maxAmount) {
-      return { 
-        success: false, 
-        error: `اس نمبر (${number}) کے لئے سیکنڈ کی انفرادی حد Rs. ${limit.maxAmount} ہے` 
-      };
-    }
-  }
-
-  // Deduct balance
-  setDoc(doc(db, 'users', normalizedEmail), {
-    ...user,
-    balance: user.balance - totalCost
-  });
-
+  const userRef = doc(db, 'users', normalizedEmail);
   const bookingId = 'booking-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
-  const newBooking: Booking = {
-    id: bookingId,
-    userEmail: normalizedEmail,
-    category,
-    number,
-    firstAmount,
-    secondAmount,
-    timestamp: new Date().toISOString()
-  };
-  setDoc(doc(db, 'bookings', bookingId), newBooking);
+  const bookingRef = doc(db, 'bookings', bookingId);
+  const totalCost = firstAmount + secondAmount;
 
-  return { success: true };
+  try {
+    const result = await runTransaction(db, async (transaction) => {
+      const userDoc = await transaction.get(userRef);
+      if (!userDoc.exists()) {
+        throw new Error('کسٹمر ریکارڈ نہیں ملا');
+      }
+      const userData = userDoc.data() as User;
+
+      if (userData.balance < totalCost) {
+        throw new Error('آپ کے والٹ میں کافی رقم موجود نہیں ہے');
+      }
+
+      const limit = cachedLimits.find(l => l.category === category && l.number === number);
+      if (limit) {
+        if (firstAmount > limit.maxAmount) {
+          throw new Error(`اس نمبر (${number}) کے لئے فرسٹ کی انفرادی حد Rs. ${limit.maxAmount} ہے`);
+        }
+        if (secondAmount > limit.maxAmount) {
+          throw new Error(`اس نمبر (${number}) کے لئے سیکنڈ کی انفرادی حد Rs. ${limit.maxAmount} ہے`);
+        }
+      }
+
+      const newBooking: Booking = {
+        id: bookingId,
+        userEmail: normalizedEmail,
+        category,
+        number,
+        firstAmount,
+        secondAmount,
+        timestamp: new Date().toISOString()
+      };
+
+      transaction.set(bookingRef, newBooking);
+      transaction.update(userRef, {
+        balance: userData.balance - totalCost
+      });
+
+      return { success: true };
+    });
+    return result;
+  } catch (err: any) {
+    console.error("Booking transaction failed:", err);
+    return { success: false, error: err.message || 'بکنگ کے دوران غلطی پیش آئی۔' };
+  }
 }
 
-export function cancelBooking(bookingId: string): { success: boolean; error?: string } {
+export async function cancelBooking(bookingId: string): Promise<{ success: boolean; error?: string }> {
+  const online = await checkInternetConnection();
+  if (!online) {
+    return { success: false, error: 'NO_INTERNET' };
+  }
+
   const booking = cachedBookings.find(b => b.id === bookingId);
   if (!booking) return { success: false, error: 'بکنگ کا ریکارڈ نہیں ملا' };
 
@@ -407,37 +461,67 @@ export function cancelBooking(bookingId: string): { success: boolean; error?: st
     return { success: false, error: 'کینسل کرنے کا وقت (2 منٹ) ختم ہو چکا ہے' };
   }
 
-  const user = cachedUsers.find(u => u.email.toLowerCase() === booking.userEmail.toLowerCase());
-  if (user) {
-    setDoc(doc(db, 'users', booking.userEmail.toLowerCase()), {
-      ...user,
-      balance: user.balance + (booking.firstAmount + booking.secondAmount)
+  const userEmail = booking.userEmail.toLowerCase();
+  const userRef = doc(db, 'users', userEmail);
+  const bookingRef = doc(db, 'bookings', bookingId);
+  const refundAmount = booking.firstAmount + booking.secondAmount;
+
+  try {
+    const result = await runTransaction(db, async (transaction) => {
+      const userDoc = await transaction.get(userRef);
+      if (userDoc.exists()) {
+        const userData = userDoc.data() as User;
+        transaction.update(userRef, {
+          balance: userData.balance + refundAmount
+        });
+      }
+      transaction.delete(bookingRef);
+      return { success: true };
     });
+    return result;
+  } catch (err: any) {
+    console.error("Cancel booking transaction failed:", err);
+    return { success: false, error: err.message || 'منسوخی کے دوران غلطی پیش آئی۔' };
   }
-
-  deleteDoc(doc(db, 'bookings', bookingId));
-
-  return { success: true };
 }
 
-export function cancelBookingByAdmin(bookingId: string): { success: boolean; error?: string } {
+export async function cancelBookingByAdmin(bookingId: string): Promise<{ success: boolean; error?: string }> {
+  const online = await checkInternetConnection();
+  if (!online) {
+    return { success: false, error: 'NO_INTERNET' };
+  }
+
   const booking = cachedBookings.find(b => b.id === bookingId);
   if (!booking) return { success: false, error: 'بکنگ کا ریکارڈ نہیں ملا' };
 
-  const user = cachedUsers.find(u => u.email.toLowerCase() === booking.userEmail.toLowerCase());
-  if (user) {
-    setDoc(doc(db, 'users', booking.userEmail.toLowerCase()), {
-      ...user,
-      balance: user.balance + (booking.firstAmount + booking.secondAmount)
+  const userEmail = booking.userEmail.toLowerCase();
+  const userRef = doc(db, 'users', userEmail);
+  const bookingRef = doc(db, 'bookings', bookingId);
+  const refundAmount = booking.firstAmount + booking.secondAmount;
+
+  try {
+    const result = await runTransaction(db, async (transaction) => {
+      const userDoc = await transaction.get(userRef);
+      if (userDoc.exists()) {
+        const userData = userDoc.data() as User;
+        transaction.update(userRef, {
+          balance: userData.balance + refundAmount
+        });
+      }
+      transaction.delete(bookingRef);
+      return { success: true };
     });
+    return result;
+  } catch (err: any) {
+    console.error("Admin cancel booking transaction failed:", err);
+    return { success: false, error: err.message || 'منسوخی کے دوران غلطی پیش آئی۔' };
   }
-
-  deleteDoc(doc(db, 'bookings', bookingId));
-
-  return { success: true };
 }
 
-export function setOrUpdateLimit(category: 'pakistan_bond' | 'thailand_lottery', number: string, maxAmount: number) {
+export async function setOrUpdateLimit(category: 'pakistan_bond' | 'thailand_lottery', number: string, maxAmount: number): Promise<void> {
+  const online = await checkInternetConnection();
+  if (!online) return;
+
   const existing = cachedLimits.find(l => l.category === category && l.number === number);
   const limitId = existing ? existing.id : 'limit-' + Date.now();
   
@@ -447,30 +531,39 @@ export function setOrUpdateLimit(category: 'pakistan_bond' | 'thailand_lottery',
     number,
     maxAmount
   };
-  setDoc(doc(db, 'limits', limitId), limit);
+  await setDoc(doc(db, 'limits', limitId), limit);
 }
 
-export function deleteLimit(id: string) {
-  deleteDoc(doc(db, 'limits', id));
+export async function deleteLimit(id: string): Promise<void> {
+  const online = await checkInternetConnection();
+  if (!online) return;
+  await deleteDoc(doc(db, 'limits', id));
 }
 
 export function getDemands(): Demand[] {
   return cachedDemands;
 }
 
-export function saveDemands(demands: Demand[]) {
-  demands.forEach(d => {
-    setDoc(doc(db, 'demands', d.id), d);
-  });
+export async function saveDemands(demands: Demand[]): Promise<void> {
+  const online = await checkInternetConnection();
+  if (!online) return;
+  for (const d of demands) {
+    await setDoc(doc(db, 'demands', d.id), d);
+  }
 }
 
-export function addDemand(
+export async function addDemand(
   email: string,
   category: 'pakistan_bond' | 'thailand_lottery',
   number: string,
   firstAmount: number,
   secondAmount: number
-): { success: boolean; error?: string } {
+): Promise<{ success: boolean; error?: string }> {
+  const online = await checkInternetConnection();
+  if (!online) {
+    return { success: false, error: 'NO_INTERNET' };
+  }
+
   const normalizedEmail = email.toLowerCase();
   const user = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
   if (!user) return { success: false, error: 'کسٹمر ریکارڈ نہیں ملا' };
@@ -492,12 +585,20 @@ export function addDemand(
     status: 'pending'
   };
 
-  setDoc(doc(db, 'demands', demandId), newDemand);
-
-  return { success: true };
+  try {
+    await setDoc(doc(db, 'demands', demandId), newDemand);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'ڈیمانڈ بھیجنے کے دوران غلطی پیش آئی۔' };
+  }
 }
 
-export function approveDemand(demandId: string): { success: boolean; error?: string } {
+export async function approveDemand(demandId: string): Promise<{ success: boolean; error?: string }> {
+  const online = await checkInternetConnection();
+  if (!online) {
+    return { success: false, error: 'NO_INTERNET' };
+  }
+
   const demand = cachedDemands.find(d => d.id === demandId);
   if (!demand) return { success: false, error: 'ڈیمانڈ ریکارڈ نہیں ملا' };
 
@@ -505,41 +606,58 @@ export function approveDemand(demandId: string): { success: boolean; error?: str
     return { success: false, error: 'یہ ڈیمانڈ پہلے ہی عمل میں لائی جا چکی ہے' };
   }
 
-  const user = cachedUsers.find(u => u.email.toLowerCase() === demand.userEmail.toLowerCase());
-  if (!user) return { success: false, error: 'کسٹمر ریکارڈ نہیں ملا' };
-
-  const totalCost = demand.firstAmount + demand.secondAmount;
-  if (user.balance < totalCost) {
-    return { success: false, error: 'کسٹمر کے والٹ میں کافی رقم موجود نہیں ہے' };
-  }
-
-  // Deduct balance
-  setDoc(doc(db, 'users', demand.userEmail.toLowerCase()), {
-    ...user,
-    balance: user.balance - totalCost
-  });
-
+  const userEmail = demand.userEmail.toLowerCase();
+  const userRef = doc(db, 'users', userEmail);
   const bookingId = 'booking-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
-  const newBooking: Booking = {
-    id: bookingId,
-    userEmail: demand.userEmail,
-    category: demand.category,
-    number: demand.number,
-    firstAmount: demand.firstAmount,
-    secondAmount: demand.secondAmount,
-    timestamp: new Date().toISOString()
-  };
-  setDoc(doc(db, 'bookings', bookingId), newBooking);
+  const bookingRef = doc(db, 'bookings', bookingId);
+  const demandRef = doc(db, 'demands', demandId);
+  const totalCost = demand.firstAmount + demand.secondAmount;
 
-  setDoc(doc(db, 'demands', demandId), {
-    ...demand,
-    status: 'approved'
-  });
+  try {
+    const result = await runTransaction(db, async (transaction) => {
+      const userDoc = await transaction.get(userRef);
+      if (!userDoc.exists()) {
+        throw new Error('کسٹمر ریکارڈ نہیں ملا');
+      }
+      const userData = userDoc.data() as User;
 
-  return { success: true };
+      if (userData.balance < totalCost) {
+        throw new Error('کسٹمر کے والٹ میں کافی رقم موجود نہیں ہے');
+      }
+
+      const newBooking: Booking = {
+        id: bookingId,
+        userEmail: demand.userEmail,
+        category: demand.category,
+        number: demand.number,
+        firstAmount: demand.firstAmount,
+        secondAmount: demand.secondAmount,
+        timestamp: new Date().toISOString()
+      };
+
+      transaction.set(bookingRef, newBooking);
+      transaction.update(userRef, {
+        balance: userData.balance - totalCost
+      });
+      transaction.update(demandRef, {
+        status: 'approved'
+      });
+
+      return { success: true };
+    });
+    return result;
+  } catch (err: any) {
+    console.error("Approve demand transaction failed:", err);
+    return { success: false, error: err.message || 'ڈیمانڈ منظور کرنے کے دوران غلطی پیش آئی۔' };
+  }
 }
 
-export function rejectDemand(demandId: string): { success: boolean; error?: string } {
+export async function rejectDemand(demandId: string): Promise<{ success: boolean; error?: string }> {
+  const online = await checkInternetConnection();
+  if (!online) {
+    return { success: false, error: 'NO_INTERNET' };
+  }
+
   const demand = cachedDemands.find(d => d.id === demandId);
   if (!demand) return { success: false, error: 'ڈیمانڈ ریکارڈ نہیں ملا' };
 
@@ -547,35 +665,43 @@ export function rejectDemand(demandId: string): { success: boolean; error?: stri
     return { success: false, error: 'یہ ڈیمانڈ پہلے ہی عمل میں لائی جا چکی ہے' };
   }
 
-  setDoc(doc(db, 'demands', demandId), {
-    ...demand,
-    status: 'rejected'
-  });
-
-  return { success: true };
+  try {
+    await setDoc(doc(db, 'demands', demandId), {
+      ...demand,
+      status: 'rejected'
+    });
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'ڈیمانڈ مسترد کرنے کے دوران غلطی پیش آئی۔' };
+  }
 }
 
 export function getDrawDeadlines(): DrawDeadline[] {
   return cachedDeadlines;
 }
 
-export function saveDrawDeadlines(deadlines: DrawDeadline[]) {
-  deadlines.forEach(d => {
-    setDoc(doc(db, 'deadlines', d.category), d);
-  });
+export async function saveDrawDeadlines(deadlines: DrawDeadline[]): Promise<void> {
+  const online = await checkInternetConnection();
+  if (!online) return;
+  for (const d of deadlines) {
+    await setDoc(doc(db, 'deadlines', d.category), d);
+  }
 }
 
-export function setDrawDeadline(
+export async function setDrawDeadline(
   category: 'pakistan_bond' | 'thailand_lottery',
   deadlineIso: string,
   titleUrdu: string,
   status: 'open' | 'closed'
-) {
+): Promise<void> {
+  const online = await checkInternetConnection();
+  if (!online) return;
+
   const deadline: DrawDeadline = {
     category,
     deadlineIso,
     titleUrdu,
     status
   };
-  setDoc(doc(db, 'deadlines', category), deadline);
+  await setDoc(doc(db, 'deadlines', category), deadline);
 }
