@@ -10,6 +10,7 @@
         "phone": { "type": "string", "description": "Phone number" },
         "city": { "type": "string", "description": "City of residence" },
         "balance": { "type": "number", "description": "Current wallet balance" },
+        "password": { "type": "string", "description": "Account password" },
         "isAdmin": { "type": "boolean", "description": "Admin privileges indicator" }
       },
       "required": ["email", "name", "phone", "city", "balance"]

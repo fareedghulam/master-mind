@@ -15,7 +15,8 @@ service cloud.firestore {
         && data.phone is string && data.phone.size() < 30
         && data.city is string && data.city.size() < 100
         && data.balance is number
-        && (!data.keys().hasAny(['isAdmin']) || data.isAdmin is bool);
+        && (!data.keys().hasAny(['isAdmin']) || data.isAdmin is bool)
+        && (!data.keys().hasAny(['password']) || (data.password is string && data.password.size() < 100));
     }
 
     // Helper to validate Booking

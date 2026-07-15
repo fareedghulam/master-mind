@@ -4,6 +4,7 @@ export interface User {
   phone: string;
   city: string;
   balance: number;
+  password?: string;
   isAdmin?: boolean;
 }
 

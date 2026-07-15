@@ -302,7 +302,14 @@ export function saveNumberLimits(limits: NumberLimit[]) {
 export function getLoggedInUser(): User | null {
   const email = localStorage.getItem(LOGGED_IN_EMAIL_KEY);
   if (!email) return null;
-  return cachedUsers.find((u) => u.email.toLowerCase() === email.toLowerCase()) || null;
+  const normalizedEmail = email.toLowerCase().trim();
+  const user = cachedUsers.find((u) => u.email.toLowerCase() === normalizedEmail) || null;
+  
+  // If the user is an admin, do not auto-login from local storage to prevent bypass!
+  if (user && (user.isAdmin || normalizedEmail === 'mastermaindqureshi110@gmail.com' || normalizedEmail === 'mastermaind.qureshi110@gmail.com')) {
+    return null;
+  }
+  return user;
 }
 
 export function setLoggedInUser(email: string) {
@@ -348,7 +355,7 @@ export function setAdminConfiguredEmail(email: string) {
 }
 
 // Business actions
-export async function registerUser(name: string, phone: string, city: string, email: string): Promise<User | null> {
+export async function registerUser(name: string, phone: string, city: string, email: string, password: string): Promise<User | null> {
   const online = await checkInternetConnection();
   if (!online) {
     return null;
@@ -365,7 +372,8 @@ export async function registerUser(name: string, phone: string, city: string, em
     phone,
     city,
     balance: 100, // starting balance
-    isAdmin
+    isAdmin,
+    password
   };
   try {
     await setDoc(doc(db, 'users', normalizedEmail), newUser);

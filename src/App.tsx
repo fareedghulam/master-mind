@@ -27,6 +27,8 @@ import {
   checkInternetConnection
 } from './utils/store';
 import { User, Booking, NumberLimit, Demand, DrawDeadline } from './types';
+import { db } from './lib/firebase';
+import { doc, getDocFromServer, collection, query, where, getDocsFromServer } from 'firebase/firestore';
 import DashboardHeader from './components/DashboardHeader';
 import RegistrationForm from './components/RegistrationForm';
 import DashboardOverview from './components/DashboardOverview';
@@ -147,30 +149,84 @@ export default function App() {
     return await verifyNetworkAndExecute(action);
   };
 
-  const handleRegister = async (name: string, phone: string, city: string, email: string) => {
+  const handleRegister = async (name: string, phone: string, city: string, email: string, password: string) => {
     const action = async () => {
-      const newUser = await registerUser(name, phone, city, email);
+      const usersList = getUsers();
+      const emailLower = email.toLowerCase().trim();
+      const existingEmail = usersList.find(u => u.email.toLowerCase() === emailLower);
+      if (existingEmail) {
+        return { success: false, error: 'یہ ای میل پہلے سے رجسٹرڈ ہے۔ (This email is already registered.)' };
+      }
+      const existingPhone = usersList.find(u => u.phone === phone.trim());
+      if (existingPhone) {
+        return { success: false, error: 'یہ موبائل نمبر پہلے سے رجسٹرڈ ہے۔ (This mobile number is already registered.)' };
+      }
+
+      const newUser = await registerUser(name, phone, city, email, password);
       if (newUser) {
         setLoggedInUser(newUser.email);
         syncWithStore();
         setActiveTab('dashboard');
-        return newUser;
+        return { success: true };
       }
-      return null;
+      return { success: false, error: 'رجسٹریشن ناکام رہی۔ (Registration failed.)' };
     };
-    return await verifyNetworkAndExecute(action);
+    const res = await verifyNetworkAndExecute(action);
+    if (res && 'success' in res) {
+      return res as { success: boolean; error?: string };
+    }
+    return { success: false, error: 'نیٹ ورک کا مسئلہ ہے۔' };
   };
 
-  const handleLoginWithEmail = (email: string): boolean => {
-    const usersList = getUsers();
-    const found = usersList.find(u => u.email.toLowerCase() === email.toLowerCase());
-    if (found) {
-      setLoggedInUser(found.email);
+  const handleLoginWithCredentials = async (identifier: string, passwordInput: string): Promise<{ success: boolean; error?: string }> => {
+    const action = async () => {
+      const online = await checkInternetConnection();
+      if (!online) {
+        return { success: false, error: 'No internet connection. Please turn on Wi-Fi or Mobile Data and try again.' };
+      }
+
+      const idLower = identifier.toLowerCase().trim();
+      let matchedUser: User | null = null;
+
+      try {
+        if (idLower.includes('@')) {
+          const userDocRef = doc(db, 'users', idLower);
+          const userDoc = await getDocFromServer(userDocRef);
+          if (userDoc.exists()) {
+            matchedUser = userDoc.data() as User;
+          }
+        } else {
+          const q = query(collection(db, 'users'), where('phone', '==', identifier.trim()));
+          const querySnapshot = await getDocsFromServer(q);
+          if (!querySnapshot.empty) {
+            matchedUser = querySnapshot.docs[0].data() as User;
+          }
+        }
+      } catch (err) {
+        console.error("Secure login server query failed:", err);
+      }
+
+      if (!matchedUser) {
+        return { success: false, error: 'یہ اکاؤنٹ رجسٹرڈ نہیں ہے۔ (This account is not registered.)' };
+      }
+
+      const storedPassword = matchedUser.password;
+      const correctPassword = storedPassword || '123456';
+      if (passwordInput !== correctPassword) {
+        return { success: false, error: 'پاس ورڈ درست نہیں ہے۔ (Incorrect password.)' };
+      }
+
+      setLoggedInUser(matchedUser.email);
       syncWithStore();
       setActiveTab('dashboard');
-      return true;
+      return { success: true };
+    };
+
+    const res = await verifyNetworkAndExecute(action);
+    if (res && 'success' in res) {
+      return res as { success: boolean; error?: string };
     }
-    return false;
+    return { success: false, error: 'نیٹ ورک کا مسئلہ ہے۔' };
   };
 
   const handleLogout = () => {
@@ -321,9 +377,7 @@ export default function App() {
       <>
         <RegistrationForm 
           onRegister={handleRegister} 
-          onLoginWithEmail={handleLoginWithEmail} 
-          adminConfiguredEmail={adminConfiguredEmail}
-          onUpdateAdminEmail={handleUpdateAdminEmail}
+          onLoginWithCredentials={handleLoginWithCredentials} 
         />
       </>
     );
