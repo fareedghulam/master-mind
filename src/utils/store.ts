@@ -13,15 +13,35 @@ export async function checkInternetConnection(): Promise<boolean> {
   if (!navigator.onLine) {
     return false;
   }
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3500);
-    const response = await fetch('/index.html', { method: 'HEAD', cache: 'no-store', signal: controller.signal });
-    clearTimeout(timeoutId);
-    return response.ok;
-  } catch (e) {
-    return false;
+
+  const endpoints = [
+    'https://www.google.com',
+    'https://1.1.1.1',
+    'https://api.github.com'
+  ];
+
+  for (const url of endpoints) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      
+      // 'no-cors' mode ensures the request completes successfully without throwing CORS errors,
+      // while true network/offline failures will still correctly throw an exception.
+      await fetch(url, { 
+        method: 'HEAD', 
+        mode: 'no-cors', 
+        cache: 'no-store', 
+        signal: controller.signal 
+      });
+      
+      clearTimeout(timeoutId);
+      return true;
+    } catch (e) {
+      // Fallback to the next endpoint if one fails
+    }
   }
+
+  return false;
 }
 
 // Standard storage keys for local preferences
