@@ -1,7 +1,7 @@
 import React, { useState, useEffect, FormEvent } from 'react';
 import { User, NumberLimit, Demand, DrawDeadline, Booking } from '../types';
 import { Shield, Plus, Trash, Check, X, UserCheck, AlertTriangle, ShieldCheck, HelpCircle, Sparkles, Clock, MessageCircle, Search } from 'lucide-react';
-import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, updateUserPassword, getAdminConfiguredEmail } from '../utils/store';
+import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, updateUserPassword, getAdminConfiguredEmail, updateCustomerPassword } from '../utils/store';
 
 interface AdminPortalProps {
   users: User[];
@@ -83,6 +83,71 @@ export default function AdminPortal({
   const [adminPasswordInput, setAdminPasswordInput] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
   const [passwordError, setPasswordError] = useState('');
+
+  // User Password Management states
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [foundUser, setFoundUser] = useState<User | null>(null);
+  const [userNewPassword, setUserNewPassword] = useState('');
+  const [userConfirmPassword, setUserConfirmPassword] = useState('');
+  const [userPasswordSuccess, setUserPasswordSuccess] = useState('');
+  const [userPasswordError, setUserPasswordError] = useState('');
+
+  const handleSearchUser = () => {
+    setUserPasswordError('');
+    setUserPasswordSuccess('');
+    setFoundUser(null);
+
+    const queryClean = userSearchQuery.trim().toLowerCase();
+    if (!queryClean) {
+      setUserPasswordError('براہ کرم تلاش کرنے کے لئے ای میل یا موبائل نمبر درج کریں۔ (Please enter an email or mobile number to search.)');
+      return;
+    }
+
+    const matched = users.find(u => 
+      u.email.toLowerCase().trim() === queryClean || 
+      u.phone.trim() === queryClean
+    );
+
+    if (matched) {
+      setFoundUser(matched);
+      setUserNewPassword('');
+      setUserConfirmPassword('');
+    } else {
+      setUserPasswordError('صارف نہیں ملا۔ براہ کرم درج کردہ معلومات درست کریں۔ (User not found.)');
+    }
+  };
+
+  const handleUserPasswordReset = async (e: FormEvent) => {
+    e.preventDefault();
+    setUserPasswordError('');
+    setUserPasswordSuccess('');
+
+    if (!foundUser) {
+      setUserPasswordError('براہ کرم پہلے صارف تلاش کریں۔');
+      return;
+    }
+
+    if (userNewPassword.length < 8) {
+      setUserPasswordError('پاس ورڈ کم از کم 8 حروف کا ہونا چاہیے۔ (Password must be at least 8 characters.)');
+      return;
+    }
+
+    if (userNewPassword !== userConfirmPassword) {
+      setUserPasswordError('پاس ورڈز آپس میں میل نہیں کھاتے (Password confirmation does not match.)');
+      return;
+    }
+
+    const success = await updateCustomerPassword(foundUser.email, userNewPassword);
+    if (success) {
+      setUserPasswordSuccess(`پاس ورڈ کامیابی سے تبدیل کر دیا گیا ہے۔ (Password updated successfully for ${foundUser.name})`);
+      setUserNewPassword('');
+      setUserConfirmPassword('');
+      setFoundUser(null);
+      setUserSearchQuery('');
+    } else {
+      setUserPasswordError('پاس ورڈ تبدیل کرنے میں خرابی پیش آئی۔ براہ کرم انٹرنیٹ چیک کریں۔ (Firestore update failed.)');
+    }
+  };
 
   useEffect(() => {
     setWhatsappVal(getSupportWhatsAppNumber());
@@ -963,6 +1028,124 @@ export default function AdminPortal({
               <span>پاس ورڈ تبدیل کریں (Update Password)</span>
             </button>
           </form>
+        </div>
+
+        {/* Module 6: User Password Management (صارفین کے پاس ورڈ کا انتظام) */}
+        <div id="module-user-password-management" className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md md:col-span-2 space-y-4">
+          <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 flex items-center justify-end gap-2">
+            <span>صارفین کے پاس ورڈ کا انتظام (User Password Management)</span>
+            <UserCheck className="w-5 h-5 text-indigo-600" />
+          </h4>
+
+          {userPasswordError && (
+            <div id="admin-user-password-reset-error" className="p-3 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs text-right font-sans">
+              ⚠️ {userPasswordError}
+            </div>
+          )}
+          {userPasswordSuccess && (
+            <div id="admin-user-password-reset-success" className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs text-right font-sans">
+              ✓ {userPasswordSuccess}
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <p className="text-xs text-slate-500 leading-relaxed text-right">
+              یہاں سے آپ کسی بھی کسٹمر کا پاس ورڈ براہِ راست تبدیل کر سکتے ہیں۔ پہلے کسٹمر کا ای میل یا موبائل نمبر درج کر کے تلاش کریں۔
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                id="admin-search-user-btn"
+                type="button"
+                onClick={handleSearchUser}
+                className="bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold py-3 px-6 rounded-2xl text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md sm:w-48 whitespace-nowrap"
+              >
+                <span>تلاش کریں (Search)</span>
+                <Search className="w-4 h-4" />
+              </button>
+
+              <div className="flex-1 relative">
+                <input
+                  id="admin-search-user-query"
+                  type="text"
+                  placeholder="ای میل یا موبائل نمبر درج کریں"
+                  value={userSearchQuery}
+                  onChange={(e) => {
+                    setUserSearchQuery(e.target.value);
+                    setFoundUser(null);
+                  }}
+                  className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
+                />
+              </div>
+            </div>
+
+            {foundUser && (
+              <div id="searched-user-details" className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-4 text-right">
+                <h5 className="text-xs font-bold text-slate-700 border-b border-slate-200 pb-2">صارف کی تفصیلات (User Details)</h5>
+                
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-sans text-slate-700">
+                  <div className="bg-white p-3 rounded-xl border border-slate-100">
+                    <span className="block text-slate-400 mb-1 font-semibold text-[10px]">کردار (Role)</span>
+                    <span className="font-bold text-slate-800">{foundUser.role || (foundUser.isAdmin ? 'admin' : 'customer')}</span>
+                  </div>
+                  <div className="bg-white p-3 rounded-xl border border-slate-100">
+                    <span className="block text-slate-400 mb-1 font-semibold text-[10px]">موبائل نمبر (Mobile)</span>
+                    <span className="font-mono font-bold text-slate-800">{foundUser.phone || 'N/A'}</span>
+                  </div>
+                  <div className="bg-white p-3 rounded-xl border border-slate-100">
+                    <span className="block text-slate-400 mb-1 font-semibold text-[10px]">ای میل (Email)</span>
+                    <span className="font-mono font-bold text-slate-800 break-all">{foundUser.email}</span>
+                  </div>
+                  <div className="bg-white p-3 rounded-xl border border-slate-100">
+                    <span className="block text-slate-400 mb-1 font-semibold text-[10px]">نام (Name)</span>
+                    <span className="font-bold text-slate-800">{foundUser.name}</span>
+                  </div>
+                </div>
+
+                <form id="admin-user-password-reset-form" onSubmit={handleUserPasswordReset} className="space-y-4 pt-2 border-t border-slate-200">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
+                        پاس ورڈ کی تصدیق کریں (Confirm New Password) *
+                      </label>
+                      <input
+                        id="admin-confirm-reset-user-password"
+                        type="password"
+                        placeholder="دوبارہ پاس ورڈ درج کریں"
+                        value={userConfirmPassword}
+                        onChange={(e) => setUserConfirmPassword(e.target.value)}
+                        className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
+                        نیا پاس ورڈ - کم از کم 8 ہندسے (New Password - Min 8 chars) *
+                      </label>
+                      <input
+                        id="admin-reset-user-password"
+                        type="password"
+                        placeholder="نیا پاس ورڈ درج کریں"
+                        value={userNewPassword}
+                        onChange={(e) => setUserNewPassword(e.target.value)}
+                        className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    id="admin-save-user-password-btn"
+                    type="submit"
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-2xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                  >
+                    <span>پاس ورڈ محفوظ کریں (Save Password)</span>
+                  </button>
+                </form>
+              </div>
+            )}
+          </div>
         </div>
 
       </div>

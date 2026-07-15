@@ -27,8 +27,7 @@ import {
   checkInternetConnection
 } from './utils/store';
 import { User, Booking, NumberLimit, Demand, DrawDeadline } from './types';
-import { db, auth } from './lib/firebase';
-import { sendPasswordResetEmail, createUserWithEmailAndPassword } from 'firebase/auth';
+import { db } from './lib/firebase';
 import { doc, getDocFromServer, collection, query, where, getDocsFromServer } from 'firebase/firestore';
 import DashboardHeader from './components/DashboardHeader';
 import RegistrationForm from './components/RegistrationForm';
@@ -248,69 +247,6 @@ export default function App() {
     return { success: false, error: 'نیٹ ورک کا مسئلہ ہے۔' };
   };
 
-  const handleForgotPasswordEmail = async (email: string): Promise<{ success: boolean; error?: string }> => {
-    const action = async () => {
-      const online = await checkInternetConnection();
-      if (!online) {
-        return { success: false, error: 'No internet connection. Please turn on Wi-Fi or Mobile Data and try again.' };
-      }
-
-      const emailLower = email.toLowerCase().trim();
-      let matchedUser: User | null = null;
-
-      try {
-        let docId = emailLower;
-        if (docId === 'mastermaindqureshi110@gmail.com') {
-          docId = 'mastermaind.qureshi110@gmail.com';
-        }
-        
-        let userDocRef = doc(db, 'users', docId);
-        let userDoc = await getDocFromServer(userDocRef);
-        
-        if (!userDoc.exists() && docId !== emailLower) {
-          userDocRef = doc(db, 'users', emailLower);
-          userDoc = await getDocFromServer(userDocRef);
-        }
-        
-        if (userDoc.exists()) {
-          matchedUser = userDoc.data() as User;
-        }
-      } catch (err) {
-        console.error("Firestore user verification failed:", err);
-      }
-
-      if (!matchedUser) {
-        return { success: false, error: 'یہ ای میل رجسٹرڈ نہیں ہے۔ (This email is not registered.)' };
-      }
-
-      try {
-        await sendPasswordResetEmail(auth, emailLower);
-      } catch (error: any) {
-        if (error?.code === 'auth/user-not-found') {
-          try {
-            const password = matchedUser.password || '123456';
-            await createUserWithEmailAndPassword(auth, emailLower, password);
-            await sendPasswordResetEmail(auth, emailLower);
-          } catch (createErr: any) {
-            console.error("Firebase Auth create & reset failed:", createErr);
-            return { success: false, error: `پاس ورڈ ری سیٹ ای میل بھیجنے میں خرابی پیش آئی: ${createErr.message}` };
-          }
-        } else {
-          console.error("Firebase Auth reset failed:", error);
-          return { success: false, error: `پاس ورڈ ری سیٹ ای میل بھیجنے میں خرابی پیش آئی: ${error.message}` };
-        }
-      }
-
-      return { success: true };
-    };
-
-    const res = await verifyNetworkAndExecute(action);
-    if (res && 'success' in res) {
-      return res as { success: boolean; error?: string };
-    }
-    return { success: false, error: 'نیٹ ورک کا مسئلہ ہے۔' };
-  };
-
   const handleLogout = () => {
     logout();
     syncWithStore();
@@ -460,7 +396,6 @@ export default function App() {
         <RegistrationForm 
           onRegister={handleRegister} 
           onLoginWithCredentials={handleLoginWithCredentials} 
-          onForgotPassword={handleForgotPasswordEmail}
         />
       </>
     );

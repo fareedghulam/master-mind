@@ -418,6 +418,22 @@ export async function updateUserPassword(email: string, passwordInput: string): 
   }
 }
 
+export async function updateCustomerPassword(email: string, passwordInput: string): Promise<boolean> {
+  const online = await checkInternetConnection();
+  if (!online) return false;
+
+  const normalizedEmail = email.toLowerCase().trim();
+  try {
+    await setDoc(doc(db, 'users', normalizedEmail), {
+      password: passwordInput
+    }, { merge: true });
+    return true;
+  } catch (e) {
+    console.error("Error updating customer password:", e);
+    return false;
+  }
+}
+
 // Business actions
 export async function registerUser(name: string, phone: string, city: string, email: string, password: string): Promise<User | null> {
   const online = await checkInternetConnection();
