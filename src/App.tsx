@@ -111,16 +111,8 @@ export default function App() {
     setDemands(getDemands());
     setDeadlines(getDrawDeadlines());
     
-    const configuredAdmin = getAdminConfiguredEmail();
     if (loggedIn) {
-      const emailLower = loggedIn.email.toLowerCase().trim();
-      const configLower = configuredAdmin.toLowerCase().trim();
-      if (
-        loggedIn.isAdmin || 
-        emailLower === configLower || 
-        emailLower === 'mastermaind.qureshi110@gmail.com' || 
-        emailLower === 'mastermaindqureshi110@gmail.com'
-      ) {
+      if (loggedIn.role === 'admin') {
         setAdminMode(true);
       } else {
         setAdminMode(false);
@@ -190,8 +182,19 @@ export default function App() {
 
       try {
         if (idLower.includes('@')) {
-          const userDocRef = doc(db, 'users', idLower);
-          const userDoc = await getDocFromServer(userDocRef);
+          let docId = idLower;
+          if (docId === 'mastermaindqureshi110@gmail.com') {
+            docId = 'mastermaind.qureshi110@gmail.com';
+          }
+          
+          let userDocRef = doc(db, 'users', docId);
+          let userDoc = await getDocFromServer(userDocRef);
+          
+          if (!userDoc.exists() && docId !== idLower) {
+            userDocRef = doc(db, 'users', idLower);
+            userDoc = await getDocFromServer(userDocRef);
+          }
+          
           if (userDoc.exists()) {
             matchedUser = userDoc.data() as User;
           }
@@ -208,6 +211,17 @@ export default function App() {
 
       if (!matchedUser) {
         return { success: false, error: 'یہ اکاؤنٹ رجسٹرڈ نہیں ہے۔ (This account is not registered.)' };
+      }
+
+      const emailLower = matchedUser.email.toLowerCase().trim();
+      if (
+        matchedUser.isAdmin || 
+        matchedUser.role === 'admin' ||
+        emailLower === 'mastermaind.qureshi110@gmail.com' || 
+        emailLower === 'mastermaindqureshi110@gmail.com'
+      ) {
+        matchedUser.role = 'admin';
+        matchedUser.isAdmin = true;
       }
 
       const storedPassword = matchedUser.password;

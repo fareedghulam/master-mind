@@ -69,7 +69,8 @@ const DEFAULT_USERS: User[] = [
     phone: '03453090146',
     city: 'لاہور',
     balance: 500000,
-    isAdmin: true
+    isAdmin: true,
+    role: 'admin'
   },
   {
     email: 'fareed.ghulam@gmail.com',
@@ -181,7 +182,28 @@ export function initializeStore() {
         await setDoc(doc(db, 'users', user.email.toLowerCase()), user);
       });
     } else {
-      cachedUsers = snapshot.docs.map(doc => doc.data() as User);
+      cachedUsers = snapshot.docs.map(doc => {
+        const data = doc.data() as User;
+        const emailLower = data.email.toLowerCase().trim();
+        const configLower = cachedAdminEmail.toLowerCase().trim();
+        if (
+          data.isAdmin || 
+          data.role === 'admin' ||
+          emailLower === configLower || 
+          emailLower === 'mastermaind.qureshi110@gmail.com' || 
+          emailLower === 'mastermaindqureshi110@gmail.com'
+        ) {
+          return {
+            ...data,
+            isAdmin: true,
+            role: 'admin'
+          };
+        }
+        return {
+          ...data,
+          role: data.role || 'customer'
+        };
+      });
       notifyListeners();
     }
   });
@@ -340,7 +362,8 @@ export function setAdminConfiguredEmail(email: string) {
   if (user) {
     setDoc(doc(db, 'users', normalizedEmail), {
       ...user,
-      isAdmin: true
+      isAdmin: true,
+      role: 'admin'
     });
   } else {
     setDoc(doc(db, 'users', normalizedEmail), {
@@ -349,8 +372,35 @@ export function setAdminConfiguredEmail(email: string) {
       phone: '03453090146',
       city: 'لاہور',
       balance: 500000,
-      isAdmin: true
+      isAdmin: true,
+      role: 'admin'
     });
+  }
+}
+
+export async function updateUserPassword(email: string, passwordInput: string): Promise<boolean> {
+  const online = await checkInternetConnection();
+  if (!online) return false;
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const emailsToUpdate = [normalizedEmail];
+  if (normalizedEmail === 'mastermaindqureshi110@gmail.com' || normalizedEmail === 'mastermaind.qureshi110@gmail.com') {
+    if (!emailsToUpdate.includes('mastermaindqureshi110@gmail.com')) emailsToUpdate.push('mastermaindqureshi110@gmail.com');
+    if (!emailsToUpdate.includes('mastermaind.qureshi110@gmail.com')) emailsToUpdate.push('mastermaind.qureshi110@gmail.com');
+  }
+
+  try {
+    for (const em of emailsToUpdate) {
+      await setDoc(doc(db, 'users', em), {
+        password: passwordInput,
+        role: 'admin',
+        isAdmin: true
+      }, { merge: true });
+    }
+    return true;
+  } catch (e) {
+    console.error("Error updating user password:", e);
+    return false;
   }
 }
 
@@ -373,6 +423,7 @@ export async function registerUser(name: string, phone: string, city: string, em
     city,
     balance: 100, // starting balance
     isAdmin,
+    role: isAdmin ? 'admin' : 'customer',
     password
   };
   try {

@@ -6,6 +6,7 @@ export interface User {
   balance: number;
   password?: string;
   isAdmin?: boolean;
+  role?: string;
 }
 
 export interface Booking {

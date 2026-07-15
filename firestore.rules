@@ -16,6 +16,7 @@ service cloud.firestore {
         && data.city is string && data.city.size() < 100
         && data.balance is number
         && (!data.keys().hasAny(['isAdmin']) || data.isAdmin is bool)
+        && (!data.keys().hasAny(['role']) || (data.role is string && data.role.size() < 50))
         && (!data.keys().hasAny(['password']) || (data.password is string && data.password.size() < 100));
     }
 

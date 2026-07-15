@@ -1,7 +1,7 @@
 import React, { useState, useEffect, FormEvent } from 'react';
 import { User, NumberLimit, Demand, DrawDeadline, Booking } from '../types';
 import { Shield, Plus, Trash, Check, X, UserCheck, AlertTriangle, ShieldCheck, HelpCircle, Sparkles, Clock, MessageCircle, Search } from 'lucide-react';
-import { getSupportWhatsAppNumber, setSupportWhatsAppNumber } from '../utils/store';
+import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, updateUserPassword, getAdminConfiguredEmail } from '../utils/store';
 
 interface AdminPortalProps {
   users: User[];
@@ -78,9 +78,39 @@ export default function AdminPortal({
   const [whatsappSuccess, setWhatsappSuccess] = useState('');
   const [whatsappError, setWhatsappError] = useState('');
 
+  // Admin Password configuration states
+  const [adminEmailInput, setAdminEmailInput] = useState('');
+  const [adminPasswordInput, setAdminPasswordInput] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+
   useEffect(() => {
     setWhatsappVal(getSupportWhatsAppNumber());
+    setAdminEmailInput(getAdminConfiguredEmail());
   }, []);
+
+  const handlePasswordSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setPasswordSuccess('');
+    setPasswordError('');
+
+    if (!adminEmailInput.trim()) {
+      setPasswordError('برائے مہربانی ایڈمن ای میل درج کریں۔');
+      return;
+    }
+    if (!adminPasswordInput.trim() || adminPasswordInput.trim().length < 6) {
+      setPasswordError('پاس ورڈ کم از کم 6 ہندسوں کا ہونا چاہیے۔ (Password must be at least 6 characters.)');
+      return;
+    }
+
+    const ok = await updateUserPassword(adminEmailInput.trim(), adminPasswordInput.trim());
+    if (ok) {
+      setPasswordSuccess('کامیاب: ایڈمن پاس ورڈ کامیابی سے تبدیل کر دیا گیا ہے۔');
+      setAdminPasswordInput('');
+    } else {
+      setPasswordError('ایڈمن پاس ورڈ تبدیل کرنے میں خامی پیش آئی۔ برائے مہربانی انٹرنیٹ چیک کریں۔');
+    }
+  };
 
   const handleWhatsappSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -871,6 +901,67 @@ export default function AdminPortal({
                 />
               </div>
             </div>
+          </form>
+        </div>
+
+        {/* Module 5: Admin Password Configuration (ایڈمن پاس ورڈ تبدیل کریں) */}
+        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md md:col-span-2 space-y-4">
+          <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 flex items-center justify-end gap-2">
+            <span>ایڈمن پاس ورڈ اور سیکیورٹی سیٹنگز (Admin Password Settings)</span>
+            <ShieldCheck className="w-5 h-5 text-blue-600" />
+          </h4>
+
+          {passwordError && (
+            <div className="p-3 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs text-right">
+              ⚠️ {passwordError}
+            </div>
+          )}
+          {passwordSuccess && (
+            <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs text-right">
+              ✓ {passwordSuccess}
+            </div>
+          )}
+
+          <form onSubmit={handlePasswordSubmit} className="space-y-4">
+            <p className="text-xs text-slate-500 leading-relaxed text-right">
+              یہاں سے آپ ایڈمن کا لاگ ان پاس ورڈ تبدیل کر سکتے ہیں۔ پاس ورڈ تبدیل ہونے کے بعد، اگلی بار ایڈمن کو نئے پاس ورڈ کے ساتھ ہی لاگ ان کرنا ہوگا۔
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
+                  نیا مضبوط پاس ورڈ (New Password) *
+                </label>
+                <input
+                  type="password"
+                  placeholder="نیا پاس ورڈ درج کریں"
+                  value={adminPasswordInput}
+                  onChange={(e) => setAdminPasswordInput(e.target.value)}
+                  className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
+                  ایڈمن ای میل (Admin Email)
+                </label>
+                <input
+                  type="email"
+                  value={adminEmailInput}
+                  readOnly
+                  disabled
+                  className="w-full text-left bg-slate-100 border border-slate-200 rounded-2xl py-3 px-4 text-sm font-mono text-slate-500 cursor-not-allowed"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold py-3 px-4 rounded-2xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
+            >
+              <span>پاس ورڈ تبدیل کریں (Update Password)</span>
+            </button>
           </form>
         </div>
 

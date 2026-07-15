@@ -42,7 +42,7 @@ export default function DashboardHeader({
           </div>
 
           {/* Quick Admin Override Button - only visible if logged in user is actually an admin */}
-          {user.isAdmin && (
+          {user.role === 'admin' && (
             <button
               id="toggle-admin-btn"
               onClick={onToggleAdminView}
@@ -90,7 +90,7 @@ export default function DashboardHeader({
 
           {/* Desktop Admin switch & Logout */}
           <div className="flex items-center gap-2">
-            {user.isAdmin && (
+            {user.role === 'admin' && (
               <button
                 id="desktop-admin-toggle"
                 onClick={onToggleAdminView}
