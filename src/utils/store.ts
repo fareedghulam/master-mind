@@ -327,8 +327,15 @@ export function getLoggedInUser(): User | null {
   const normalizedEmail = email.toLowerCase().trim();
   const user = cachedUsers.find((u) => u.email.toLowerCase() === normalizedEmail) || null;
   
-  // If the user is an admin, do not auto-login from local storage to prevent bypass!
-  if (user && (user.isAdmin || normalizedEmail === 'mastermaindqureshi110@gmail.com' || normalizedEmail === 'mastermaind.qureshi110@gmail.com')) {
+  // If the user is an admin, do not auto-login from local storage unless verified via session!
+  if (user && (user.isAdmin || user.role === 'admin' || normalizedEmail === 'mastermaindqureshi110@gmail.com' || normalizedEmail === 'mastermaind.qureshi110@gmail.com')) {
+    if (sessionStorage.getItem('admin_verified') === 'true') {
+      return {
+        ...user,
+        isAdmin: true,
+        role: 'admin'
+      };
+    }
     return null;
   }
   return user;
@@ -337,12 +344,19 @@ export function getLoggedInUser(): User | null {
 export function setLoggedInUser(email: string) {
   localStorage.setItem(LOGGED_IN_EMAIL_KEY, email);
   localStorage.removeItem('mqe_user_logged_out_manually');
+  
+  const normalizedEmail = email.toLowerCase().trim();
+  const user = cachedUsers.find((u) => u.email.toLowerCase() === normalizedEmail);
+  if (user && (user.isAdmin || user.role === 'admin' || normalizedEmail === 'mastermaindqureshi110@gmail.com' || normalizedEmail === 'mastermaind.qureshi110@gmail.com')) {
+    sessionStorage.setItem('admin_verified', 'true');
+  }
   notifyListeners();
 }
 
 export function logout() {
   localStorage.removeItem(LOGGED_IN_EMAIL_KEY);
   localStorage.setItem('mqe_user_logged_out_manually', 'true');
+  sessionStorage.removeItem('admin_verified');
   notifyListeners();
 }
 

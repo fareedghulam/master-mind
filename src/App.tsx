@@ -230,6 +230,10 @@ export default function App() {
         return { success: false, error: 'پاس ورڈ درست نہیں ہے۔ (Incorrect password.)' };
       }
 
+      if (matchedUser.role === 'admin') {
+        sessionStorage.setItem('admin_verified', 'true');
+      }
+
       setLoggedInUser(matchedUser.email);
       syncWithStore();
       setActiveTab('dashboard');
