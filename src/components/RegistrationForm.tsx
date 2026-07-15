@@ -5,10 +5,13 @@ import { getSupportWhatsAppNumber, checkInternetConnection } from '../utils/stor
 interface RegistrationFormProps {
   onRegister: (name: string, phone: string, city: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   onLoginWithCredentials: (identifier: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  onForgotPassword?: (email: string) => Promise<{ success: boolean; error?: string }>;
 }
 
-export default function RegistrationForm({ onRegister, onLoginWithCredentials }: RegistrationFormProps) {
+export default function RegistrationForm({ onRegister, onLoginWithCredentials, onForgotPassword }: RegistrationFormProps) {
   const [isLoginTab, setIsLoginTab] = useState(true); // Default to login tab
+  const [isForgotPasswordMode, setIsForgotPasswordMode] = useState(false);
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
   const whatsappNumber = getSupportWhatsAppNumber();
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent("السلام علیکم! مجھے ماسٹر مائینڈ قریشی انٹرپرائز پرائز بانڈ سسٹم کے بارے میں مدد چاہئے۔")}`;
   
@@ -26,6 +29,48 @@ export default function RegistrationForm({ onRegister, onLoginWithCredentials }:
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  const handleForgotPasswordSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+
+    if (!forgotPasswordEmail) {
+      setError('براہ کرم اپنا رجسٹرڈ ایمیل درج کریں۔ (Please enter your registered email.)');
+      return;
+    }
+
+    if (!forgotPasswordEmail.includes('@')) {
+      setError('براہ کرم درست ایمیل ایڈریس ٹائپ کریں۔ (Please enter a valid email.)');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const online = await checkInternetConnection();
+      if (!online) {
+        setError('No internet connection. Please turn on Wi-Fi or Mobile Data and try again.');
+        setIsLoading(false);
+        return;
+      }
+
+      if (onForgotPassword) {
+        const res = await onForgotPassword(forgotPasswordEmail);
+        if (res && res.success) {
+          setSuccess('Password reset email sent. Please check your inbox.');
+          setForgotPasswordEmail('');
+        } else {
+          setError(res?.error || 'پاس ورڈ ری سیٹ ای میل بھیجنے میں خرابی پیش آئی۔');
+        }
+      } else {
+        setError('پاس ورڈ ری سیٹ کی خصوصیت فی الحال دستیاب نہیں ہے۔ (Password reset feature is currently unavailable.)');
+      }
+    } catch (err: any) {
+      setError(err.message || 'پاس ورڈ ری سیٹ کے دوران کوئی خرابی پیش آئی۔');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleRegisterSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -117,32 +162,38 @@ export default function RegistrationForm({ onRegister, onLoginWithCredentials }:
         </div>
 
         {/* Tab selection */}
-        <div className="flex border-b border-slate-300 font-bold">
-          <button
-            id="tab-login"
-            type="button"
-            onClick={() => { setIsLoginTab(true); setError(''); setSuccess(''); }}
-            className={`w-1/2 py-4 text-center text-sm transition-colors cursor-pointer rounded-none ${
-              isLoginTab 
-                ? 'text-blue-600 border-b-4 border-blue-600 bg-slate-50 font-extrabold' 
-                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
-            }`}
-          >
-            لاگ ان (Login)
-          </button>
-          <button
-            id="tab-register"
-            type="button"
-            onClick={() => { setIsLoginTab(false); setError(''); setSuccess(''); }}
-            className={`w-1/2 py-4 text-center text-sm transition-colors cursor-pointer rounded-none ${
-              !isLoginTab 
-                ? 'text-blue-600 border-b-4 border-blue-600 bg-slate-50 font-extrabold' 
-                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
-            }`}
-          >
-            کسٹمر رجسٹریشن (Register)
-          </button>
-        </div>
+        {isForgotPasswordMode ? (
+          <div className="bg-slate-50 border-b-4 border-blue-600 py-4 px-6 text-center text-sm font-extrabold text-blue-600 font-sans">
+            پاس ورڈ بھول گئے؟ (Forgot Password)
+          </div>
+        ) : (
+          <div className="flex border-b border-slate-300 font-bold">
+            <button
+              id="tab-login"
+              type="button"
+              onClick={() => { setIsLoginTab(true); setError(''); setSuccess(''); }}
+              className={`w-1/2 py-4 text-center text-sm transition-colors cursor-pointer rounded-none ${
+                isLoginTab 
+                  ? 'text-blue-600 border-b-4 border-blue-600 bg-slate-50 font-extrabold' 
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
+              }`}
+            >
+              لاگ ان (Login)
+            </button>
+            <button
+              id="tab-register"
+              type="button"
+              onClick={() => { setIsLoginTab(false); setError(''); setSuccess(''); }}
+              className={`w-1/2 py-4 text-center text-sm transition-colors cursor-pointer rounded-none ${
+                !isLoginTab 
+                  ? 'text-blue-600 border-b-4 border-blue-600 bg-slate-50 font-extrabold' 
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
+              }`}
+            >
+              کسٹمر رجسٹریشن (Register)
+            </button>
+          </div>
+        )}
 
         <div className="p-6 sm:p-8">
           {error && (
@@ -156,7 +207,53 @@ export default function RegistrationForm({ onRegister, onLoginWithCredentials }:
             </div>
           )}
 
-          {!isLoginTab ? (
+          {isForgotPasswordMode ? (
+            /* Forgot Password Form */
+            <form onSubmit={handleForgotPasswordSubmit} className="space-y-4 text-right">
+              <div>
+                <label className="block text-slate-700 text-xs font-bold mb-1.5 font-sans" htmlFor="forgot-email">
+                  اپنا رجسٹرڈ ایمیل درج کریں (Registered Email) *
+                </label>
+                <div className="relative">
+                  <input
+                    id="forgot-email"
+                    type="email"
+                    required
+                    disabled={isLoading}
+                    placeholder="name@example.com"
+                    value={forgotPasswordEmail}
+                    onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                    className="w-full text-left bg-slate-50 border border-slate-300 rounded-none py-3 px-4 pl-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-mono"
+                  />
+                  <div className="absolute top-1/2 right-4 -translate-y-1/2 text-slate-400">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                </div>
+              </div>
+
+              <button
+                id="submit-forgot-password"
+                type="submit"
+                disabled={isLoading}
+                className="w-full mt-4 bg-slate-950 hover:bg-slate-900 text-blue-400 hover:text-blue-300 py-3.5 px-4 rounded-none font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer border-b-4 border-blue-600 disabled:opacity-50"
+              >
+                <span>{isLoading ? 'ای میل بھیجی جا رہی ہے...' : 'ری سیٹ ای میل بھیجیں'}</span>
+                <Mail className="w-4 h-4 text-blue-400" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsForgotPasswordMode(false);
+                  setError('');
+                  setSuccess('');
+                }}
+                className="w-full text-center text-xs text-blue-600 hover:text-blue-800 font-bold hover:underline py-2 cursor-pointer"
+              >
+                لاگ ان پیج پر واپس جائیں (Back to Login)
+              </button>
+            </form>
+          ) : !isLoginTab ? (
             /* Registration Form */
             <form onSubmit={handleRegisterSubmit} className="space-y-4 text-right">
               <div>
@@ -319,6 +416,20 @@ export default function RegistrationForm({ onRegister, onLoginWithCredentials }:
                     <Lock className="w-4 h-4" />
                   </div>
                 </div>
+              </div>
+
+              <div className="text-right">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsForgotPasswordMode(true);
+                    setError('');
+                    setSuccess('');
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-bold hover:underline cursor-pointer"
+                >
+                  پاس ورڈ بھول گئے؟ (Forgot Password?)
+                </button>
               </div>
 
               <button

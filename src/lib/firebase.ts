@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAdxB4gKa6AB9mrOuE6PeQGzbUVUtXKBKs",
@@ -12,6 +13,7 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, "ai-studio-mastermindquresh-ff3983e2-8998-40ba-9564-0a2763001795");
+export const auth = getAuth(app);
 
 async function testConnection() {
   try {
