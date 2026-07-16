@@ -79,6 +79,47 @@
         "whatsappNumber": { "type": "string", "description": "Support WhatsApp phone number" }
       },
       "required": ["adminEmail", "whatsappNumber"]
+    },
+    "PakistanBondResult": {
+      "title": "Pakistan Bond Result",
+      "description": "Historical or newly added results for Pakistan Prize Bonds",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "category": { "type": "string", "enum": ["pakistan_bond"] },
+        "bondValue": { "type": "string" },
+        "drawNoOnly": { "type": "string" },
+        "drawNo": { "type": "string" },
+        "date": { "type": "string" },
+        "city": { "type": "string" },
+        "firstPrize": { "type": "string" },
+        "secondPrizes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["id", "category", "bondValue", "drawNoOnly", "drawNo", "date", "city", "firstPrize", "secondPrizes"]
+    },
+    "ThaiLotteryResult": {
+      "title": "Thai Lottery Result",
+      "description": "Historical or newly added results for Thai Lottery draws",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "category": { "type": "string", "enum": ["thailand_lottery"] },
+        "drawNo": { "type": "string" },
+        "date": { "type": "string" },
+        "city": { "type": "string" },
+        "firstPrize": { "type": "string" },
+        "secondPrizes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "last2Digits": { "type": "string" },
+        "front3Digits": { "type": "string" },
+        "back3Digits": { "type": "string" }
+      },
+      "required": ["id", "category", "drawNo", "date", "city", "firstPrize", "secondPrizes", "last2Digits", "front3Digits", "back3Digits"]
     }
   },
   "firestore": {
@@ -105,6 +146,14 @@
     "settings/general": {
       "schema": "AppSetting",
       "description": "System config settings"
+    },
+    "pakistanBondResults/{resultId}": {
+      "schema": "PakistanBondResult",
+      "description": "Pakistan Prize Bond results"
+    },
+    "thaiLotteryResults/{resultId}": {
+      "schema": "ThaiLotteryResult",
+      "description": "Thai Lottery results"
     }
   }
 }

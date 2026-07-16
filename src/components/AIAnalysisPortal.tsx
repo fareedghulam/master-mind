@@ -5,19 +5,19 @@ import {
   RotateCcw, Send, CheckCircle2, UserCheck, ShieldAlert,
   Download
 } from 'lucide-react';
-import { User, Booking } from '../types';
-import { thaiHistoricalDraws } from '../utils/thaiLotteryData';
-import { pakistanBondDraws } from '../utils/pakistanBondData';
+import { User, Booking, PakistanBondResult, ThaiLotteryResult } from '../types';
 import { generateDrawHistoryPDF } from '../utils/pdfGenerator';
 
 interface AIAnalysisPortalProps {
   user: User;
   bookings: Booking[];
+  pakistanBondResults: PakistanBondResult[];
+  thaiLotteryResults: ThaiLotteryResult[];
   onAddBooking: (number: string, firstAmt: number, secondAmt: number) => Promise<{ success: boolean; error?: string }>;
   onAddDemand: (number: string, firstAmt: number, secondAmt: number) => Promise<{ success: boolean; error?: string }>;
 }
 
-export default function AIAnalysisPortal({ user, bookings, onAddBooking, onAddDemand }: AIAnalysisPortalProps) {
+export default function AIAnalysisPortal({ user, bookings, pakistanBondResults, thaiLotteryResults, onAddBooking, onAddDemand }: AIAnalysisPortalProps) {
   const [activeSubTab, setActiveSubTab] = useState<'generator' | 'charts' | 'cityAnalysis' | 'history' | 'chatbot'>('generator');
 
   // Generator states
@@ -49,8 +49,8 @@ export default function AIAnalysisPortal({ user, bookings, onAddBooking, onAddDe
 
   // Sample static historical draw results database
   const historicalDraws = [
-    ...pakistanBondDraws,
-    ...thaiHistoricalDraws
+    ...pakistanBondResults,
+    ...thaiLotteryResults
   ];
 
   // Analysis Dashboard States

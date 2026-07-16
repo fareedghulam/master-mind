@@ -1,5 +1,5 @@
-import { User, Booking, NumberLimit, Demand, DrawDeadline } from '../types';
-import { db } from '../lib/firebase';
+import { User, Booking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult, AllResultType } from '../types';
+import { db, auth } from '../lib/firebase';
 import { 
   collection, 
   doc, 
@@ -8,6 +8,43 @@ import {
   onSnapshot,
   runTransaction
 } from 'firebase/firestore';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import { pakistanBondDraws } from './pakistanBondData';
+import { thaiHistoricalDraws } from './thaiLotteryData';
+
+export async function syncFirebaseAuth(email: string, passwordInput?: string) {
+  if (!email) return;
+  const normalizedEmail = email.toLowerCase().trim();
+  
+  let password = passwordInput;
+  if (!password) {
+    const user = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
+    if (user) {
+      password = user.password;
+    }
+  }
+  
+  // Default fallback password if none registered yet
+  if (!password) {
+    password = '123456';
+  }
+
+  try {
+    await signInWithEmailAndPassword(auth, normalizedEmail, password);
+    console.log(`[FirebaseAuth] Silent sign-in success for ${normalizedEmail}`);
+  } catch (err: any) {
+    if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+      try {
+        await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+        console.log(`[FirebaseAuth] Registered and signed in for ${normalizedEmail}`);
+      } catch (createErr) {
+        console.error("[FirebaseAuth] Failed to auto-register in Auth:", createErr);
+      }
+    } else {
+      console.error("[FirebaseAuth] Silent auth sign-in error:", err);
+    }
+  }
+}
 
 export async function checkInternetConnection(): Promise<boolean> {
   if (!navigator.onLine) {
@@ -204,6 +241,10 @@ export function initializeStore() {
           role: data.role || 'customer'
         };
       });
+      const loggedInEmail = localStorage.getItem(LOGGED_IN_EMAIL_KEY);
+      if (loggedInEmail) {
+        syncFirebaseAuth(loggedInEmail);
+      }
       notifyListeners();
     }
   });
@@ -273,6 +314,73 @@ export function initializeStore() {
     }
   });
 
+  // 7. Listen to pakistanBondResults (with auto-migration)
+  onSnapshot(collection(db, 'pakistanBondResults'), (snapshot) => {
+    if (snapshot.empty) {
+      console.log("Migrating Pakistan Bond results to Firestore...");
+      // Filter out empty mock data if they have already been cleared, to prevent overwriting
+      if (pakistanBondDraws && pakistanBondDraws.length > 0) {
+        pakistanBondDraws.forEach(async (draw) => {
+          let bondValue = "Rs. 200";
+          let drawNoOnly = "";
+          
+          const bondMatch = draw.drawNo.match(/\(بانڈ\s+([^)]+)\)/);
+          if (bondMatch) bondValue = bondMatch[1];
+          
+          const drawNoMatch = draw.drawNo.match(/ڈرا نمبر\s+(\d+)/);
+          if (drawNoMatch) drawNoOnly = drawNoMatch[1];
+          
+          const resultDoc: PakistanBondResult = {
+            id: draw.id,
+            category: 'pakistan_bond',
+            bondValue,
+            drawNoOnly,
+            drawNo: draw.drawNo,
+            date: draw.date,
+            city: draw.city,
+            firstPrize: draw.firstPrize,
+            secondPrizes: draw.secondPrizes
+          };
+          await setDoc(doc(db, 'pakistanBondResults', draw.id), resultDoc);
+        });
+      }
+    } else {
+      cachedPakistanBondResults = snapshot.docs.map(doc => doc.data() as PakistanBondResult);
+      notifyListeners();
+    }
+  });
+
+  // 8. Listen to thaiLotteryResults (with auto-migration)
+  onSnapshot(collection(db, 'thaiLotteryResults'), (snapshot) => {
+    if (snapshot.empty) {
+      console.log("Migrating Thai Lottery results to Firestore...");
+      if (thaiHistoricalDraws && thaiHistoricalDraws.length > 0) {
+        thaiHistoricalDraws.forEach(async (draw) => {
+          const firstPrize = draw.firstPrize || '';
+          const last2Digits = firstPrize.length >= 2 ? firstPrize.substring(firstPrize.length - 2) : '';
+          const front3Digits = firstPrize.length >= 3 ? firstPrize.substring(0, 3) : '';
+          const back3Digits = firstPrize.length >= 3 ? firstPrize.substring(firstPrize.length - 3) : '';
+          
+          const resultDoc: ThaiLotteryResult = {
+            id: draw.id,
+            category: 'thailand_lottery',
+            drawNo: draw.drawNo,
+            date: draw.date,
+            city: draw.city || 'بنکاک',
+            firstPrize: draw.firstPrize,
+            secondPrizes: draw.secondPrizes || [],
+            last2Digits,
+            front3Digits,
+            back3Digits
+          };
+          await setDoc(doc(db, 'thaiLotteryResults', draw.id), resultDoc);
+        });
+      }
+    } else {
+      cachedThaiLotteryResults = snapshot.docs.map(doc => doc.data() as ThaiLotteryResult);
+      notifyListeners();
+    }
+  });
 
 }
 
@@ -350,6 +458,7 @@ export function setLoggedInUser(email: string) {
   if (user && (user.isAdmin || user.role === 'admin' || normalizedEmail === 'mastermaindqureshi110@gmail.com' || normalizedEmail === 'mastermaind.qureshi110@gmail.com')) {
     sessionStorage.setItem('admin_verified', 'true');
   }
+  syncFirebaseAuth(normalizedEmail);
   notifyListeners();
 }
 
@@ -357,6 +466,7 @@ export function logout() {
   localStorage.removeItem(LOGGED_IN_EMAIL_KEY);
   localStorage.setItem('mqe_user_logged_out_manually', 'true');
   sessionStorage.removeItem('admin_verified');
+  signOut(auth).catch((e) => console.error("Firebase signOut failed:", e));
   notifyListeners();
 }
 
@@ -458,6 +568,7 @@ export async function registerUser(name: string, phone: string, city: string, em
   };
   try {
     await setDoc(doc(db, 'users', normalizedEmail), newUser);
+    syncFirebaseAuth(normalizedEmail, password);
     return newUser;
   } catch (e) {
     console.error(e);
@@ -813,4 +924,83 @@ export async function setDrawDeadline(
     status
   };
   await setDoc(doc(db, 'deadlines', category), deadline);
+}
+
+// Memory caches for results
+let cachedPakistanBondResults: PakistanBondResult[] = [];
+let cachedThaiLotteryResults: ThaiLotteryResult[] = [];
+
+export function getPakistanBondResults(): PakistanBondResult[] {
+  return cachedPakistanBondResults;
+}
+
+export function getThaiLotteryResults(): ThaiLotteryResult[] {
+  return cachedThaiLotteryResults;
+}
+
+export async function addResult(result: AllResultType): Promise<{ success: boolean; error?: string }> {
+  const online = await checkInternetConnection();
+  if (!online) return { success: false, error: 'NO_INTERNET' };
+
+  if (result.category === 'pakistan_bond') {
+    const pb = result as PakistanBondResult;
+    const exists = cachedPakistanBondResults.some(
+      r => r.bondValue.toLowerCase().replace(/[\s,.]+/g, '') === pb.bondValue.toLowerCase().replace(/[\s,.]+/g, '') &&
+           r.drawNoOnly.trim() === pb.drawNoOnly.trim()
+    );
+    if (exists) {
+      return {
+        success: false,
+        error: `اس بانڈ مالیت (${pb.bondValue}) اور ڈرا نمبر (${pb.drawNoOnly}) کا نتیجہ پہلے ہی موجود ہے۔`
+      };
+    }
+  } else {
+    const tl = result as ThaiLotteryResult;
+    const exists = cachedThaiLotteryResults.some(
+      r => r.drawNo.trim().toLowerCase() === tl.drawNo.trim().toLowerCase()
+    );
+    if (exists) {
+      return {
+        success: false,
+        error: `تھائی لاٹری ڈرا (${tl.drawNo}) کا نتیجہ پہلے ہی موجود ہے۔`
+      };
+    }
+  }
+
+  try {
+    const colName = result.category === 'pakistan_bond' ? 'pakistanBondResults' : 'thaiLotteryResults';
+    await setDoc(doc(db, colName, result.id), result);
+    return { success: true };
+  } catch (err: any) {
+    console.error("Add result failed:", err);
+    return { success: false, error: err.message || 'قرعہ اندازی کا نتیجہ محفوظ کرنے میں غلطی پیش آئی۔' };
+  }
+}
+
+export async function editResult(result: AllResultType): Promise<{ success: boolean; error?: string }> {
+  const online = await checkInternetConnection();
+  if (!online) return { success: false, error: 'NO_INTERNET' };
+
+  try {
+    const colName = result.category === 'pakistan_bond' ? 'pakistanBondResults' : 'thaiLotteryResults';
+    await setDoc(doc(db, colName, result.id), result, { merge: true });
+    return { success: true };
+  } catch (err: any) {
+    console.error("Edit result failed:", err);
+    return { success: false, error: err.message || 'قرعہ اندازی کا نتیجہ ترمیم کرنے میں غلطی پیش آئی۔' };
+  }
+}
+
+export async function deleteResult(id: string, category: 'pakistan_bond' | 'thailand_lottery'): Promise<{ success: boolean; error?: string }> {
+  const online = await checkInternetConnection();
+  if (!online) return { success: false, error: 'NO_INTERNET' };
+
+  try {
+    const colName = category === 'pakistan_bond' ? 'pakistanBondResults' : 'thaiLotteryResults';
+    await deleteDoc(doc(db, colName, id));
+    return { success: true };
+  } catch (err: any) {
+    console.error("Delete result failed:", err);
+    return { success: false, error: err.message || 'قرعہ اندازی کا نتیجہ حذف کرنے میں غلطی پیش آئی۔' };
+  }
 }

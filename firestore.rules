@@ -103,5 +103,29 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isValidId(configId) && isValidSettings(request.resource.data);
     }
+
+    match /pakistanBondResults/{resultId} {
+      allow read: if true;
+      allow write: if isValidId(resultId) && (
+        request.auth != null && (
+          request.auth.token.email == 'mastermaindqureshi110@gmail.com' ||
+          request.auth.token.email == 'mastermaind.qureshi110@gmail.com' ||
+          get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.isAdmin == true ||
+          get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'admin'
+        )
+      );
+    }
+
+    match /thaiLotteryResults/{resultId} {
+      allow read: if true;
+      allow write: if isValidId(resultId) && (
+        request.auth != null && (
+          request.auth.token.email == 'mastermaindqureshi110@gmail.com' ||
+          request.auth.token.email == 'mastermaind.qureshi110@gmail.com' ||
+          get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.isAdmin == true ||
+          get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'admin'
+        )
+      );
+    }
   }
 }

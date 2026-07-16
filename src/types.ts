@@ -44,4 +44,32 @@ export interface DrawDeadline {
   status: 'open' | 'closed';
 }
 
+export interface PakistanBondResult {
+  id: string;
+  category: 'pakistan_bond';
+  bondValue: string;
+  drawNoOnly: string;
+  drawNo: string;
+  date: string;
+  city: string;
+  firstPrize: string;
+  secondPrizes: string[];
+}
+
+export interface ThaiLotteryResult {
+  id: string;
+  category: 'thailand_lottery';
+  drawNo: string;
+  date: string;
+  city: string;
+  firstPrize: string;
+  secondPrizes: string[];
+  last2Digits: string;
+  front3Digits: string;
+  back3Digits: string;
+}
+
+export type AllResultType = PakistanBondResult | ThaiLotteryResult;
+
+
 

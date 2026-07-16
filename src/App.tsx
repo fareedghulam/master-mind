@@ -24,9 +24,14 @@ import {
   getAdminConfiguredEmail,
   setAdminConfiguredEmail,
   getSupportWhatsAppNumber,
-  checkInternetConnection
+  checkInternetConnection,
+  getPakistanBondResults,
+  getThaiLotteryResults,
+  addResult,
+  editResult,
+  deleteResult
 } from './utils/store';
-import { User, Booking, NumberLimit, Demand, DrawDeadline } from './types';
+import { User, Booking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult } from './types';
 import { db } from './lib/firebase';
 import { doc, getDocFromServer, collection, query, where, getDocsFromServer } from 'firebase/firestore';
 import DashboardHeader from './components/DashboardHeader';
@@ -49,6 +54,8 @@ export default function App() {
   const [deadlines, setDeadlines] = useState<DrawDeadline[]>([]);
   const [adminMode, setAdminMode] = useState<boolean>(false);
   const [adminConfiguredEmail, setAdminConfiguredEmailState] = useState<string>('mastermaindqureshi110@gmail.com');
+  const [pakistanBondResults, setPakistanBondResults] = useState<PakistanBondResult[]>([]);
+  const [thaiLotteryResults, setThaiLotteryResults] = useState<ThaiLotteryResult[]>([]);
 
   // Network and Wallet Protection states
   const [isOfflineModalOpen, setIsOfflineModalOpen] = useState(false);
@@ -110,6 +117,8 @@ export default function App() {
     setLimits(getNumberLimits());
     setDemands(getDemands());
     setDeadlines(getDrawDeadlines());
+    setPakistanBondResults(getPakistanBondResults());
+    setThaiLotteryResults(getThaiLotteryResults());
     
     if (loggedIn) {
       if (loggedIn.role === 'admin') {
@@ -555,6 +564,8 @@ export default function App() {
               demands={demands}
               deadlines={deadlines}
               bookings={bookings}
+              pakistanBondResults={pakistanBondResults}
+              thaiLotteryResults={thaiLotteryResults}
               onCancelBookingByAdmin={handleCancelBookingByAdmin}
               onRecharge={handleRecharge}
               onSetLimit={handleSetLimit}
@@ -562,6 +573,9 @@ export default function App() {
               onApproveDemand={handleApproveDemand}
               onRejectDemand={handleRejectDemand}
               onSetDeadline={handleSetDeadline}
+              onAddResult={addResult}
+              onEditResult={editResult}
+              onDeleteResult={deleteResult}
             />
           )}
 
@@ -569,6 +583,8 @@ export default function App() {
             <AIAnalysisPortal
               user={currentUser}
               bookings={bookings}
+              pakistanBondResults={pakistanBondResults}
+              thaiLotteryResults={thaiLotteryResults}
               onAddBooking={(num, first, second) => handleAddBooking('pakistan_bond', num, first, second)}
               onAddDemand={(num, first, second) => handleAddDemand('pakistan_bond', num, first, second)}
             />
