@@ -8,7 +8,7 @@ import {
   onSnapshot,
   runTransaction
 } from 'firebase/firestore';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { pakistanBondDraws } from './pakistanBondData';
 import { thaiHistoricalDraws } from './thaiLotteryData';
 
@@ -223,21 +223,36 @@ export function initializeStore() {
         const data = doc.data() as User;
         const emailLower = data.email.toLowerCase().trim();
         const configLower = cachedAdminEmail.toLowerCase().trim();
-        if (
-          data.isAdmin || 
+        
+        const isSuper = (
+          data.role === 'superAdmin' ||
           data.role === 'admin' ||
           emailLower === configLower || 
           emailLower === 'mastermaind.qureshi110@gmail.com' || 
           emailLower === 'mastermaindqureshi110@gmail.com'
-        ) {
+        );
+
+        const isDataEntry = (
+          data.role === 'dataEntryAdmin' ||
+          emailLower === 'fareed.ghulam@gmail.com'
+        );
+
+        if (isSuper) {
           return {
             ...data,
             isAdmin: true,
-            role: 'admin'
+            role: 'superAdmin'
+          };
+        } else if (isDataEntry) {
+          return {
+            ...data,
+            isAdmin: true,
+            role: 'dataEntryAdmin'
           };
         }
         return {
           ...data,
+          isAdmin: data.isAdmin || false,
           role: data.role || 'customer'
         };
       });
@@ -436,12 +451,15 @@ export function getLoggedInUser(): User | null {
   const user = cachedUsers.find((u) => u.email.toLowerCase() === normalizedEmail) || null;
   
   // If the user is an admin, do not auto-login from local storage unless verified via session!
-  if (user && (user.isAdmin || user.role === 'admin' || normalizedEmail === 'mastermaindqureshi110@gmail.com' || normalizedEmail === 'mastermaind.qureshi110@gmail.com')) {
+  const isSuper = user && (user.role === 'superAdmin' || user.role === 'admin' || normalizedEmail === 'mastermaindqureshi110@gmail.com' || normalizedEmail === 'mastermaind.qureshi110@gmail.com');
+  const isDataEntry = user && (user.role === 'dataEntryAdmin' || normalizedEmail === 'fareed.ghulam@gmail.com');
+
+  if (user && (user.isAdmin || isSuper || isDataEntry)) {
     if (sessionStorage.getItem('admin_verified') === 'true') {
       return {
         ...user,
         isAdmin: true,
-        role: 'admin'
+        role: isDataEntry ? 'dataEntryAdmin' : 'superAdmin'
       };
     }
     return null;
@@ -455,7 +473,10 @@ export function setLoggedInUser(email: string) {
   
   const normalizedEmail = email.toLowerCase().trim();
   const user = cachedUsers.find((u) => u.email.toLowerCase() === normalizedEmail);
-  if (user && (user.isAdmin || user.role === 'admin' || normalizedEmail === 'mastermaindqureshi110@gmail.com' || normalizedEmail === 'mastermaind.qureshi110@gmail.com')) {
+  const isSuper = user && (user.role === 'superAdmin' || user.role === 'admin' || normalizedEmail === 'mastermaindqureshi110@gmail.com' || normalizedEmail === 'mastermaind.qureshi110@gmail.com');
+  const isDataEntry = user && (user.role === 'dataEntryAdmin' || normalizedEmail === 'fareed.ghulam@gmail.com');
+
+  if (user && (user.isAdmin || isSuper || isDataEntry)) {
     sessionStorage.setItem('admin_verified', 'true');
   }
   syncFirebaseAuth(normalizedEmail);
@@ -517,7 +538,6 @@ export async function updateUserPassword(email: string, passwordInput: string): 
     for (const em of emailsToUpdate) {
       await setDoc(doc(db, 'users', em), {
         password: passwordInput,
-        role: 'admin',
         isAdmin: true
       }, { merge: true });
     }
@@ -1002,5 +1022,18 @@ export async function deleteResult(id: string, category: 'pakistan_bond' | 'thai
   } catch (err: any) {
     console.error("Delete result failed:", err);
     return { success: false, error: err.message || 'قرعہ اندازی کا نتیجہ حذف کرنے میں غلطی پیش آئی۔' };
+  }
+}
+
+export async function sendPasswordResetLink(email: string): Promise<{ success: boolean; error?: string }> {
+  const online = await checkInternetConnection();
+  if (!online) return { success: false, error: 'انٹرنیٹ کنکشن دستیاب نہیں ہے۔' };
+
+  try {
+    await sendPasswordResetEmail(auth, email.toLowerCase().trim());
+    return { success: true };
+  } catch (err: any) {
+    console.error("Password reset error:", err);
+    return { success: false, error: err.message || 'پاس ورڈ دوبارہ ترتیب دینے کی ای میل بھیجنے میں خرابی پیش آئی۔' };
   }
 }

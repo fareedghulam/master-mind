@@ -33,7 +33,7 @@ import {
 } from './utils/store';
 import { User, Booking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult } from './types';
 import { db } from './lib/firebase';
-import { doc, getDocFromServer, collection, query, where, getDocsFromServer } from 'firebase/firestore';
+import { doc, getDocFromServer, collection, query, where, getDocsFromServer, setDoc } from 'firebase/firestore';
 import DashboardHeader from './components/DashboardHeader';
 import RegistrationForm from './components/RegistrationForm';
 import DashboardOverview from './components/DashboardOverview';
@@ -121,7 +121,7 @@ export default function App() {
     setThaiLotteryResults(getThaiLotteryResults());
     
     if (loggedIn) {
-      if (loggedIn.role === 'admin') {
+      if (loggedIn.isAdmin) {
         setAdminMode(true);
       } else {
         setAdminMode(false);
@@ -223,13 +223,22 @@ export default function App() {
       }
 
       const emailLower = matchedUser.email.toLowerCase().trim();
-      if (
-        matchedUser.isAdmin || 
+      const isSuper = (
+        matchedUser.role === 'superAdmin' ||
         matchedUser.role === 'admin' ||
         emailLower === 'mastermaind.qureshi110@gmail.com' || 
         emailLower === 'mastermaindqureshi110@gmail.com'
-      ) {
-        matchedUser.role = 'admin';
+      );
+      const isDataEntry = (
+        matchedUser.role === 'dataEntryAdmin' ||
+        emailLower === 'fareed.ghulam@gmail.com'
+      );
+
+      if (isSuper) {
+        matchedUser.role = 'superAdmin';
+        matchedUser.isAdmin = true;
+      } else if (isDataEntry) {
+        matchedUser.role = 'dataEntryAdmin';
         matchedUser.isAdmin = true;
       }
 
@@ -239,8 +248,20 @@ export default function App() {
         return { success: false, error: 'پاس ورڈ درست نہیں ہے۔ (Incorrect password.)' };
       }
 
-      if (matchedUser.role === 'admin') {
+      if (matchedUser.isAdmin && matchedUser.active === false) {
+        return { success: false, error: 'آپ کا ایڈمن اکاؤنٹ غیر فعال کر دیا گیا ہے۔ برائے مہربانی سپر ایڈمن سے رابطہ کریں۔ (Your admin account is deactivated. Please contact Super Admin.)' };
+      }
+
+      if (matchedUser.isAdmin) {
         sessionStorage.setItem('admin_verified', 'true');
+        // Update last login timestamp in Firestore
+        try {
+          await setDoc(doc(db, 'users', matchedUser.email), {
+            lastLogin: new Date().toISOString()
+          }, { merge: true });
+        } catch (timestampErr) {
+          console.error("Failed to update last login timestamp:", timestampErr);
+        }
       }
 
       setLoggedInUser(matchedUser.email);
@@ -566,6 +587,7 @@ export default function App() {
               bookings={bookings}
               pakistanBondResults={pakistanBondResults}
               thaiLotteryResults={thaiLotteryResults}
+              currentUser={currentUser}
               onCancelBookingByAdmin={handleCancelBookingByAdmin}
               onRecharge={handleRecharge}
               onSetLimit={handleSetLimit}

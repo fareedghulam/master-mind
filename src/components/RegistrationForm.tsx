@@ -1,6 +1,6 @@
 import React, { useState, FormEvent } from 'react';
 import { User, Phone, MapPin, Mail, Sparkles, LogIn, Lock, MessageCircle } from 'lucide-react';
-import { getSupportWhatsAppNumber, checkInternetConnection } from '../utils/store';
+import { getSupportWhatsAppNumber, checkInternetConnection, sendPasswordResetLink } from '../utils/store';
 
 interface RegistrationFormProps {
   onRegister: (name: string, phone: string, city: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
@@ -23,9 +23,39 @@ export default function RegistrationForm({ onRegister, onLoginWithCredentials }:
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  const handleForgotPasswordSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+
+    if (!forgotEmail) {
+      setError('براہ کرم اپنا ایمیل ایڈریس درج کریں۔ (Please enter your email address.)');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await sendPasswordResetLink(forgotEmail);
+      if (res.success) {
+        setSuccess('پاس ورڈ دوبارہ ترتیب دینے کی ای میل کامیابی سے بھیج دی گئی ہے! براہ کرم اپنا ان باکس چیک کریں۔');
+        setForgotEmail('');
+        setIsForgotPassword(false);
+      } else {
+        setError(res.error || 'پاس ورڈ دوبارہ ترتیب دینے میں خرابی پیش آئی۔');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'خرابی پیش آئی۔');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleRegisterSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -276,6 +306,50 @@ export default function RegistrationForm({ onRegister, onLoginWithCredentials }:
                 <Sparkles className="w-4 h-4 text-blue-400" />
               </button>
             </form>
+          ) : isForgotPassword ? (
+            /* Forgot Password Form */
+            <form onSubmit={handleForgotPasswordSubmit} className="space-y-4 text-right">
+              <div>
+                <label className="block text-slate-700 text-xs font-bold mb-1.5 font-sans" htmlFor="forgot-email">
+                  اپنا رجسٹرڈ ایمیل درج کریں (Enter Registered Email) *
+                </label>
+                <div className="relative">
+                  <input
+                    id="forgot-email"
+                    type="email"
+                    required
+                    disabled={isLoading}
+                    placeholder="name@example.com"
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    className="w-full text-left bg-slate-50 border border-slate-300 rounded-none py-3 px-4 pl-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-mono"
+                  />
+                  <div className="absolute top-1/2 right-4 -translate-y-1/2 text-slate-400">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end items-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => { setIsForgotPassword(false); setError(''); setSuccess(''); }}
+                  className="text-xs text-blue-600 hover:underline cursor-pointer font-semibold"
+                >
+                  لاگ ان پر واپس جائیں (Back to Login)
+                </button>
+              </div>
+
+              <button
+                id="submit-forgot"
+                type="submit"
+                disabled={isLoading}
+                className="w-full mt-4 bg-slate-950 hover:bg-slate-900 text-blue-400 hover:text-blue-300 py-3.5 px-4 rounded-none font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer border-b-4 border-blue-600 disabled:opacity-50"
+              >
+                <span>{isLoading ? 'ای میل بھیجی جا رہی ہے...' : 'ری سیٹ لنک بھیجیں (Reset Link)'}</span>
+                <LogIn className="w-4 h-4 text-blue-400" />
+              </button>
+            </form>
           ) : (
             /* Login Form */
             <form onSubmit={handleLoginSubmit} className="space-y-4 text-right">
@@ -319,6 +393,16 @@ export default function RegistrationForm({ onRegister, onLoginWithCredentials }:
                     <Lock className="w-4 h-4" />
                   </div>
                 </div>
+              </div>
+
+              <div className="flex justify-end items-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => { setIsForgotPassword(true); setError(''); setSuccess(''); }}
+                  className="text-xs text-blue-600 hover:underline cursor-pointer font-semibold"
+                >
+                  پاس ورڈ بھول گئے؟ (Forgot Password?)
+                </button>
               </div>
 
               <button

@@ -17,6 +17,7 @@ service cloud.firestore {
         && data.balance is number
         && (!data.keys().hasAny(['isAdmin']) || data.isAdmin is bool)
         && (!data.keys().hasAny(['role']) || (data.role is string && data.role.size() < 50))
+        && (!data.keys().hasAny(['active']) || data.active is bool)
         && (!data.keys().hasAny(['password']) || (data.password is string && data.password.size() < 100));
     }
 
@@ -70,62 +71,100 @@ service cloud.firestore {
         && data.whatsappNumber is string;
     }
 
+    // Helper functions to identify roles
+    function isSuperAdmin() {
+      return request.auth != null && (
+        request.auth.token.email.lower() == 'mastermaindqureshi110@gmail.com' ||
+        request.auth.token.email.lower() == 'mastermaind.qureshi110@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.token.email.lower())) && (
+          get(/databases/$(database)/documents/users/$(request.auth.token.email.lower())).data.role == 'superAdmin' ||
+          get(/databases/$(database)/documents/users/$(request.auth.token.email.lower())).data.role == 'admin' ||
+          get(/databases/$(database)/documents/users/$(request.auth.token.email.lower())).data.isAdmin == true
+        ))
+      );
+    }
+
+    function isDataEntryAdmin() {
+      return request.auth != null && (
+        request.auth.token.email.lower() == 'fareed.ghulam@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.token.email.lower())) && (
+          get(/databases/$(database)/documents/users/$(request.auth.token.email.lower())).data.role == 'dataEntryAdmin'
+        ))
+      );
+    }
+
     match /users/{email} {
       allow read: if true;
-      allow create, update: if isValidId(email) && isValidUser(request.resource.data);
-      allow delete: if false;
+      allow create: if isValidId(email) && isValidUser(request.resource.data);
+      allow update: if isValidId(email) && (
+        isSuperAdmin() || (
+          request.auth != null && 
+          request.auth.token.email.lower() == email.lower() &&
+          request.resource.data.balance == resource.data.balance &&
+          request.resource.data.isAdmin == resource.data.isAdmin &&
+          request.resource.data.role == resource.data.role
+        )
+      );
+      allow delete: if isSuperAdmin();
     }
 
     match /bookings/{bookingId} {
       allow read: if true;
-      allow create: if isValidId(bookingId) && isValidBooking(request.resource.data);
-      allow update, delete: if isValidId(bookingId);
+      allow create: if isValidId(bookingId) && isValidBooking(request.resource.data) && (
+        isSuperAdmin() || (
+          request.auth != null && 
+          request.resource.data.userEmail.lower() == request.auth.token.email.lower()
+        )
+      );
+      allow update, delete: if isValidId(bookingId) && (
+        isSuperAdmin() || (
+          request.auth != null && 
+          resource.data.userEmail.lower() == request.auth.token.email.lower()
+        )
+      );
     }
 
     match /limits/{limitId} {
       allow read: if true;
-      allow write: if isValidId(limitId) && isValidLimit(request.resource.data);
+      allow write: if isValidId(limitId) && isValidLimit(request.resource.data) && isSuperAdmin();
     }
 
     match /demands/{demandId} {
       allow read: if true;
-      allow create: if isValidId(demandId) && isValidDemand(request.resource.data);
-      allow update: if isValidId(demandId) && isValidDemand(request.resource.data);
-      allow delete: if isValidId(demandId);
+      allow create: if isValidId(demandId) && isValidDemand(request.resource.data) && (
+        isSuperAdmin() || (
+          request.auth != null && 
+          request.resource.data.userEmail.lower() == request.auth.token.email.lower()
+        )
+      );
+      allow update: if isValidId(demandId) && isValidDemand(request.resource.data) && (
+        isSuperAdmin() || (
+          request.auth != null && 
+          resource.data.userEmail.lower() == request.auth.token.email.lower() &&
+          request.resource.data.status == resource.data.status
+        )
+      );
+      allow delete: if isValidId(demandId) && isSuperAdmin();
     }
 
     match /deadlines/{category} {
       allow read: if true;
-      allow write: if isValidId(category) && isValidDeadline(request.resource.data);
+      allow write: if isValidId(category) && isValidDeadline(request.resource.data) && isSuperAdmin();
     }
 
     match /settings/{configId} {
       allow read: if true;
-      allow write: if isValidId(configId) && isValidSettings(request.resource.data);
+      allow write: if isValidId(configId) && isValidSettings(request.resource.data) && isSuperAdmin();
     }
 
     match /pakistanBondResults/{resultId} {
       allow read: if true;
-      allow write: if isValidId(resultId) && (
-        request.auth != null && (
-          request.auth.token.email == 'mastermaindqureshi110@gmail.com' ||
-          request.auth.token.email == 'mastermaind.qureshi110@gmail.com' ||
-          get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.isAdmin == true ||
-          get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'admin'
-        )
-      );
+      allow write: if isValidId(resultId) && (isSuperAdmin() || isDataEntryAdmin());
     }
 
     match /thaiLotteryResults/{resultId} {
       allow read: if true;
-      allow write: if isValidId(resultId) && (
-        request.auth != null && (
-          request.auth.token.email == 'mastermaindqureshi110@gmail.com' ||
-          request.auth.token.email == 'mastermaind.qureshi110@gmail.com' ||
-          get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.isAdmin == true ||
-          get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'admin'
-        )
-      );
+      allow write: if isValidId(resultId) && (isSuperAdmin() || isDataEntryAdmin());
     }
   }
 }

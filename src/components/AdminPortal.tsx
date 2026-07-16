@@ -1,7 +1,9 @@
 import React, { useState, useEffect, FormEvent } from 'react';
 import { User, NumberLimit, Demand, DrawDeadline, Booking, PakistanBondResult, ThaiLotteryResult, AllResultType } from '../types';
 import { Shield, Plus, Trash, Check, X, UserCheck, AlertTriangle, ShieldCheck, HelpCircle, Sparkles, Clock, MessageCircle, Search, History } from 'lucide-react';
-import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, updateUserPassword, getAdminConfiguredEmail, updateCustomerPassword } from '../utils/store';
+import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, updateUserPassword, getAdminConfiguredEmail, updateCustomerPassword, syncFirebaseAuth } from '../utils/store';
+import { db } from '../lib/firebase';
+import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 
 interface AdminPortalProps {
   users: User[];
@@ -11,6 +13,7 @@ interface AdminPortalProps {
   bookings: Booking[];
   pakistanBondResults: PakistanBondResult[];
   thaiLotteryResults: ThaiLotteryResult[];
+  currentUser: User | null;
   onCancelBookingByAdmin: (bookingId: string) => Promise<{ success: boolean; error?: string }>;
   onRecharge: (email: string, amount: number) => Promise<boolean>;
   onSetLimit: (category: 'pakistan_bond' | 'thailand_lottery', number: string, maxAmount: number) => Promise<any>;
@@ -31,6 +34,7 @@ export default function AdminPortal({
   bookings = [],
   pakistanBondResults = [],
   thaiLotteryResults = [],
+  currentUser,
   onCancelBookingByAdmin,
   onRecharge,
   onSetLimit,
@@ -42,6 +46,19 @@ export default function AdminPortal({
   onEditResult,
   onDeleteResult
 }: AdminPortalProps) {
+  const isSuper = currentUser?.role === 'superAdmin' || currentUser?.email?.toLowerCase() === 'mastermaindqureshi110@gmail.com' || currentUser?.email?.toLowerCase() === 'mastermaind.qureshi110@gmail.com';
+  const defaultTab = isSuper ? 'demands_bookings' : 'results';
+  const [activeAdminTab, setActiveAdminTab] = useState<'demands_bookings' | 'results' | 'limits_deadlines' | 'users_finance' | 'admin_management'>(defaultTab);
+
+  // Admin Management Screen States
+  const [newAdminName, setNewAdminName] = useState('');
+  const [newAdminPhone, setNewAdminPhone] = useState('');
+  const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [newAdminRole, setNewAdminRole] = useState<'superAdmin' | 'dataEntryAdmin'>('dataEntryAdmin');
+  const [adminManageError, setAdminManageError] = useState('');
+  const [adminManageSuccess, setAdminManageSuccess] = useState('');
+
   // Recharge States
   const [rechargeEmail, setRechargeEmail] = useState('');
   const [rechargeAmount, setRechargeAmount] = useState('');
@@ -332,8 +349,8 @@ export default function AdminPortal({
 
   useEffect(() => {
     setWhatsappVal(getSupportWhatsAppNumber());
-    setAdminEmailInput(getAdminConfiguredEmail());
-  }, []);
+    setAdminEmailInput(currentUser?.email || getAdminConfiguredEmail());
+  }, [currentUser]);
 
   const handlePasswordSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -355,6 +372,120 @@ export default function AdminPortal({
       setAdminPasswordInput('');
     } else {
       setPasswordError('ایڈمن پاس ورڈ تبدیل کرنے میں خامی پیش آئی۔ برائے مہربانی انٹرنیٹ چیک کریں۔');
+    }
+  };
+
+  const handleCreateAdminSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setAdminManageError('');
+    setAdminManageSuccess('');
+
+    if (!newAdminName.trim() || !newAdminPhone.trim() || !newAdminEmail.trim() || !newAdminPassword.trim()) {
+      setAdminManageError('براہ کرم تمام فیلڈز پُر کریں۔ (Please fill in all fields.)');
+      return;
+    }
+
+    if (newAdminPassword.length < 6) {
+      setAdminManageError('پاس ورڈ کم از کم 6 ہندسوں کا ہونا ضروری ہے۔ (Password must be at least 6 characters.)');
+      return;
+    }
+
+    const emailClean = newAdminEmail.toLowerCase().trim();
+
+    try {
+      // 1. Create user document in Firestore users collection
+      const newAdminDoc = {
+        email: emailClean,
+        name: newAdminName.trim(),
+        phone: newAdminPhone.trim(),
+        city: 'Enterprise HQ',
+        balance: 0,
+        isAdmin: true,
+        role: newAdminRole,
+        password: newAdminPassword,
+        active: true,
+        lastLogin: null
+      };
+
+      await setDoc(doc(db, 'users', emailClean), newAdminDoc);
+
+      // 2. Register/Sync in Firebase Authentication so they can log in
+      await syncFirebaseAuth(emailClean, newAdminPassword);
+
+      setAdminManageSuccess(`کامیاب: نیا ایڈمن ${newAdminName} کامیابی سے بنا دیا گیا ہے اور لاگ ان کے لیے تیار ہے۔`);
+      setNewAdminName('');
+      setNewAdminPhone('');
+      setNewAdminEmail('');
+      setNewAdminPassword('');
+    } catch (err: any) {
+      console.error("Failed to create admin:", err);
+      setAdminManageError(err?.message || 'نیا ایڈمن بنانے میں خرابی پیش آئی۔');
+    }
+  };
+
+  const handleDeleteAdmin = async (email: string) => {
+    const emailClean = email.toLowerCase().trim();
+    if (emailClean === 'mastermaindqureshi110@gmail.com' || emailClean === 'mastermaind.qureshi110@gmail.com') {
+      alert('سپر مالک (Super Owner) کو حذف نہیں کیا جا سکتا۔');
+      return;
+    }
+
+    if (!window.confirm(`کیا آپ واقعی ایڈمن (${email}) کو حذف کرنا چاہتے ہیں؟`)) {
+      return;
+    }
+
+    setAdminManageError('');
+    setAdminManageSuccess('');
+
+    try {
+      await deleteDoc(doc(db, 'users', emailClean));
+      setAdminManageSuccess(`کامیاب: ایڈمن (${email}) کا ریکارڈ کامیابی سے حذف کر دیا گیا ہے۔`);
+    } catch (err: any) {
+      console.error("Delete admin error:", err);
+      setAdminManageError('ایڈمن ریکارڈ حذف کرنے میں خرابی پیش آئی۔');
+    }
+  };
+
+  const handleToggleActiveAdmin = async (email: string, currentActive: boolean) => {
+    const emailClean = email.toLowerCase().trim();
+    if (emailClean === 'mastermaindqureshi110@gmail.com' || emailClean === 'mastermaind.qureshi110@gmail.com') {
+      alert('سپر مالک (Super Owner) کے سٹیٹس میں تبدیلی نہیں کی جا سکتی۔');
+      return;
+    }
+
+    setAdminManageError('');
+    setAdminManageSuccess('');
+
+    try {
+      const isDeactivating = (currentActive !== false);
+      await setDoc(doc(db, 'users', emailClean), {
+        active: !isDeactivating
+      }, { merge: true });
+      setAdminManageSuccess(`ایڈمن اکاؤنٹ کامیابی سے ${!isDeactivating ? 'فعال (Activate)' : 'غیر فعال (Deactivate)'} کر دیا گیا ہے۔`);
+    } catch (err: any) {
+      console.error("Toggle active status error:", err);
+      setAdminManageError('سٹیٹس تبدیل کرنے میں خرابی پیش آئی۔');
+    }
+  };
+
+  const handleChangeAdminRole = async (email: string, roleToSet: 'superAdmin' | 'dataEntryAdmin') => {
+    const emailClean = email.toLowerCase().trim();
+    if (emailClean === 'mastermaindqureshi110@gmail.com' || emailClean === 'mastermaind.qureshi110@gmail.com') {
+      alert('سپر مالک (Super Owner) کا رول تبدیل نہیں کیا جا سکتا۔');
+      return;
+    }
+
+    setAdminManageError('');
+    setAdminManageSuccess('');
+
+    try {
+      await setDoc(doc(db, 'users', emailClean), {
+        role: roleToSet
+      }, { merge: true });
+      setAdminManageSuccess(`ایڈمن رول کامیابی سے تبدیل کر کے ${roleToSet === 'superAdmin' ? 'Super Admin' : 'Data Entry Admin'} کر دیا گیا ہے۔`);
+    } catch (err: any) {
+      console.error("Change admin role error:", err);
+      setAdminManageError('ایڈمن کا رول تبدیل کرنے میں خرابی پیش آئی۔');
     }
   };
 
@@ -487,8 +618,81 @@ export default function AdminPortal({
         </div>
       </div>
 
-      {/* Incoming Demands Control Panel Module */}
-      <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md space-y-6">
+      {/* Tab Navigation */}
+      <div className="flex flex-wrap justify-end gap-2 border-b border-slate-200 pb-3">
+        {isSuper && (
+          <button
+            onClick={() => setActiveAdminTab('admin_management')}
+            className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all cursor-pointer border flex items-center gap-1.5 ${
+              activeAdminTab === 'admin_management'
+                ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-md shadow-amber-500/10 font-bold'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>ایڈمنز کا انتظام (Admins)</span>
+          </button>
+        )}
+
+        {isSuper && (
+          <button
+            onClick={() => setActiveAdminTab('users_finance')}
+            className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all cursor-pointer border flex items-center gap-1.5 ${
+              activeAdminTab === 'users_finance'
+                ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-md shadow-amber-500/10'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            <UserCheck className="w-4 h-4" />
+            <span>صارفین اور فنانس (Users)</span>
+          </button>
+        )}
+
+        {isSuper && (
+          <button
+            onClick={() => setActiveAdminTab('limits_deadlines')}
+            className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all cursor-pointer border flex items-center gap-1.5 ${
+              activeAdminTab === 'limits_deadlines'
+                ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-md shadow-amber-500/10'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            <Clock className="w-4 h-4" />
+            <span>لمٹس اور ڈیڈ لائنز (Limits)</span>
+          </button>
+        )}
+
+        <button
+          onClick={() => setActiveAdminTab('results')}
+          className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all cursor-pointer border flex items-center gap-1.5 ${
+            activeAdminTab === 'results'
+              ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-md shadow-amber-500/10'
+              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <History className="w-4 h-4" />
+          <span>نتائج کا انتظام (Results)</span>
+        </button>
+
+        {isSuper && (
+          <button
+            onClick={() => setActiveAdminTab('demands_bookings')}
+            className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all cursor-pointer border flex items-center gap-1.5 ${
+              activeAdminTab === 'demands_bookings'
+                ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-md shadow-amber-500/10'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>ڈیمانڈز اور بکنگز (Demands)</span>
+          </button>
+        )}
+      </div>
+
+      {activeAdminTab === 'demands_bookings' && isSuper && (
+        <>
+          {/* Incoming Demands Control Panel Module */}
+          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md space-y-6">
         <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 flex items-center justify-end gap-2">
           <span>موصولہ ڈیمانڈز کا پینل (Incoming Demands Approval)</span>
           <Sparkles className="w-5 h-5 text-amber-500" />
@@ -747,8 +951,11 @@ export default function AdminPortal({
           );
         })()}
       </div>
+        </>
+      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      {activeAdminTab === 'users_finance' && isSuper && (
+        <div className="space-y-8">
 
         {/* Module 1: Wallet Recharge (کسٹمر والٹ ریچارج کریں) */}
         <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md">
@@ -826,8 +1033,12 @@ export default function AdminPortal({
             </div>
           </div>
         </div>
+      </div>
+    )}
 
-        {/* Module 2: Number Booking Limit Configuration (نمبر لمٹ مقرر کریں) */}
+      {activeAdminTab === 'limits_deadlines' && isSuper && (
+        <div className="space-y-8">
+          {/* Module 2: Number Booking Limit Configuration (نمبر لمٹ مقرر کریں) */}
         <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md flex flex-col justify-between">
           <div>
             <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 mb-5 flex items-center justify-end gap-2">
@@ -1104,8 +1315,12 @@ export default function AdminPortal({
             </div>
           </div>
         </div>
+      </div>
+    )}
 
-        {/* Module 4: WhatsApp Support Helpline Configuration */}
+      {activeAdminTab === 'users_finance' && isSuper && (
+        <div className="space-y-8">
+          {/* Module 4: WhatsApp Support Helpline Configuration */}
         <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md md:col-span-2 space-y-4">
           <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 flex items-center justify-end gap-2">
             <span>واٹس ایپ ہیلپ لائن اور رابطہ سیٹنگز (WhatsApp Help Settings)</span>
@@ -1328,8 +1543,12 @@ export default function AdminPortal({
             )}
           </div>
         </div>
+      </div>
+    )}
 
-        {/* Module 7: Result Management (قرعہ اندازی کے نتائج کا انتظام) */}
+      {activeAdminTab === 'results' && (
+        <>
+          {/* Module 7: Result Management (قرعہ اندازی کے نتائج کا انتظام) */}
         <div id="module-result-management" className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md md:col-span-2 space-y-6 text-right">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-3 border-b border-slate-100">
             {/* Add Result Button */}
@@ -1734,47 +1953,277 @@ export default function AdminPortal({
             </div>
           </div>
         </div>
-
-      </div>
+        </>
+      )}
 
       {/* Active limits display list */}
-      <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md">
-        <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 mb-5 text-right">
-          فعال بکنگ لمٹس (Active Limits)
-        </h4>
+      {activeAdminTab === 'limits_deadlines' && isSuper && (
+        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md">
+          <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 mb-5 text-right">
+            فعال بکنگ لمٹس (Active Limits)
+          </h4>
 
-        {limits.length === 0 ? (
-          <p className="text-slate-400 text-sm text-center py-6">کوئی خصوصی لِمٹ لاگو نہیں کی گئی ہے۔ تمام نمبرز لامحدود بک ہو سکتے ہیں۔</p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {limits.map((l) => (
-              <div 
-                key={l.id} 
-                className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-150 rounded-2xl"
-              >
-                <button
-                  type="button"
-                  onClick={() => onDeleteLimit(l.id)}
-                  className="p-1 px-1.5 text-red-500 hover:bg-red-50 rounded-lg hover:text-red-700 transition-all cursor-pointer"
-                  title="لمٹ ختم کریں"
+          {limits.length === 0 ? (
+            <p className="text-slate-400 text-sm text-center py-6">کوئی خصوصی لِمٹ لاگو نہیں کی گئی ہے۔ تمام نمبرز لامحدود بک ہو سکتے ہیں۔</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {limits.map((l) => (
+                <div 
+                  key={l.id} 
+                  className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-150 rounded-2xl"
                 >
-                  <Trash className="w-4 h-4" />
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => onDeleteLimit(l.id)}
+                    className="p-1 px-1.5 text-red-500 hover:bg-red-50 rounded-lg hover:text-red-700 transition-all cursor-pointer"
+                    title="لمٹ ختم کریں"
+                  >
+                    <Trash className="w-4 h-4" />
+                  </button>
 
-                <div className="text-right">
-                  <span className="font-mono text-sm font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-lg ml-2">
-                    {l.number}
-                  </span>
-                  <span className="text-xs text-slate-400 font-mono tracking-wider">حد: Rs. {l.maxAmount}</span>
-                  <div className="text-[10px] text-slate-500 mt-1 font-sans">
-                    {l.category === 'pakistan_bond' ? 'پاکستان بانڈ' : 'تھائی لینڈ لاٹری'}
+                  <div className="text-right">
+                    <span className="font-mono text-sm font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-lg ml-2">
+                      {l.number}
+                    </span>
+                    <span className="text-xs text-slate-400 font-mono tracking-wider">حد: Rs. {l.maxAmount}</span>
+                    <div className="text-[10px] text-slate-500 mt-1 font-sans">
+                      {l.category === 'pakistan_bond' ? 'پاکستان بانڈ' : 'تھائی لینڈ لاٹری'}
+                    </div>
                   </div>
                 </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Admin Management Screen */}
+      {activeAdminTab === 'admin_management' && isSuper && (
+        <div className="space-y-8">
+          {/* Create New Admin Form */}
+          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md space-y-6">
+            <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 flex items-center justify-end gap-2">
+              <span>نیا ایڈمن بنائیں (Create New Admin)</span>
+              <ShieldCheck className="w-5 h-5 text-amber-500" />
+            </h4>
+
+            {adminManageError && (
+              <div className="p-3 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs text-right" dir="rtl">
+                ⚠️ {adminManageError}
               </div>
-            ))}
+            )}
+            {adminManageSuccess && (
+              <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs text-right" dir="rtl">
+                ✓ {adminManageSuccess}
+              </div>
+            )}
+
+            <form onSubmit={handleCreateAdminSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right font-sans">ایڈمن نام (Admin Name) *</label>
+                  <input
+                    type="text"
+                    placeholder="نام لکھیں"
+                    value={newAdminName}
+                    onChange={(e) => setNewAdminName(e.target.value)}
+                    className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-2.5 px-4 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right font-sans">موبائل نمبر (Mobile Number) *</label>
+                  <input
+                    type="tel"
+                    placeholder="03001234567"
+                    value={newAdminPhone}
+                    onChange={(e) => setNewAdminPhone(e.target.value)}
+                    className="w-full text-left bg-slate-50 border border-slate-200 rounded-2xl py-2.5 px-4 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right font-sans">ای میل ایڈریس (Admin Email) *</label>
+                  <input
+                    type="email"
+                    placeholder="admin@example.com"
+                    value={newAdminEmail}
+                    onChange={(e) => setNewAdminEmail(e.target.value)}
+                    className="w-full text-left bg-slate-50 border border-slate-200 rounded-2xl py-2.5 px-4 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right font-sans">لاگ ان پاس ورڈ (Login Password) *</label>
+                  <input
+                    type="password"
+                    placeholder="کم از کم 6 ہندسے"
+                    value={newAdminPassword}
+                    onChange={(e) => setNewAdminPassword(e.target.value)}
+                    className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-2.5 px-4 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-2">
+                <div className="flex gap-4 items-center">
+                  <span className="text-slate-600 text-xs font-semibold font-sans">انتخابِ عہدہ (Admin Role):</span>
+                  <label className="inline-flex items-center gap-1 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="adminRole"
+                      checked={newAdminRole === 'dataEntryAdmin'}
+                      onChange={() => setNewAdminRole('dataEntryAdmin')}
+                      className="text-amber-500 focus:ring-amber-500"
+                    />
+                    <span className="text-xs text-slate-700 font-semibold font-sans">ڈیٹا انٹری ایڈمن (Data Entry Admin)</span>
+                  </label>
+                  <label className="inline-flex items-center gap-1 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="adminRole"
+                      checked={newAdminRole === 'superAdmin'}
+                      onChange={() => setNewAdminRole('superAdmin')}
+                      className="text-amber-500 focus:ring-amber-500"
+                    />
+                    <span className="text-xs text-slate-700 font-semibold font-sans">سپر ایڈمن (Super Admin)</span>
+                  </label>
+                </div>
+
+                <button
+                  type="submit"
+                  className="bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold py-2.5 px-6 rounded-2xl text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md w-full sm:w-auto"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="font-sans font-bold">نیا ایڈمن رجسٹر کریں (Register Admin)</span>
+                </button>
+              </div>
+            </form>
           </div>
-        )}
-      </div>
+
+          {/* Registered Admins List */}
+          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md space-y-6">
+            <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 flex items-center justify-end gap-2">
+              <span>رجسٹرڈ ایڈمنز کی فہرست (Registered Admins)</span>
+              <Sparkles className="w-5 h-5 text-amber-500" />
+            </h4>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-right border-collapse text-xs sm:text-sm">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100">
+                    <th className="py-2.5 px-3 font-semibold text-slate-600 text-left">اقدامات (Actions)</th>
+                    <th className="py-2.5 px-3 font-semibold text-slate-600">آخری لاگ ان (Last Login)</th>
+                    <th className="py-2.5 px-3 font-semibold text-slate-600">حیثیت (Status)</th>
+                    <th className="py-2.5 px-3 font-semibold text-slate-600">عہدہ (Role)</th>
+                    <th className="py-2.5 px-3 font-semibold text-slate-600">موبائل نمبر</th>
+                    <th className="py-2.5 px-3 font-semibold text-slate-600 text-right">ایڈمن تفصیل</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {users
+                    .filter(u => u.isAdmin === true || u.role === 'superAdmin' || u.role === 'dataEntryAdmin' || u.role === 'admin')
+                    .map((admin) => {
+                      const isMainOwner = admin.email.toLowerCase() === 'mastermaindqureshi110@gmail.com' || admin.email.toLowerCase() === 'mastermaind.qureshi110@gmail.com';
+                      const isActive = admin.active !== false;
+                      const formattedLogin = admin.lastLogin 
+                        ? new Date(admin.lastLogin).toLocaleString('ur-PK', { timeZone: 'Asia/Karachi' })
+                        : 'لاگ ان نہیں ہوا (No Login)';
+
+                      return (
+                        <tr key={admin.email} className="hover:bg-slate-50/50 transition-colors">
+                          {/* Actions Column */}
+                          <td className="py-3 px-3 text-left">
+                            {!isMainOwner ? (
+                              <div className="flex gap-2">
+                                {/* Delete Button */}
+                                <button
+                                  onClick={() => handleDeleteAdmin(admin.email)}
+                                  className="bg-red-50 hover:bg-red-100 text-red-600 p-1.5 rounded-xl border border-red-200 transition-all cursor-pointer"
+                                  title="ایڈمن کو حذف کریں"
+                                >
+                                  <Trash className="w-4 h-4" />
+                                </button>
+
+                                {/* Toggle Active Status */}
+                                <button
+                                  onClick={() => handleToggleActiveAdmin(admin.email, isActive)}
+                                  className={`px-2 py-1 rounded-xl text-[10px] font-bold border transition-all cursor-pointer ${
+                                    isActive
+                                      ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200'
+                                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                                  }`}
+                                >
+                                  {isActive ? 'Deactivate' : 'Activate'}
+                                </button>
+
+                                {/* Toggle Role */}
+                                <button
+                                  onClick={() => handleChangeAdminRole(
+                                    admin.email,
+                                    admin.role === 'superAdmin' ? 'dataEntryAdmin' : 'superAdmin'
+                                  )}
+                                  className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-[10px] font-bold transition-all cursor-pointer"
+                                >
+                                  {admin.role === 'superAdmin' ? 'Make DataEntry' : 'Make Super'}
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 font-sans italic">سپر مالک (Owner)</span>
+                            )}
+                          </td>
+
+                          {/* Last Login timestamp */}
+                          <td className="py-3 px-3 font-mono text-xs text-slate-500 text-left" dir="ltr">
+                            {formattedLogin}
+                          </td>
+
+                          {/* Active Status */}
+                          <td className="py-3 px-3">
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                              isActive 
+                                ? 'text-emerald-700 bg-emerald-50 border-emerald-200' 
+                                : 'text-red-600 bg-red-50 border-red-200'
+                            }`}>
+                              {isActive ? 'فعال (Active)' : 'غیر فعال (Inactive)'}
+                            </span>
+                          </td>
+
+                          {/* Role */}
+                          <td className="py-3 px-3">
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                              admin.role === 'superAdmin'
+                                ? 'text-purple-700 bg-purple-50 border-purple-200 font-bold'
+                                : 'text-blue-700 bg-blue-50 border-blue-200 font-semibold'
+                            }`}>
+                              {admin.role === 'superAdmin' ? 'Super Admin' : 'Data Entry Admin'}
+                            </span>
+                          </td>
+
+                          {/* Mobile Phone */}
+                          <td className="py-3 px-3 font-mono text-slate-600">
+                            {admin.phone}
+                          </td>
+
+                          {/* Name and Email */}
+                          <td className="py-3 px-3 text-right">
+                            <span className="font-semibold block text-slate-800 font-sans">{admin.name}</span>
+                            <span className="text-[10px] text-slate-400 font-mono block">{admin.email}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

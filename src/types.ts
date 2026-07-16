@@ -7,6 +7,8 @@ export interface User {
   password?: string;
   isAdmin?: boolean;
   role?: string;
+  active?: boolean;
+  lastLogin?: string;
 }
 
 export interface Booking {
