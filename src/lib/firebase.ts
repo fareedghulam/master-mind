@@ -18,7 +18,7 @@ export const auth = getAuth(app);
 async function testConnection() {
   try {
     // Attempt a live fetch from server to verify connection and credentials
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    await getDocFromServer(doc(db, 'settings', 'connection_check'));
     console.log("Firestore connection check succeeded.");
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {

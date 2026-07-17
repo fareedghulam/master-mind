@@ -212,6 +212,23 @@ function notifyListeners() {
   });
 }
 
+export function isLoggedUserAdminOrSuper(): boolean {
+  const email = auth.currentUser?.email?.toLowerCase().trim();
+  if (!email) return false;
+  if (email === 'mastermaindqureshi110@gmail.com' || email === 'mastermaind.qureshi110@gmail.com') {
+    return true;
+  }
+  const user = cachedUsers.find(u => u.email.toLowerCase() === email);
+  return !!(user && (user.role === 'superAdmin' || user.role === 'admin'));
+}
+
+export function isLoggedUserDataEntry(): boolean {
+  const email = auth.currentUser?.email?.toLowerCase().trim();
+  if (!email) return false;
+  const user = cachedUsers.find(u => u.email.toLowerCase() === email);
+  return !!(user && user.role === 'dataEntryAdmin');
+}
+
 export function initializeStore() {
   if (started) return;
   started = true;
@@ -280,11 +297,15 @@ export function initializeStore() {
         if (userDoc.exists()) {
           const data = userDoc.data() as User;
           if (data.role !== item.role || data.isAdmin !== (item.role !== 'customer')) {
-            await setDoc(docRef, {
-              role: item.role,
-              isAdmin: item.role !== 'customer'
-            }, { merge: true });
-            console.log(`[Migration] Migrated role/isAdmin for ${item.email} safely.`);
+            if (isLoggedUserAdminOrSuper()) {
+              await setDoc(docRef, {
+                role: item.role,
+                isAdmin: item.role !== 'customer'
+              }, { merge: true });
+              console.log(`[Migration] Migrated role/isAdmin for ${item.email} safely.`);
+            } else {
+              console.log(`[Migration] Skip migrating role/isAdmin for ${item.email} (not admin).`);
+            }
           }
         } else {
           await setDoc(docRef, {
@@ -309,7 +330,11 @@ export function initializeStore() {
   onSnapshot(collection(db, 'users'), (snapshot) => {
     if (snapshot.empty) {
       DEFAULT_USERS.forEach(async (user) => {
-        await setDoc(doc(db, 'users', user.email.toLowerCase()), user);
+        try {
+          await setDoc(doc(db, 'users', user.email.toLowerCase()), user);
+        } catch (e) {
+          console.error("Failed to seed default user doc:", e);
+        }
       });
     } else {
       cachedUsers = snapshot.docs.map(doc => {
@@ -350,9 +375,15 @@ export function initializeStore() {
   // 2. Listen to bookings
   onSnapshot(collection(db, 'bookings'), (snapshot) => {
     if (snapshot.empty) {
-      DEFAULT_BOOKINGS.forEach(async (booking) => {
-        await setDoc(doc(db, 'bookings', booking.id), booking);
-      });
+      if (isLoggedUserAdminOrSuper()) {
+        DEFAULT_BOOKINGS.forEach(async (booking) => {
+          try {
+            await setDoc(doc(db, 'bookings', booking.id), booking);
+          } catch (e) {
+            console.error("Failed to seed default booking:", e);
+          }
+        });
+      }
     } else {
       const list = snapshot.docs.map(doc => doc.data() as Booking);
       cachedBookings = list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -363,9 +394,15 @@ export function initializeStore() {
   // 3. Listen to limits
   onSnapshot(collection(db, 'limits'), (snapshot) => {
     if (snapshot.empty) {
-      DEFAULT_LIMITS.forEach(async (limit) => {
-        await setDoc(doc(db, 'limits', limit.id), limit);
-      });
+      if (isLoggedUserAdminOrSuper()) {
+        DEFAULT_LIMITS.forEach(async (limit) => {
+          try {
+            await setDoc(doc(db, 'limits', limit.id), limit);
+          } catch (e) {
+            console.error("Failed to seed default limit:", e);
+          }
+        });
+      }
     } else {
       cachedLimits = snapshot.docs.map(doc => doc.data() as NumberLimit);
       notifyListeners();
@@ -382,9 +419,15 @@ export function initializeStore() {
   // 5. Listen to deadlines
   onSnapshot(collection(db, 'deadlines'), (snapshot) => {
     if (snapshot.empty) {
-      DEFAULT_DEADLINES.forEach(async (deadline) => {
-        await setDoc(doc(db, 'deadlines', deadline.category), deadline);
-      });
+      if (isLoggedUserAdminOrSuper()) {
+        DEFAULT_DEADLINES.forEach(async (deadline) => {
+          try {
+            await setDoc(doc(db, 'deadlines', deadline.category), deadline);
+          } catch (e) {
+            console.error("Failed to seed default deadline:", e);
+          }
+        });
+      }
     } else {
       cachedDeadlines = snapshot.docs.map(doc => doc.data() as DrawDeadline);
       notifyListeners();
@@ -394,17 +437,29 @@ export function initializeStore() {
   // 6. Listen to settings/general
   onSnapshot(doc(db, 'settings', 'general'), async (snapshot) => {
     if (!snapshot.exists()) {
-      await setDoc(doc(db, 'settings', 'general'), {
-        adminEmail: 'mastermaindqureshi110@gmail.com',
-        whatsappNumber: '923453090146'
-      });
+      if (isLoggedUserAdminOrSuper()) {
+        try {
+          await setDoc(doc(db, 'settings', 'general'), {
+            adminEmail: 'mastermaindqureshi110@gmail.com',
+            whatsappNumber: '923453090146'
+          });
+        } catch (e) {
+          console.error("Failed to seed default settings:", e);
+        }
+      }
     } else {
       const data = snapshot.data();
       let adminEmail = data?.adminEmail || 'mastermaindqureshi110@gmail.com';
       if (adminEmail === 'mastermaind.qureshi110@gmail.com') {
         adminEmail = 'mastermaindqureshi110@gmail.com';
-        // Auto-migrate in Firestore
-        await setDoc(doc(db, 'settings', 'general'), { adminEmail }, { merge: true });
+        if (isLoggedUserAdminOrSuper()) {
+          try {
+            // Auto-migrate in Firestore
+            await setDoc(doc(db, 'settings', 'general'), { adminEmail }, { merge: true });
+          } catch (e) {
+            console.error("Failed to migrate adminEmail in settings:", e);
+          }
+        }
       }
       cachedAdminEmail = adminEmail;
       cachedSupportWhatsApp = data?.whatsappNumber || '923453090146';
@@ -415,32 +470,38 @@ export function initializeStore() {
   // 7. Listen to pakistanBondResults (with auto-migration)
   onSnapshot(collection(db, 'pakistanBondResults'), (snapshot) => {
     if (snapshot.empty) {
-      console.log("Migrating Pakistan Bond results to Firestore...");
-      // Filter out empty mock data if they have already been cleared, to prevent overwriting
-      if (pakistanBondDraws && pakistanBondDraws.length > 0) {
-        pakistanBondDraws.forEach(async (draw) => {
-          let bondValue = "Rs. 200";
-          let drawNoOnly = "";
-          
-          const bondMatch = draw.drawNo.match(/\(بانڈ\s+([^)]+)\)/);
-          if (bondMatch) bondValue = bondMatch[1];
-          
-          const drawNoMatch = draw.drawNo.match(/ڈرا نمبر\s+(\d+)/);
-          if (drawNoMatch) drawNoOnly = drawNoMatch[1];
-          
-          const resultDoc: PakistanBondResult = {
-            id: draw.id,
-            category: 'pakistan_bond',
-            bondValue,
-            drawNoOnly,
-            drawNo: draw.drawNo,
-            date: draw.date,
-            city: draw.city,
-            firstPrize: draw.firstPrize,
-            secondPrizes: draw.secondPrizes
-          };
-          await setDoc(doc(db, 'pakistanBondResults', draw.id), resultDoc);
-        });
+      if (isLoggedUserAdminOrSuper() || isLoggedUserDataEntry()) {
+        console.log("Migrating Pakistan Bond results to Firestore...");
+        // Filter out empty mock data if they have already been cleared, to prevent overwriting
+        if (pakistanBondDraws && pakistanBondDraws.length > 0) {
+          pakistanBondDraws.forEach(async (draw) => {
+            let bondValue = "Rs. 200";
+            let drawNoOnly = "";
+            
+            const bondMatch = draw.drawNo.match(/\(بانڈ\s+([^)]+)\)/);
+            if (bondMatch) bondValue = bondMatch[1];
+            
+            const drawNoMatch = draw.drawNo.match(/ڈرا نمبر\s+(\d+)/);
+            if (drawNoMatch) drawNoOnly = drawNoMatch[1];
+            
+            const resultDoc: PakistanBondResult = {
+              id: draw.id,
+              category: 'pakistan_bond',
+              bondValue,
+              drawNoOnly,
+              drawNo: draw.drawNo,
+              date: draw.date,
+              city: draw.city,
+              firstPrize: draw.firstPrize,
+              secondPrizes: draw.secondPrizes
+            };
+            try {
+              await setDoc(doc(db, 'pakistanBondResults', draw.id), resultDoc);
+            } catch (e) {
+              console.error("Failed to migrate pakistanBondResult doc:", e);
+            }
+          });
+        }
       }
     } else {
       cachedPakistanBondResults = snapshot.docs.map(doc => doc.data() as PakistanBondResult);
@@ -451,28 +512,34 @@ export function initializeStore() {
   // 8. Listen to thaiLotteryResults (with auto-migration)
   onSnapshot(collection(db, 'thaiLotteryResults'), (snapshot) => {
     if (snapshot.empty) {
-      console.log("Migrating Thai Lottery results to Firestore...");
-      if (thaiHistoricalDraws && thaiHistoricalDraws.length > 0) {
-        thaiHistoricalDraws.forEach(async (draw) => {
-          const firstPrize = draw.firstPrize || '';
-          const last2Digits = firstPrize.length >= 2 ? firstPrize.substring(firstPrize.length - 2) : '';
-          const front3Digits = firstPrize.length >= 3 ? firstPrize.substring(0, 3) : '';
-          const back3Digits = firstPrize.length >= 3 ? firstPrize.substring(firstPrize.length - 3) : '';
-          
-          const resultDoc: ThaiLotteryResult = {
-            id: draw.id,
-            category: 'thailand_lottery',
-            drawNo: draw.drawNo,
-            date: draw.date,
-            city: draw.city || 'بنکاک',
-            firstPrize: draw.firstPrize,
-            secondPrizes: draw.secondPrizes || [],
-            last2Digits,
-            front3Digits,
-            back3Digits
-          };
-          await setDoc(doc(db, 'thaiLotteryResults', draw.id), resultDoc);
-        });
+      if (isLoggedUserAdminOrSuper() || isLoggedUserDataEntry()) {
+        console.log("Migrating Thai Lottery results to Firestore...");
+        if (thaiHistoricalDraws && thaiHistoricalDraws.length > 0) {
+          thaiHistoricalDraws.forEach(async (draw) => {
+            const firstPrize = draw.firstPrize || '';
+            const last2Digits = firstPrize.length >= 2 ? firstPrize.substring(firstPrize.length - 2) : '';
+            const front3Digits = firstPrize.length >= 3 ? firstPrize.substring(0, 3) : '';
+            const back3Digits = firstPrize.length >= 3 ? firstPrize.substring(firstPrize.length - 3) : '';
+            
+            const resultDoc: ThaiLotteryResult = {
+              id: draw.id,
+              category: 'thailand_lottery',
+              drawNo: draw.drawNo,
+              date: draw.date,
+              city: draw.city || 'بنکاک',
+              firstPrize: draw.firstPrize,
+              secondPrizes: draw.secondPrizes || [],
+              last2Digits,
+              front3Digits,
+              back3Digits
+            };
+            try {
+              await setDoc(doc(db, 'thaiLotteryResults', draw.id), resultDoc);
+            } catch (e) {
+              console.error("Failed to migrate thaiLotteryResult doc:", e);
+            }
+          });
+        }
       }
     } else {
       cachedThaiLotteryResults = snapshot.docs.map(doc => doc.data() as ThaiLotteryResult);
