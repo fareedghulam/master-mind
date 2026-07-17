@@ -33,12 +33,30 @@ export async function syncFirebaseAuth(email: string, passwordInput?: string) {
     await signInWithEmailAndPassword(auth, normalizedEmail, password);
     console.log(`[FirebaseAuth] Silent sign-in success for ${normalizedEmail}`);
   } catch (err: any) {
-    if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+    if (err.code === 'auth/operation-not-allowed') {
+      console.warn(
+        `[FirebaseAuth] Silent auth is unavailable because the Email/Password sign-in provider is disabled in your Firebase Console.\n` +
+        `To fix this, please enable Email/Password authentication in the Firebase Console:\n` +
+        `1. Go to Authentication -> Sign-in method\n` +
+        `2. Click "Add new provider" and choose "Email/Password"\n` +
+        `3. Enable it and save.`
+      );
+    } else if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
       try {
         await createUserWithEmailAndPassword(auth, normalizedEmail, password);
         console.log(`[FirebaseAuth] Registered and signed in for ${normalizedEmail}`);
-      } catch (createErr) {
-        console.error("[FirebaseAuth] Failed to auto-register in Auth:", createErr);
+      } catch (createErr: any) {
+        if (createErr && createErr.code === 'auth/operation-not-allowed') {
+          console.warn(
+            `[FirebaseAuth] Auto-registration failed because the Email/Password sign-in provider is disabled in your Firebase Console.\n` +
+            `To fix this, please enable Email/Password authentication in the Firebase Console:\n` +
+            `1. Go to Authentication -> Sign-in method\n` +
+            `2. Click "Add new provider" and choose "Email/Password"\n` +
+            `3. Enable it and save.`
+          );
+        } else {
+          console.error("[FirebaseAuth] Failed to auto-register in Auth:", createErr);
+        }
       }
     } else {
       console.error("[FirebaseAuth] Silent auth sign-in error:", err);
