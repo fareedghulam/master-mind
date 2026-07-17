@@ -34,7 +34,7 @@ import {
 import { User, Booking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult } from './types';
 import { db, auth } from './lib/firebase';
 import { doc, getDocFromServer, collection, query, where, getDocsFromServer, setDoc } from 'firebase/firestore';
-import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import DashboardHeader from './components/DashboardHeader';
 import RegistrationForm from './components/RegistrationForm';
 import DashboardOverview from './components/DashboardOverview';
@@ -47,6 +47,7 @@ import { LayoutDashboard, Award, ScrollText, CalendarRange, Shield, HelpCircle, 
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [users, setUsers] = useState<User[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -107,7 +108,15 @@ export default function App() {
       setAdminConfiguredEmailState(getAdminConfiguredEmail());
       syncWithStore();
     });
-    return () => unsubscribe();
+
+    const unsubscribeAuth = onAuthStateChanged(auth, () => {
+      setAuthLoading(false);
+    });
+
+    return () => {
+      unsubscribe();
+      unsubscribeAuth();
+    };
   }, []);
 
   const syncWithStore = () => {
@@ -249,16 +258,12 @@ export default function App() {
         return { success: false, error: `لاگ ان ناکام رہا: ${err.message || 'نامعلوم خامی'}` };
       }
 
-      const emailLower = matchedUser.email.toLowerCase().trim();
       const isSuper = (
         matchedUser.role === 'superAdmin' ||
-        matchedUser.role === 'admin' ||
-        emailLower === 'mastermaind.qureshi110@gmail.com' || 
-        emailLower === 'mastermaindqureshi110@gmail.com'
+        matchedUser.role === 'admin'
       );
       const isDataEntry = (
-        matchedUser.role === 'dataEntryAdmin' ||
-        emailLower === 'fareed.ghulam@gmail.com'
+        matchedUser.role === 'dataEntryAdmin'
       );
 
       if (isSuper) {
@@ -442,6 +447,25 @@ export default function App() {
   };
 
   // If user is not authenticated, override and show Registration/Login component
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-4 max-w-sm text-center">
+          <div className="relative w-16 h-16">
+            <div className="absolute inset-0 rounded-full border-4 border-slate-800"></div>
+            <div className="absolute inset-0 rounded-full border-4 border-t-amber-400 animate-spin"></div>
+          </div>
+          <h2 className="text-xl font-bold text-slate-100 font-sans tracking-wide mt-2">
+            لوڈ ہو رہا ہے... (Loading...)
+          </h2>
+          <p className="text-xs text-slate-400 font-sans">
+            براہ کرم انتظار کریں، سیکیورٹی سسٹم اور ڈیٹا بیس کو مربوط کیا جا رہا ہے۔
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (!currentUser) {
     return (
       <>

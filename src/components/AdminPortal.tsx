@@ -1,7 +1,7 @@
 import React, { useState, useEffect, FormEvent } from 'react';
 import { User, NumberLimit, Demand, DrawDeadline, Booking, PakistanBondResult, ThaiLotteryResult, AllResultType } from '../types';
 import { Shield, Plus, Trash, Check, X, UserCheck, AlertTriangle, ShieldCheck, HelpCircle, Sparkles, Clock, MessageCircle, Search, History } from 'lucide-react';
-import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, updateUserPassword, getAdminConfiguredEmail, updateCustomerPassword, registerInAuthOnly } from '../utils/store';
+import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, updateUserPassword, getAdminConfiguredEmail, updateCustomerPassword, registerInAuthOnly, changeLoggedAdminPassword } from '../utils/store';
 import { db } from '../lib/firebase';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 
@@ -46,7 +46,7 @@ export default function AdminPortal({
   onEditResult,
   onDeleteResult
 }: AdminPortalProps) {
-  const isSuper = currentUser?.role === 'superAdmin' || currentUser?.email?.toLowerCase() === 'mastermaindqureshi110@gmail.com' || currentUser?.email?.toLowerCase() === 'mastermaind.qureshi110@gmail.com';
+  const isSuper = currentUser?.role === 'superAdmin' || currentUser?.role === 'admin';
   const defaultTab = isSuper ? 'demands_bookings' : 'results';
   const [activeAdminTab, setActiveAdminTab] = useState<'demands_bookings' | 'results' | 'limits_deadlines' | 'users_finance' | 'admin_management'>(defaultTab);
 
@@ -107,7 +107,9 @@ export default function AdminPortal({
 
   // Admin Password configuration states
   const [adminEmailInput, setAdminEmailInput] = useState('');
+  const [adminCurrentPasswordInput, setAdminCurrentPasswordInput] = useState('');
   const [adminPasswordInput, setAdminPasswordInput] = useState('');
+  const [adminConfirmPasswordInput, setAdminConfirmPasswordInput] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
   const [passwordError, setPasswordError] = useState('');
 
@@ -357,21 +359,27 @@ export default function AdminPortal({
     setPasswordSuccess('');
     setPasswordError('');
 
-    if (!adminEmailInput.trim()) {
-      setPasswordError('برائے مہربانی ایڈمن ای میل درج کریں۔');
+    if (!adminCurrentPasswordInput.trim()) {
+      setPasswordError('برائے مہربانی موجودہ پاس ورڈ درج کریں۔ (Please enter current password.)');
       return;
     }
     if (!adminPasswordInput.trim() || adminPasswordInput.trim().length < 6) {
-      setPasswordError('پاس ورڈ کم از کم 6 ہندسوں کا ہونا چاہیے۔ (Password must be at least 6 characters.)');
+      setPasswordError('نیا پاس ورڈ کم از کم 6 ہندسوں کا ہونا ضروری ہے۔ (New password must be at least 6 characters.)');
+      return;
+    }
+    if (adminPasswordInput !== adminConfirmPasswordInput) {
+      setPasswordError('پاس ورڈ کی تصدیق مماثل نہیں ہے۔ (Confirm password does not match.)');
       return;
     }
 
-    const ok = await updateUserPassword(adminEmailInput.trim(), adminPasswordInput.trim());
-    if (ok) {
-      setPasswordSuccess('کامیاب: ایڈمن پاس ورڈ کامیابی سے تبدیل کر دیا گیا ہے۔');
+    const res = await changeLoggedAdminPassword(adminCurrentPasswordInput.trim(), adminPasswordInput.trim());
+    if (res.success) {
+      setPasswordSuccess('کامیاب: پاس ورڈ کامیابی سے تبدیل کر دیا گیا ہے۔ (Success: Password updated successfully.)');
+      setAdminCurrentPasswordInput('');
       setAdminPasswordInput('');
+      setAdminConfirmPasswordInput('');
     } else {
-      setPasswordError('ایڈمن پاس ورڈ تبدیل کرنے میں خامی پیش آئی۔ برائے مہربانی انٹرنیٹ چیک کریں۔');
+      setPasswordError(res.error || 'پاس ورڈ تبدیل کرنے میں خرابی پیش آئی۔');
     }
   };
 
@@ -424,8 +432,9 @@ export default function AdminPortal({
 
   const handleDeleteAdmin = async (email: string) => {
     const emailClean = email.toLowerCase().trim();
-    if (emailClean === 'mastermaindqureshi110@gmail.com' || emailClean === 'mastermaind.qureshi110@gmail.com') {
-      alert('سپر مالک (Super Owner) کو حذف نہیں کیا جا سکتا۔');
+    const mainOwnerEmail = getAdminConfiguredEmail().toLowerCase().trim();
+    if (emailClean === mainOwnerEmail || emailClean === currentUser?.email?.toLowerCase().trim()) {
+      alert('سپر مالک (Super Owner) یا خود کو حذف نہیں کیا جا سکتا۔');
       return;
     }
 
@@ -447,7 +456,8 @@ export default function AdminPortal({
 
   const handleToggleActiveAdmin = async (email: string, currentActive: boolean) => {
     const emailClean = email.toLowerCase().trim();
-    if (emailClean === 'mastermaindqureshi110@gmail.com' || emailClean === 'mastermaind.qureshi110@gmail.com') {
+    const mainOwnerEmail = getAdminConfiguredEmail().toLowerCase().trim();
+    if (emailClean === mainOwnerEmail || emailClean === currentUser?.email?.toLowerCase().trim()) {
       alert('سپر مالک (Super Owner) کے سٹیٹس میں تبدیلی نہیں کی جا سکتی۔');
       return;
     }
@@ -469,7 +479,8 @@ export default function AdminPortal({
 
   const handleChangeAdminRole = async (email: string, roleToSet: 'superAdmin' | 'dataEntryAdmin') => {
     const emailClean = email.toLowerCase().trim();
-    if (emailClean === 'mastermaindqureshi110@gmail.com' || emailClean === 'mastermaind.qureshi110@gmail.com') {
+    const mainOwnerEmail = getAdminConfiguredEmail().toLowerCase().trim();
+    if (emailClean === mainOwnerEmail || emailClean === currentUser?.email?.toLowerCase().trim()) {
       alert('سپر مالک (Super Owner) کا رول تبدیل نہیں کیا جا سکتا۔');
       return;
     }
@@ -1390,13 +1401,13 @@ export default function AdminPortal({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                  نیا مضبوط پاس ورڈ (New Password) *
+                  موجودہ پاس ورڈ (Current Password) *
                 </label>
                 <input
                   type="password"
-                  placeholder="نیا پاس ورڈ درج کریں"
-                  value={adminPasswordInput}
-                  onChange={(e) => setAdminPasswordInput(e.target.value)}
+                  placeholder="موجودہ پاس ورڈ درج کریں"
+                  value={adminCurrentPasswordInput}
+                  onChange={(e) => setAdminCurrentPasswordInput(e.target.value)}
                   className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 />
@@ -1412,6 +1423,34 @@ export default function AdminPortal({
                   readOnly
                   disabled
                   className="w-full text-left bg-slate-100 border border-slate-200 rounded-2xl py-3 px-4 text-sm font-mono text-slate-500 cursor-not-allowed"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
+                  نیا مضبوط پاس ورڈ (New Password) *
+                </label>
+                <input
+                  type="password"
+                  placeholder="نیا پاس ورڈ درج کریں"
+                  value={adminPasswordInput}
+                  onChange={(e) => setAdminPasswordInput(e.target.value)}
+                  className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
+                  نیا پاس ورڈ دوبارہ درج کریں (Confirm Password) *
+                </label>
+                <input
+                  type="password"
+                  placeholder="نیا پاس ورڈ دوبارہ درج کریں"
+                  value={adminConfirmPasswordInput}
+                  onChange={(e) => setAdminConfirmPasswordInput(e.target.value)}
+                  className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
                 />
               </div>
             </div>
@@ -2127,7 +2166,7 @@ export default function AdminPortal({
                   {users
                     .filter(u => u.isAdmin === true || u.role === 'superAdmin' || u.role === 'dataEntryAdmin' || u.role === 'admin')
                     .map((admin) => {
-                      const isMainOwner = admin.email.toLowerCase() === 'mastermaindqureshi110@gmail.com' || admin.email.toLowerCase() === 'mastermaind.qureshi110@gmail.com';
+                      const isMainOwner = admin.email.toLowerCase() === getAdminConfiguredEmail().toLowerCase().trim();
                       const isActive = admin.active !== false;
                       const formattedLogin = admin.lastLogin 
                         ? new Date(admin.lastLogin).toLocaleString('ur-PK', { timeZone: 'Asia/Karachi' })

@@ -6,7 +6,8 @@ import {
   setDoc, 
   deleteDoc, 
   onSnapshot,
-  runTransaction
+  runTransaction,
+  getDocFromServer
 } from 'firebase/firestore';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { 
@@ -16,7 +17,9 @@ import {
   signOut, 
   sendPasswordResetEmail,
   updatePassword,
-  onAuthStateChanged
+  onAuthStateChanged,
+  EmailAuthProvider,
+  reauthenticateWithCredential
 } from 'firebase/auth';
 import { pakistanBondDraws } from './pakistanBondData';
 import { thaiHistoricalDraws } from './thaiLotteryData';
@@ -81,7 +84,6 @@ export async function checkInternetConnection(): Promise<boolean> {
 }
 
 // Standard storage keys for local preferences
-const LOGGED_IN_EMAIL_KEY = 'mqe_logged_in_email';
 
 const DEFAULT_DEADLINES: DrawDeadline[] = [
   {
@@ -106,7 +108,16 @@ const DEFAULT_USERS: User[] = [
     city: 'لاہور',
     balance: 500000,
     isAdmin: true,
-    role: 'admin'
+    role: 'superAdmin'
+  },
+  {
+    email: 'mastermaind.qureshi110@gmail.com',
+    name: 'ایڈمن قریشی صاحب ڈاٹ',
+    phone: '03453090147',
+    city: 'لاہور',
+    balance: 500000,
+    isAdmin: true,
+    role: 'superAdmin'
   },
   {
     email: 'fareed.ghulam@gmail.com',
@@ -114,7 +125,8 @@ const DEFAULT_USERS: User[] = [
     phone: '03157891234',
     city: 'ملتان',
     balance: 15000,
-    isAdmin: false
+    isAdmin: true,
+    role: 'dataEntryAdmin'
   },
   {
     email: 'customer@test.com',
@@ -122,7 +134,8 @@ const DEFAULT_USERS: User[] = [
     phone: '03214567890',
     city: 'کراچی',
     balance: 3200,
-    isAdmin: false
+    isAdmin: false,
+    role: 'customer'
   }
 ];
 
@@ -211,55 +224,86 @@ export function initializeStore() {
     localStorage.setItem('mqe_whatsapp_number', '923453090146');
   }
 
-  // A. Listen to Auth State to keep local storage synchrony
-  onAuthStateChanged(auth, (firebaseUser) => {
+  // A. Listen to Auth State dynamically
+  onAuthStateChanged(auth, async (firebaseUser) => {
     if (firebaseUser) {
       const email = firebaseUser.email;
       if (email) {
-        localStorage.setItem(LOGGED_IN_EMAIL_KEY, email.toLowerCase().trim());
-        localStorage.removeItem('mqe_user_logged_out_manually');
-        // Auto-verify admin session if they reload or are already authenticated as an admin
         const normalized = email.toLowerCase().trim();
-        const isSuper = (
-          normalized === 'mastermaindqureshi110@gmail.com' ||
-          normalized === 'mastermaind.qureshi110@gmail.com' ||
-          normalized === cachedAdminEmail.toLowerCase().trim()
-        );
-        const isDataEntry = (
-          normalized === 'fareed.ghulam@gmail.com'
-        );
+        // Look up user role dynamically
+        let userProfile = cachedUsers.find(u => u.email.toLowerCase() === normalized);
+        if (!userProfile) {
+          try {
+            const docRef = doc(db, 'users', normalized);
+            const userDoc = await getDocFromServer(docRef);
+            if (userDoc.exists()) {
+              userProfile = userDoc.data() as User;
+            }
+          } catch (e) {
+            console.error("Failed to fetch user role on auth state change:", e);
+          }
+        }
+        
+        const isSuper = userProfile && (userProfile.role === 'superAdmin' || userProfile.role === 'admin');
+        const isDataEntry = userProfile && userProfile.role === 'dataEntryAdmin';
+        
         if (isSuper || isDataEntry) {
           sessionStorage.setItem('admin_verified', 'true');
         }
       }
     } else {
-      // Clear if not logged out manually
-      if (!localStorage.getItem('mqe_user_logged_out_manually')) {
-        localStorage.removeItem(LOGGED_IN_EMAIL_KEY);
-        sessionStorage.removeItem('admin_verified');
-      }
+      sessionStorage.removeItem('admin_verified');
     }
     notifyListeners();
   });
 
-  // B. Seed default accounts in Firebase Auth in the background
-  const seedDefaultUsersInAuth = async () => {
+  // B. Seed default accounts in Firebase Auth and perform safe Firestore role migration
+  const seedAndMigrateDefaultUsers = async () => {
     const defaultUsersToSeed = [
-      { email: 'mastermaindqureshi110@gmail.com', password: '123456' },
-      { email: 'mastermaind.qureshi110@gmail.com', password: '123456' },
-      { email: 'fareed.ghulam@gmail.com', password: '123456' },
-      { email: 'customer@test.com', password: '123456' }
+      { email: 'mastermaindqureshi110@gmail.com', password: '123456', role: 'superAdmin', name: 'ایڈمن قریشی صاحب' },
+      { email: 'mastermaind.qureshi110@gmail.com', password: '123456', role: 'superAdmin', name: 'ایڈمن قریشی صاحب ڈاٹ' },
+      { email: 'fareed.ghulam@gmail.com', password: '123456', role: 'dataEntryAdmin', name: 'غلام فرید' },
+      { email: 'customer@test.com', password: '123456', role: 'customer', name: 'محمد علی' }
     ];
 
     for (const item of defaultUsersToSeed) {
       try {
         await registerInAuthOnly(item.email, item.password);
       } catch (err) {
-        // Safe to ignore if they already exist or other errors
+        // Ignored if user already exists
+      }
+
+      // Safe Firestore role migration/verification
+      try {
+        const docRef = doc(db, 'users', item.email);
+        const userDoc = await getDocFromServer(docRef);
+        if (userDoc.exists()) {
+          const data = userDoc.data() as User;
+          if (data.role !== item.role || data.isAdmin !== (item.role !== 'customer')) {
+            await setDoc(docRef, {
+              role: item.role,
+              isAdmin: item.role !== 'customer'
+            }, { merge: true });
+            console.log(`[Migration] Migrated role/isAdmin for ${item.email} safely.`);
+          }
+        } else {
+          await setDoc(docRef, {
+            email: item.email,
+            name: item.name,
+            phone: item.email === 'fareed.ghulam@gmail.com' ? '03157891234' : '03453090146',
+            city: item.email === 'fareed.ghulam@gmail.com' ? 'ملتان' : 'لاہور',
+            balance: item.email === 'fareed.ghulam@gmail.com' ? 15000 : 500000,
+            isAdmin: item.role !== 'customer',
+            role: item.role
+          });
+          console.log(`[Migration] Created profile for: ${item.email}`);
+        }
+      } catch (err) {
+        console.error(`[Migration] Error migrating database doc for ${item.email}:`, err);
       }
     }
   };
-  seedDefaultUsersInAuth();
+  seedAndMigrateDefaultUsers();
 
   // 1. Listen to users
   onSnapshot(collection(db, 'users'), (snapshot) => {
@@ -270,20 +314,14 @@ export function initializeStore() {
     } else {
       cachedUsers = snapshot.docs.map(doc => {
         const data = doc.data() as User;
-        const emailLower = data.email.toLowerCase().trim();
-        const configLower = cachedAdminEmail.toLowerCase().trim();
         
         const isSuper = (
           data.role === 'superAdmin' ||
-          data.role === 'admin' ||
-          emailLower === configLower || 
-          emailLower === 'mastermaind.qureshi110@gmail.com' || 
-          emailLower === 'mastermaindqureshi110@gmail.com'
+          data.role === 'admin'
         );
 
         const isDataEntry = (
-          data.role === 'dataEntryAdmin' ||
-          emailLower === 'fareed.ghulam@gmail.com'
+          data.role === 'dataEntryAdmin'
         );
 
         if (isSuper) {
@@ -490,21 +528,17 @@ export function saveNumberLimits(limits: NumberLimit[]) {
 }
 
 export function getLoggedInUser(): User | null {
-  const email = localStorage.getItem(LOGGED_IN_EMAIL_KEY);
-  if (!email) return null;
-  const normalizedEmail = email.toLowerCase().trim();
+  const firebaseUser = auth.currentUser;
+  if (!firebaseUser || !firebaseUser.email) return null;
+  const normalizedEmail = firebaseUser.email.toLowerCase().trim();
   const user = cachedUsers.find((u) => u.email.toLowerCase() === normalizedEmail) || null;
   
-  // If the user is an admin, do not auto-login from local storage unless verified via session!
-  const isSuper = user && (user.role === 'superAdmin' || user.role === 'admin' || normalizedEmail === 'mastermaindqureshi110@gmail.com' || normalizedEmail === 'mastermaind.qureshi110@gmail.com');
-  const isDataEntry = user && (user.role === 'dataEntryAdmin' || normalizedEmail === 'fareed.ghulam@gmail.com');
-
-  if (user && (user.isAdmin || isSuper || isDataEntry)) {
+  if (user && (user.isAdmin || user.role === 'superAdmin' || user.role === 'admin' || user.role === 'dataEntryAdmin')) {
     if (sessionStorage.getItem('admin_verified') === 'true') {
       return {
         ...user,
         isAdmin: true,
-        role: isDataEntry ? 'dataEntryAdmin' : 'superAdmin'
+        role: user.role === 'dataEntryAdmin' ? 'dataEntryAdmin' : 'superAdmin'
       };
     }
     return null;
@@ -513,24 +547,18 @@ export function getLoggedInUser(): User | null {
 }
 
 export function setLoggedInUser(email: string) {
-  localStorage.setItem(LOGGED_IN_EMAIL_KEY, email);
-  localStorage.removeItem('mqe_user_logged_out_manually');
-  
   const normalizedEmail = email.toLowerCase().trim();
   const user = cachedUsers.find((u) => u.email.toLowerCase() === normalizedEmail);
-  const isSuper = user && (user.role === 'superAdmin' || user.role === 'admin' || normalizedEmail === 'mastermaindqureshi110@gmail.com' || normalizedEmail === 'mastermaind.qureshi110@gmail.com');
-  const isDataEntry = user && (user.role === 'dataEntryAdmin' || normalizedEmail === 'fareed.ghulam@gmail.com');
+  const isSuper = user && (user.role === 'superAdmin' || user.role === 'admin');
+  const isDataEntry = user && (user.role === 'dataEntryAdmin');
 
   if (user && (user.isAdmin || isSuper || isDataEntry)) {
     sessionStorage.setItem('admin_verified', 'true');
   }
-  syncFirebaseAuth(normalizedEmail);
   notifyListeners();
 }
 
 export function logout() {
-  localStorage.removeItem(LOGGED_IN_EMAIL_KEY);
-  localStorage.setItem('mqe_user_logged_out_manually', 'true');
   sessionStorage.removeItem('admin_verified');
   signOut(auth).catch((e) => console.error("Firebase signOut failed:", e));
   notifyListeners();
@@ -601,6 +629,35 @@ export async function updateUserPassword(email: string, passwordInput: string): 
       alert('اس آپریشن کے لیے دوبارہ لاگ ان کرنے کی ضرورت ہے۔ (This operation requires re-authentication. Please log out and log in again.)');
     }
     return false;
+  }
+}
+
+export async function changeLoggedAdminPassword(currentPassword: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
+  const online = await checkInternetConnection();
+  if (!online) {
+    return { success: false, error: 'انٹرنیٹ کنکشن دستیاب نہیں ہے۔ (No internet connection.)' };
+  }
+
+  const user = auth.currentUser;
+  if (!user || !user.email) {
+    return { success: false, error: 'صارف لاگ ان نہیں ہے۔ (User is not logged in.)' };
+  }
+
+  try {
+    const credential = EmailAuthProvider.credential(user.email, currentPassword);
+    await reauthenticateWithCredential(user, credential);
+    await updatePassword(user, newPassword);
+    return { success: true };
+  } catch (e: any) {
+    console.error("Error changing admin password:", e);
+    if (e && e.code === 'auth/wrong-password') {
+      return { success: false, error: 'موجودہ پاس ورڈ درست نہیں ہے۔ (Current password is incorrect.)' };
+    } else if (e && e.code === 'auth/invalid-credential') {
+      return { success: false, error: 'موجودہ پاس ورڈ درست نہیں ہے۔ (Current password is incorrect.)' };
+    } else if (e && e.code === 'auth/weak-password') {
+      return { success: false, error: 'نیا پاس ورڈ کم از کم 6 ہندسوں کا ہونا ضروری ہے۔ (New password must be at least 6 characters.)' };
+    }
+    return { success: false, error: e?.message || 'پاس ورڈ تبدیل کرنے میں خرابی پیش آئی۔' };
   }
 }
 
