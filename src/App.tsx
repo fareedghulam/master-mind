@@ -32,8 +32,9 @@ import {
   deleteResult
 } from './utils/store';
 import { User, Booking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult } from './types';
-import { db } from './lib/firebase';
+import { db, auth } from './lib/firebase';
 import { doc, getDocFromServer, collection, query, where, getDocsFromServer, setDoc } from 'firebase/firestore';
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import DashboardHeader from './components/DashboardHeader';
 import RegistrationForm from './components/RegistrationForm';
 import DashboardOverview from './components/DashboardOverview';
@@ -188,6 +189,7 @@ export default function App() {
 
       const idLower = identifier.toLowerCase().trim();
       let matchedUser: User | null = null;
+      let emailToAuth = '';
 
       try {
         if (idLower.includes('@')) {
@@ -206,20 +208,45 @@ export default function App() {
           
           if (userDoc.exists()) {
             matchedUser = userDoc.data() as User;
+            emailToAuth = matchedUser.email;
+          } else {
+            emailToAuth = docId;
           }
         } else {
           const q = query(collection(db, 'users'), where('phone', '==', identifier.trim()));
           const querySnapshot = await getDocsFromServer(q);
           if (!querySnapshot.empty) {
             matchedUser = querySnapshot.docs[0].data() as User;
+            emailToAuth = matchedUser.email;
           }
         }
       } catch (err) {
         console.error("Secure login server query failed:", err);
       }
 
-      if (!matchedUser) {
+      if (!emailToAuth) {
         return { success: false, error: 'یہ اکاؤنٹ رجسٹرڈ نہیں ہے۔ (This account is not registered.)' };
+      }
+
+      try {
+        await signInWithEmailAndPassword(auth, emailToAuth.toLowerCase().trim(), passwordInput);
+        if (!matchedUser) {
+          const userDocRef = doc(db, 'users', emailToAuth.toLowerCase().trim());
+          const userDoc = await getDocFromServer(userDocRef);
+          if (userDoc.exists()) {
+            matchedUser = userDoc.data() as User;
+          } else {
+            return { success: false, error: 'پروفائل ریکارڈ نہیں ملا۔ (Profile record not found.)' };
+          }
+        }
+      } catch (err: any) {
+        console.error("Firebase Auth sign in failed:", err);
+        if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found') {
+          return { success: false, error: 'ای میل/موبائل نمبر یا پاس ورڈ درست نہیں ہے۔ (Incorrect email/phone or password.)' };
+        } else if (err.code === 'auth/user-disabled') {
+          return { success: false, error: 'آپ کا اکاؤنٹ غیر فعال کر دیا گیا ہے۔ (Your account has been disabled.)' };
+        }
+        return { success: false, error: `لاگ ان ناکام رہا: ${err.message || 'نامعلوم خامی'}` };
       }
 
       const emailLower = matchedUser.email.toLowerCase().trim();
@@ -242,13 +269,8 @@ export default function App() {
         matchedUser.isAdmin = true;
       }
 
-      const storedPassword = matchedUser.password;
-      const correctPassword = storedPassword || '123456';
-      if (passwordInput !== correctPassword) {
-        return { success: false, error: 'پاس ورڈ درست نہیں ہے۔ (Incorrect password.)' };
-      }
-
       if (matchedUser.isAdmin && matchedUser.active === false) {
+        await signOut(auth);
         return { success: false, error: 'آپ کا ایڈمن اکاؤنٹ غیر فعال کر دیا گیا ہے۔ برائے مہربانی سپر ایڈمن سے رابطہ کریں۔ (Your admin account is deactivated. Please contact Super Admin.)' };
       }
 
@@ -256,7 +278,7 @@ export default function App() {
         sessionStorage.setItem('admin_verified', 'true');
         // Update last login timestamp in Firestore
         try {
-          await setDoc(doc(db, 'users', matchedUser.email), {
+          await setDoc(doc(db, 'users', matchedUser.email.toLowerCase().trim()), {
             lastLogin: new Date().toISOString()
           }, { merge: true });
         } catch (timestampErr) {

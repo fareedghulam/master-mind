@@ -1,5 +1,5 @@
 import { User, Booking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult, AllResultType } from '../types';
-import { db, auth } from '../lib/firebase';
+import { db, auth, firebaseConfig } from '../lib/firebase';
 import { 
   collection, 
   doc, 
@@ -8,60 +8,41 @@ import {
   onSnapshot,
   runTransaction
 } from 'firebase/firestore';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth';
+import { initializeApp, deleteApp } from 'firebase/app';
+import { 
+  getAuth,
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut, 
+  sendPasswordResetEmail,
+  updatePassword,
+  onAuthStateChanged
+} from 'firebase/auth';
 import { pakistanBondDraws } from './pakistanBondData';
 import { thaiHistoricalDraws } from './thaiLotteryData';
 
-export async function syncFirebaseAuth(email: string, passwordInput?: string) {
-  if (!email) return;
-  const normalizedEmail = email.toLowerCase().trim();
-  
-  let password = passwordInput;
-  if (!password) {
-    const user = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
-    if (user) {
-      password = user.password;
-    }
-  }
-  
-  // Default fallback password if none registered yet
-  if (!password) {
-    password = '123456';
-  }
-
+export async function registerInAuthOnly(email: string, passwordInput: string): Promise<void> {
+  const secondaryAppName = `SecondaryAuth_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
+  const secondaryAuth = getAuth(secondaryApp);
   try {
-    await signInWithEmailAndPassword(auth, normalizedEmail, password);
-    console.log(`[FirebaseAuth] Silent sign-in success for ${normalizedEmail}`);
+    await createUserWithEmailAndPassword(secondaryAuth, email.toLowerCase().trim(), passwordInput);
+    console.log(`[FirebaseAuth] Registered user ${email} in Auth successfully.`);
   } catch (err: any) {
-    if (err.code === 'auth/operation-not-allowed') {
-      console.warn(
-        `[FirebaseAuth] Silent auth is unavailable because the Email/Password sign-in provider is disabled in your Firebase Console.\n` +
-        `To fix this, please enable Email/Password authentication in the Firebase Console:\n` +
-        `1. Go to Authentication -> Sign-in method\n` +
-        `2. Click "Add new provider" and choose "Email/Password"\n` +
-        `3. Enable it and save.`
-      );
-    } else if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
-      try {
-        await createUserWithEmailAndPassword(auth, normalizedEmail, password);
-        console.log(`[FirebaseAuth] Registered and signed in for ${normalizedEmail}`);
-      } catch (createErr: any) {
-        if (createErr && createErr.code === 'auth/operation-not-allowed') {
-          console.warn(
-            `[FirebaseAuth] Auto-registration failed because the Email/Password sign-in provider is disabled in your Firebase Console.\n` +
-            `To fix this, please enable Email/Password authentication in the Firebase Console:\n` +
-            `1. Go to Authentication -> Sign-in method\n` +
-            `2. Click "Add new provider" and choose "Email/Password"\n` +
-            `3. Enable it and save.`
-          );
-        } else {
-          console.error("[FirebaseAuth] Failed to auto-register in Auth:", createErr);
-        }
-      }
+    if (err && err.code === 'auth/email-already-in-use') {
+      console.log(`[FirebaseAuth] User ${email} already exists in Auth.`);
     } else {
-      console.error("[FirebaseAuth] Silent auth sign-in error:", err);
+      console.error(`[FirebaseAuth] Error in registerInAuthOnly for ${email}:`, err);
+      throw err;
     }
+  } finally {
+    await deleteApp(secondaryApp);
   }
+}
+
+export async function syncFirebaseAuth(email: string, passwordInput?: string) {
+  // Now managed reactively via onAuthStateChanged and direct logins.
+  console.log(`[FirebaseAuth] syncFirebaseAuth called for ${email} (handled by onAuthStateChanged).`);
 }
 
 export async function checkInternetConnection(): Promise<boolean> {
@@ -230,6 +211,56 @@ export function initializeStore() {
     localStorage.setItem('mqe_whatsapp_number', '923453090146');
   }
 
+  // A. Listen to Auth State to keep local storage synchrony
+  onAuthStateChanged(auth, (firebaseUser) => {
+    if (firebaseUser) {
+      const email = firebaseUser.email;
+      if (email) {
+        localStorage.setItem(LOGGED_IN_EMAIL_KEY, email.toLowerCase().trim());
+        localStorage.removeItem('mqe_user_logged_out_manually');
+        // Auto-verify admin session if they reload or are already authenticated as an admin
+        const normalized = email.toLowerCase().trim();
+        const isSuper = (
+          normalized === 'mastermaindqureshi110@gmail.com' ||
+          normalized === 'mastermaind.qureshi110@gmail.com' ||
+          normalized === cachedAdminEmail.toLowerCase().trim()
+        );
+        const isDataEntry = (
+          normalized === 'fareed.ghulam@gmail.com'
+        );
+        if (isSuper || isDataEntry) {
+          sessionStorage.setItem('admin_verified', 'true');
+        }
+      }
+    } else {
+      // Clear if not logged out manually
+      if (!localStorage.getItem('mqe_user_logged_out_manually')) {
+        localStorage.removeItem(LOGGED_IN_EMAIL_KEY);
+        sessionStorage.removeItem('admin_verified');
+      }
+    }
+    notifyListeners();
+  });
+
+  // B. Seed default accounts in Firebase Auth in the background
+  const seedDefaultUsersInAuth = async () => {
+    const defaultUsersToSeed = [
+      { email: 'mastermaindqureshi110@gmail.com', password: '123456' },
+      { email: 'mastermaind.qureshi110@gmail.com', password: '123456' },
+      { email: 'fareed.ghulam@gmail.com', password: '123456' },
+      { email: 'customer@test.com', password: '123456' }
+    ];
+
+    for (const item of defaultUsersToSeed) {
+      try {
+        await registerInAuthOnly(item.email, item.password);
+      } catch (err) {
+        // Safe to ignore if they already exist or other errors
+      }
+    }
+  };
+  seedDefaultUsersInAuth();
+
   // 1. Listen to users
   onSnapshot(collection(db, 'users'), (snapshot) => {
     if (snapshot.empty) {
@@ -274,10 +305,6 @@ export function initializeStore() {
           role: data.role || 'customer'
         };
       });
-      const loggedInEmail = localStorage.getItem(LOGGED_IN_EMAIL_KEY);
-      if (loggedInEmail) {
-        syncFirebaseAuth(loggedInEmail);
-      }
       notifyListeners();
     }
   });
@@ -553,15 +580,26 @@ export async function updateUserPassword(email: string, passwordInput: string): 
   }
 
   try {
+    if (auth.currentUser && auth.currentUser.email?.toLowerCase().trim() === normalizedEmail) {
+      await updatePassword(auth.currentUser, passwordInput);
+      console.log(`[FirebaseAuth] Successfully updated password via Auth API for currently logged in admin: ${normalizedEmail}`);
+    } else {
+      await sendPasswordResetEmail(auth, normalizedEmail);
+      console.log(`[FirebaseAuth] Sent password reset link to: ${normalizedEmail} (since they are a different user)`);
+    }
+
     for (const em of emailsToUpdate) {
+      // Store profile updates only, DO NOT store plain-text passwords
       await setDoc(doc(db, 'users', em), {
-        password: passwordInput,
         isAdmin: true
       }, { merge: true });
     }
     return true;
-  } catch (e) {
+  } catch (e: any) {
     console.error("Error updating user password:", e);
+    if (e && e.code === 'auth/requires-recent-login') {
+      alert('اس آپریشن کے لیے دوبارہ لاگ ان کرنے کی ضرورت ہے۔ (This operation requires re-authentication. Please log out and log in again.)');
+    }
     return false;
   }
 }
@@ -572,11 +610,17 @@ export async function updateCustomerPassword(email: string, passwordInput: strin
 
   const normalizedEmail = email.toLowerCase().trim();
   try {
+    if (auth.currentUser && auth.currentUser.email?.toLowerCase().trim() === normalizedEmail) {
+      await updatePassword(auth.currentUser, passwordInput);
+    } else {
+      await sendPasswordResetEmail(auth, normalizedEmail);
+    }
+    // Profile metadata merge only, DO NOT store plain-text passwords
     await setDoc(doc(db, 'users', normalizedEmail), {
-      password: passwordInput
+      email: normalizedEmail
     }, { merge: true });
     return true;
-  } catch (e) {
+  } catch (e: any) {
     console.error("Error updating customer password:", e);
     return false;
   }
@@ -588,7 +632,7 @@ export async function registerUser(name: string, phone: string, city: string, em
   if (!online) {
     return null;
   }
-  const normalizedEmail = email.toLowerCase();
+  const normalizedEmail = email.toLowerCase().trim();
   const existing = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
   if (existing) {
     return existing;
@@ -601,15 +645,16 @@ export async function registerUser(name: string, phone: string, city: string, em
     city,
     balance: 100, // starting balance
     isAdmin,
-    role: isAdmin ? 'admin' : 'customer',
-    password
+    role: isAdmin ? 'admin' : 'customer'
   };
   try {
+    // 1. Create account in Firebase Authentication
+    await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+    // 2. Write profile information to Firestore
     await setDoc(doc(db, 'users', normalizedEmail), newUser);
-    syncFirebaseAuth(normalizedEmail, password);
     return newUser;
   } catch (e) {
-    console.error(e);
+    console.error("Error in registerUser:", e);
     return null;
   }
 }

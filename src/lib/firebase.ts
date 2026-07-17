@@ -2,7 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyAdxB4gKa6AB9mrOuE6PeQGzbUVUtXKBKs",
   authDomain: "cool-segment-c79b0.firebaseapp.com",
   projectId: "cool-segment-c79b0",

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, FormEvent } from 'react';
 import { User, NumberLimit, Demand, DrawDeadline, Booking, PakistanBondResult, ThaiLotteryResult, AllResultType } from '../types';
 import { Shield, Plus, Trash, Check, X, UserCheck, AlertTriangle, ShieldCheck, HelpCircle, Sparkles, Clock, MessageCircle, Search, History } from 'lucide-react';
-import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, updateUserPassword, getAdminConfiguredEmail, updateCustomerPassword, syncFirebaseAuth } from '../utils/store';
+import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, updateUserPassword, getAdminConfiguredEmail, updateCustomerPassword, registerInAuthOnly } from '../utils/store';
 import { db } from '../lib/firebase';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 
@@ -393,7 +393,10 @@ export default function AdminPortal({
     const emailClean = newAdminEmail.toLowerCase().trim();
 
     try {
-      // 1. Create user document in Firestore users collection
+      // 1. Register/Sync in Firebase Authentication first so they can log in
+      await registerInAuthOnly(emailClean, newAdminPassword);
+
+      // 2. Create user document in Firestore users collection (profile data only, no password!)
       const newAdminDoc = {
         email: emailClean,
         name: newAdminName.trim(),
@@ -402,15 +405,11 @@ export default function AdminPortal({
         balance: 0,
         isAdmin: true,
         role: newAdminRole,
-        password: newAdminPassword,
         active: true,
         lastLogin: null
       };
 
       await setDoc(doc(db, 'users', emailClean), newAdminDoc);
-
-      // 2. Register/Sync in Firebase Authentication so they can log in
-      await syncFirebaseAuth(emailClean, newAdminPassword);
 
       setAdminManageSuccess(`کامیاب: نیا ایڈمن ${newAdminName} کامیابی سے بنا دیا گیا ہے اور لاگ ان کے لیے تیار ہے۔`);
       setNewAdminName('');
