@@ -34,6 +34,9 @@ export async function registerInAuthOnly(email: string, passwordInput: string): 
   } catch (err: any) {
     if (err && err.code === 'auth/email-already-in-use') {
       console.log(`[FirebaseAuth] User ${email} already exists in Auth.`);
+    } else if (err && err.code === 'auth/operation-not-allowed') {
+      console.error(`[FirebaseAuth] Error: Email/Password provider is disabled in the Firebase Console. Please enable it in Authentication -> Sign-in method -> Email/Password.`, err);
+      throw err;
     } else {
       console.error(`[FirebaseAuth] Error in registerInAuthOnly for ${email}:`, err);
       throw err;
@@ -284,12 +287,6 @@ export function initializeStore() {
     ];
 
     for (const item of defaultUsersToSeed) {
-      try {
-        await registerInAuthOnly(item.email, item.password);
-      } catch (err) {
-        // Ignored if user already exists
-      }
-
       // Safe Firestore role migration/verification
       try {
         const docRef = doc(db, 'users', item.email);
@@ -308,6 +305,13 @@ export function initializeStore() {
             }
           }
         } else {
+          // Create the user in Auth first
+          try {
+            await registerInAuthOnly(item.email, item.password);
+          } catch (err) {
+            // Auth error logged inside registerInAuthOnly
+          }
+
           await setDoc(docRef, {
             email: item.email,
             name: item.name,
