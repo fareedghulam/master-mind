@@ -1123,7 +1123,11 @@ export async function setDrawDeadline(
   category: 'pakistan_bond' | 'thailand_lottery',
   deadlineIso: string,
   titleUrdu: string,
-  status: 'open' | 'closed'
+  status: 'open' | 'closed',
+  nextPrizeBondValue?: string,
+  nextDrawCity?: string,
+  nextDrawNumber?: string,
+  nextDrawDate?: string
 ): Promise<void> {
   const online = await checkInternetConnection();
   if (!online) return;
@@ -1132,7 +1136,11 @@ export async function setDrawDeadline(
     category,
     deadlineIso,
     titleUrdu,
-    status
+    status,
+    ...(nextPrizeBondValue !== undefined && { nextPrizeBondValue }),
+    ...(nextDrawCity !== undefined && { nextDrawCity }),
+    ...(nextDrawNumber !== undefined && { nextDrawNumber }),
+    ...(nextDrawDate !== undefined && { nextDrawDate })
   };
   await setDoc(doc(db, 'deadlines', category), deadline);
 }

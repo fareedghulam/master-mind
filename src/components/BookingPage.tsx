@@ -80,6 +80,21 @@ export default function BookingPage({
     }
   };
 
+  const getFormattedClosedOn = () => {
+    if (!categoryDeadline) return '';
+    try {
+      const d = new Date(categoryDeadline.deadlineIso);
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      return `${day}/${month}/${year} ${hours}:${minutes}`;
+    } catch (e) {
+      return categoryDeadline.deadlineIso;
+    }
+  };
+
   const pageTitleUrdu = category === 'pakistan_bond' ? 'پاکستان بانڈ بکنگ پورٹل' : 'تھائی لینڈ لاٹری بکنگ پورٹل';
   const pageTitleEnglish = category === 'pakistan_bond' ? 'PAKISTAN BOND DRAW' : 'THAILAND LOTTERY DRAW';
 
@@ -220,45 +235,88 @@ export default function BookingPage({
       </div>
 
       {/* Draw/Booking Deadline Status Banner */}
-      <div className={`p-5 rounded-3xl border flex flex-col md:flex-row justify-between items-center gap-4 shadow-sm transition-all ${
+      <div className={`p-5 rounded-3xl border flex flex-col shadow-sm transition-all ${
         isTimeUp 
           ? 'bg-red-50 border-red-200 text-red-950' 
           : 'bg-emerald-50/70 border-emerald-100 text-slate-800'
       }`}>
-        <div className="flex items-center gap-3 order-last md:order-first">
-          {isTimeUp ? (
-            <div className="bg-red-600 text-white font-bold px-4 py-2 rounded-2xl text-xs animate-pulse flex items-center gap-1.5 shadow-sm shadow-red-500/10">
-              <Clock className="w-4 h-4" />
-              <span>بکنگ پورشن بند ہے (Closed)</span>
-            </div>
-          ) : (
-            <div className="bg-emerald-600 text-white font-bold px-4 py-2 rounded-2xl text-xs flex items-center gap-1.5 shadow-sm shadow-emerald-500/10">
-              <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>
-              <span>بکنگ فائنل کھل گئی ہے (Open)</span>
-            </div>
-          )}
-        </div>
-
-        <div className="text-center md:text-right space-y-1">
-          <div className="flex items-center justify-center md:justify-end gap-2 text-slate-900 font-bold">
-            <span className={isTimeUp ? 'text-red-700' : 'text-slate-800'}>
-              {categoryDeadline?.titleUrdu || 'بکنگ فائنل کھل گئی ہے'}
-            </span>
-            <Sparkles className={`w-4 h-4 ${isTimeUp ? 'text-red-500' : 'text-amber-500'}`} />
-          </div>
-          <p className="text-xs text-slate-500">
-            بکنگ کا آخری وقت اور تاریخ: <span className="font-semibold text-slate-800">{getFormattedDeadline()}</span>
-          </p>
-          <div className="text-xs">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-3 order-last md:order-first w-full md:w-auto justify-between md:justify-start">
             {isTimeUp ? (
-              <span className="text-red-600 font-bold block mt-1">بکنگ کا وقت پورا ہو گیا ہے، اس لئے اب کوئی نئی بکنگ یا ڈیمانڈ قبول نہیں کی جا رہی۔</span>
+              <div className="flex flex-col gap-1 items-start">
+                <div className="bg-red-600 text-white font-bold px-4 py-2 rounded-2xl text-xs animate-pulse flex items-center gap-1.5 shadow-sm shadow-red-500/10">
+                  <Clock className="w-4 h-4" />
+                  <span>بکنگ پورشن بند ہے (Closed)</span>
+                </div>
+                <div className="text-left mt-2 pl-1">
+                  <div className="text-xs font-bold text-red-800">Booking Closed</div>
+                  <div className="text-[11px] text-slate-600 font-mono">Closed On: {getFormattedClosedOn()}</div>
+                </div>
+              </div>
             ) : (
-              <span className="text-emerald-700 font-semibold flex items-center justify-center md:justify-end gap-1 block mt-1">
-                <Clock className="w-3.5 h-3.5 inline text-emerald-600" />
-                <span>بکنگ ختم ہونے میں باقی وقت: <strong>{getRemainingTimeString()}</strong></span>
-              </span>
+              <div className="bg-emerald-600 text-white font-bold px-4 py-2 rounded-2xl text-xs flex items-center gap-1.5 shadow-sm shadow-emerald-500/10">
+                <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>
+                <span>بکنگ فائنل کھل گئی ہے (Open)</span>
+              </div>
             )}
           </div>
+
+          <div className="text-center md:text-right space-y-1 w-full md:w-auto">
+            <div className="flex items-center justify-center md:justify-end gap-2 text-slate-900 font-bold">
+              <span className={isTimeUp ? 'text-red-700' : 'text-slate-800'}>
+                {categoryDeadline?.titleUrdu || 'بکنگ فائنل کھل گئی ہے'}
+              </span>
+              <Sparkles className={`w-4 h-4 ${isTimeUp ? 'text-red-500' : 'text-amber-500'}`} />
+            </div>
+            <p className="text-xs text-slate-500">
+              بکنگ کا آخری وقت اور تاریخ: <span className="font-semibold text-slate-800">{getFormattedDeadline()}</span>
+            </p>
+            <div className="text-xs">
+              {isTimeUp ? (
+                <span className="text-red-600 font-bold block mt-1">بکنگ کا وقت پورا ہو گیا ہے، اس لئے اب کوئی نئی بکنگ یا ڈیمانڈ قبول نہیں کی جا رہی۔</span>
+              ) : (
+                <span className="text-emerald-700 font-semibold flex items-center justify-center md:justify-end gap-1 block mt-1">
+                  <Clock className="w-3.5 h-3.5 inline text-emerald-600" />
+                  <span>بکنگ ختم ہونے میں باقی وقت: <strong>{getRemainingTimeString()}</strong></span>
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Next Draw Information Section */}
+        <div className="mt-4 pt-4 border-t border-dashed border-slate-300/60">
+          <h4 className="text-xs font-bold text-slate-700 mb-2.5 flex items-center justify-end gap-1.5">
+            <span>اگلے ڈرا کی معلومات (Next Draw Info)</span>
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+          </h4>
+          {category === 'pakistan_bond' ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-right">
+              <div className="p-3 bg-white/80 rounded-2xl border border-slate-100 shadow-xs">
+                <span className="block text-[10px] text-slate-500 font-medium mb-0.5">اگلی بانڈ مالیت</span>
+                <span className="text-xs font-bold text-slate-800 font-mono">{categoryDeadline?.nextPrizeBondValue || '---'}</span>
+              </div>
+              <div className="p-3 bg-white/80 rounded-2xl border border-slate-100 shadow-xs">
+                <span className="block text-[10px] text-slate-500 font-medium mb-0.5">اگلا ڈرا شہر</span>
+                <span className="text-xs font-bold text-slate-800">{categoryDeadline?.nextDrawCity || '---'}</span>
+              </div>
+              <div className="p-3 bg-white/80 rounded-2xl border border-slate-100 shadow-xs">
+                <span className="block text-[10px] text-slate-500 font-medium mb-0.5">اگلا ڈرا نمبر</span>
+                <span className="text-xs font-bold text-slate-800 font-mono">{categoryDeadline?.nextDrawNumber || '---'}</span>
+              </div>
+              <div className="p-3 bg-white/80 rounded-2xl border border-slate-100 shadow-xs">
+                <span className="block text-[10px] text-slate-500 font-medium mb-0.5">اگلی ڈرا تاریخ</span>
+                <span className="text-xs font-bold text-slate-800 font-mono">{categoryDeadline?.nextDrawDate || '---'}</span>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 text-right">
+              <div className="p-3 bg-white/80 rounded-2xl border border-slate-100 shadow-xs flex justify-between items-center">
+                <span className="text-[10px] text-slate-500 font-medium">اگلی ڈرا تاریخ (Next Draw Date)</span>
+                <span className="text-xs font-bold text-slate-800 font-mono">{categoryDeadline?.nextDrawDate || '---'}</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

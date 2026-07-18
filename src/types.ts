@@ -44,6 +44,10 @@ export interface DrawDeadline {
   titleUrdu: string;
   deadlineIso: string;
   status: 'open' | 'closed';
+  nextPrizeBondValue?: string;
+  nextDrawCity?: string;
+  nextDrawNumber?: string;
+  nextDrawDate?: string;
 }
 
 export interface PakistanBondResult {

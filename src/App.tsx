@@ -151,9 +151,27 @@ export default function App() {
     return await verifyNetworkAndExecute(action);
   };
 
-  const handleSetDeadline = async (category: 'pakistan_bond' | 'thailand_lottery', deadlineIso: string, titleUrdu: string, status: 'open' | 'closed') => {
+  const handleSetDeadline = async (
+    category: 'pakistan_bond' | 'thailand_lottery',
+    deadlineIso: string,
+    titleUrdu: string,
+    status: 'open' | 'closed',
+    nextPrizeBondValue?: string,
+    nextDrawCity?: string,
+    nextDrawNumber?: string,
+    nextDrawDate?: string
+  ) => {
     const action = async () => {
-      await setDrawDeadline(category, deadlineIso, titleUrdu, status);
+      await setDrawDeadline(
+        category,
+        deadlineIso,
+        titleUrdu,
+        status,
+        nextPrizeBondValue,
+        nextDrawCity,
+        nextDrawNumber,
+        nextDrawDate
+      );
       syncWithStore();
       return true;
     };

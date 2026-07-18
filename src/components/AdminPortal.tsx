@@ -20,7 +20,16 @@ interface AdminPortalProps {
   onDeleteLimit: (id: string) => Promise<any>;
   onApproveDemand: (id: string) => Promise<{ success: boolean; error?: string }>;
   onRejectDemand: (id: string) => Promise<{ success: boolean; error?: string }>;
-  onSetDeadline: (category: 'pakistan_bond' | 'thailand_lottery', deadlineIso: string, titleUrdu: string, status: 'open' | 'closed') => void;
+  onSetDeadline: (
+    category: 'pakistan_bond' | 'thailand_lottery',
+    deadlineIso: string,
+    titleUrdu: string,
+    status: 'open' | 'closed',
+    nextPrizeBondValue?: string,
+    nextDrawCity?: string,
+    nextDrawNumber?: string,
+    nextDrawDate?: string
+  ) => void;
   onAddResult: (result: AllResultType) => Promise<{ success: boolean; error?: string }>;
   onEditResult: (result: AllResultType) => Promise<{ success: boolean; error?: string }>;
   onDeleteResult: (id: string, category: 'pakistan_bond' | 'thailand_lottery') => Promise<{ success: boolean; error?: string }>;
@@ -80,6 +89,11 @@ export default function AdminPortal({
   const [deadlineError, setDeadlineError] = useState('');
   const [deadlineSuccess, setDeadlineSuccess] = useState('');
 
+  const [nextPrizeBondValue, setNextPrizeBondValue] = useState('');
+  const [nextDrawCity, setNextDrawCity] = useState('');
+  const [nextDrawNumber, setNextDrawNumber] = useState('');
+  const [nextDrawDate, setNextDrawDate] = useState('');
+
   // Pre-populate deadline inputs when category or deadlines change
   useEffect(() => {
     const existing = deadlines.find(d => d.category === deadlineCategory);
@@ -87,6 +101,15 @@ export default function AdminPortal({
       setDeadlineTitle(existing.titleUrdu);
       setDeadlineDateTime(existing.deadlineIso);
       setDeadlineStatus(existing.status || 'open');
+      setNextPrizeBondValue(existing.nextPrizeBondValue || '');
+      setNextDrawCity(existing.nextDrawCity || '');
+      setNextDrawNumber(existing.nextDrawNumber || '');
+      setNextDrawDate(existing.nextDrawDate || '');
+    } else {
+      setNextPrizeBondValue('');
+      setNextDrawCity('');
+      setNextDrawNumber('');
+      setNextDrawDate('');
     }
   }, [deadlineCategory, deadlines]);
 
@@ -606,7 +629,16 @@ export default function AdminPortal({
       return;
     }
 
-    onSetDeadline(deadlineCategory, deadlineDateTime, deadlineTitle || 'بکنگ فائنل کھل گئی ہے', deadlineStatus);
+    onSetDeadline(
+      deadlineCategory,
+      deadlineDateTime,
+      deadlineTitle || 'بکنگ فائنل کھل گئی ہے',
+      deadlineStatus,
+      nextPrizeBondValue,
+      nextDrawCity,
+      nextDrawNumber,
+      nextDrawDate
+    );
     setDeadlineSuccess(`کامیاب: ${deadlineCategory === 'pakistan_bond' ? 'پاکستان بانڈ' : 'تھائی لینڈ لاٹری'} کی سیٹنگز کامیابی سے محفوظ ہو گئی ہیں!`);
   };
 
@@ -1244,6 +1276,63 @@ export default function AdminPortal({
                 />
               </div>
 
+              {/* Next Draw Fields (Conditional on category) */}
+              {deadlineCategory === 'pakistan_bond' && (
+                <>
+                  <div>
+                    <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
+                      اگلی انعامی بانڈ مالیت (Next Prize Bond Value)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="مثال: 750"
+                      value={nextPrizeBondValue}
+                      onChange={(e) => setNextPrizeBondValue(e.target.value)}
+                      className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
+                      اگلا ڈرا شہر (Next Draw City)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="مثال: لاہور"
+                      value={nextDrawCity}
+                      onChange={(e) => setNextDrawCity(e.target.value)}
+                      className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
+                      اگلا ڈرا نمبر (Next Draw Number)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="مثال: 95"
+                      value={nextDrawNumber}
+                      onChange={(e) => setNextDrawNumber(e.target.value)}
+                      className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
+                    />
+                  </div>
+                </>
+              )}
+
+              <div>
+                <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
+                  اگلی ڈرا تاریخ (Next Draw Date)
+                </label>
+                <input
+                  type="text"
+                  placeholder="مثال: 15-08-2026"
+                  value={nextDrawDate}
+                  onChange={(e) => setNextDrawDate(e.target.value)}
+                  className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
+                />
+              </div>
+
             </div>
 
             <button
@@ -1282,6 +1371,28 @@ export default function AdminPortal({
                       <p className="text-[11px] text-slate-500 font-mono">
                         تاریخ: {new Date(d.deadlineIso).toLocaleString('en-US')}
                       </p>
+                      {d.category === 'pakistan_bond' ? (
+                        <div className="mt-1 pt-1 border-t border-slate-200/50 space-y-0.5 text-[10px] text-slate-500">
+                          {d.nextPrizeBondValue && (
+                            <div>اگلی مالیت: <strong className="text-slate-700">{d.nextPrizeBondValue}</strong></div>
+                          )}
+                          {d.nextDrawCity && (
+                            <div>اگلا شہر: <strong className="text-slate-700">{d.nextDrawCity}</strong></div>
+                          )}
+                          {d.nextDrawNumber && (
+                            <div>اگلا نمبر: <strong className="text-slate-700">{d.nextDrawNumber}</strong></div>
+                          )}
+                          {d.nextDrawDate && (
+                            <div>اگلی ڈرا تاریخ: <strong className="text-slate-700">{d.nextDrawDate}</strong></div>
+                          )}
+                        </div>
+                      ) : (
+                        d.nextDrawDate && (
+                          <div className="mt-1 pt-1 border-t border-slate-200/50 text-[10px] text-slate-500">
+                            اگلی ڈرا تاریخ: <strong className="text-slate-700">{d.nextDrawDate}</strong>
+                          </div>
+                        )
+                      )}
                     </div>
 
                     {/* Quick action buttons to instantly toggle booking status */}
@@ -1291,7 +1402,16 @@ export default function AdminPortal({
                         onClick={() => {
                           const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
                           const isoStr = futureDate.toISOString().slice(0, 16);
-                          onSetDeadline(d.category, isoStr, 'بکنگ فائنل کھل گئی ہے', 'open');
+                          onSetDeadline(
+                            d.category,
+                            isoStr,
+                            'بکنگ فائنل کھل گئی ہے',
+                            'open',
+                            d.nextPrizeBondValue,
+                            d.nextDrawCity,
+                            d.nextDrawNumber,
+                            d.nextDrawDate
+                          );
                         }}
                         className={`py-1.5 px-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer text-center flex items-center justify-center gap-1 border ${
                           !isOver 
@@ -1307,7 +1427,16 @@ export default function AdminPortal({
                         onClick={() => {
                           const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
                           const isoStr = pastDate.toISOString().slice(0, 16);
-                          onSetDeadline(d.category, isoStr, 'بکنگ فائنل بند ہے', 'closed');
+                          onSetDeadline(
+                            d.category,
+                            isoStr,
+                            'بکنگ فائنل بند ہے',
+                            'closed',
+                            d.nextPrizeBondValue,
+                            d.nextDrawCity,
+                            d.nextDrawNumber,
+                            d.nextDrawDate
+                          );
                         }}
                         className={`py-1.5 px-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer text-center flex items-center justify-center gap-1 border ${
                           isOver 
