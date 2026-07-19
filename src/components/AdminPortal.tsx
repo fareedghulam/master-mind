@@ -425,10 +425,15 @@ export default function AdminPortal({
 
     try {
       // 1. Register/Sync in Firebase Authentication first so they can log in
-      await registerInAuthOnly(emailClean, newAdminPassword);
+      const uid = await registerInAuthOnly(emailClean, newAdminPassword);
+
+      if (!uid) {
+        throw new Error('ایڈمن لاگ ان بنانے میں ناکامی (Failed to create auth user)');
+      }
 
       // 2. Create user document in Firestore users collection (profile data only, no password!)
       const newAdminDoc = {
+        uid,
         email: emailClean,
         name: newAdminName.trim(),
         phone: newAdminPhone.trim(),
@@ -440,7 +445,7 @@ export default function AdminPortal({
         lastLogin: null
       };
 
-      await setDoc(doc(db, 'users', emailClean), newAdminDoc);
+      await setDoc(doc(db, 'users', uid), newAdminDoc);
 
       setAdminManageSuccess(`کامیاب: نیا ایڈمن ${newAdminName} کامیابی سے بنا دیا گیا ہے اور لاگ ان کے لیے تیار ہے۔`);
       setNewAdminName('');
@@ -469,7 +474,9 @@ export default function AdminPortal({
     setAdminManageSuccess('');
 
     try {
-      await deleteDoc(doc(db, 'users', emailClean));
+      const cached = users.find(u => u.email.toLowerCase() === emailClean);
+      const uid = cached?.uid || emailClean;
+      await deleteDoc(doc(db, 'users', uid));
       setAdminManageSuccess(`کامیاب: ایڈمن (${email}) کا ریکارڈ کامیابی سے حذف کر دیا گیا ہے۔`);
     } catch (err: any) {
       console.error("Delete admin error:", err);
@@ -490,7 +497,9 @@ export default function AdminPortal({
 
     try {
       const isDeactivating = (currentActive !== false);
-      await setDoc(doc(db, 'users', emailClean), {
+      const cached = users.find(u => u.email.toLowerCase() === emailClean);
+      const uid = cached?.uid || emailClean;
+      await setDoc(doc(db, 'users', uid), {
         active: !isDeactivating
       }, { merge: true });
       setAdminManageSuccess(`ایڈمن اکاؤنٹ کامیابی سے ${!isDeactivating ? 'فعال (Activate)' : 'غیر فعال (Deactivate)'} کر دیا گیا ہے۔`);
@@ -512,7 +521,9 @@ export default function AdminPortal({
     setAdminManageSuccess('');
 
     try {
-      await setDoc(doc(db, 'users', emailClean), {
+      const cached = users.find(u => u.email.toLowerCase() === emailClean);
+      const uid = cached?.uid || emailClean;
+      await setDoc(doc(db, 'users', uid), {
         role: roleToSet
       }, { merge: true });
       setAdminManageSuccess(`ایڈمن رول کامیابی سے تبدیل کر کے ${roleToSet === 'superAdmin' ? 'Super Admin' : 'Data Entry Admin'} کر دیا گیا ہے۔`);

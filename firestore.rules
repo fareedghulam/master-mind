@@ -76,10 +76,10 @@ service cloud.firestore {
       return request.auth != null && (
         request.auth.token.email.lower() == 'mastermaindqureshi110@gmail.com' ||
         request.auth.token.email.lower() == 'mastermaind.qureshi110@gmail.com' ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.token.email.lower())) && (
-          get(/databases/$(database)/documents/users/$(request.auth.token.email.lower())).data.role == 'superAdmin' ||
-          get(/databases/$(database)/documents/users/$(request.auth.token.email.lower())).data.role == 'admin' ||
-          get(/databases/$(database)/documents/users/$(request.auth.token.email.lower())).data.isAdmin == true
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superAdmin' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true
         ))
       );
     }
@@ -87,19 +87,19 @@ service cloud.firestore {
     function isDataEntryAdmin() {
       return request.auth != null && (
         request.auth.token.email.lower() == 'fareed.ghulam@gmail.com' ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.token.email.lower())) && (
-          get(/databases/$(database)/documents/users/$(request.auth.token.email.lower())).data.role == 'dataEntryAdmin'
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'dataEntryAdmin'
         ))
       );
     }
 
-    match /users/{email} {
+    match /users/{uid} {
       allow read: if true;
-      allow create: if isValidId(email) && isValidUser(request.resource.data);
-      allow update: if isValidId(email) && (
+      allow create: if isValidId(uid) && isValidUser(request.resource.data);
+      allow update: if isValidId(uid) && (
         isSuperAdmin() || (
           request.auth != null && 
-          request.auth.token.email.lower() == email.lower() &&
+          request.auth.uid == uid &&
           request.resource.data.balance == resource.data.balance &&
           request.resource.data.isAdmin == resource.data.isAdmin &&
           request.resource.data.role == resource.data.role

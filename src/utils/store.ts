@@ -24,16 +24,22 @@ import {
 import { pakistanBondDraws } from './pakistanBondData';
 import { thaiHistoricalDraws } from './thaiLotteryData';
 
-export async function registerInAuthOnly(email: string, passwordInput: string): Promise<void> {
+export async function registerInAuthOnly(email: string, passwordInput: string): Promise<string> {
   const secondaryAppName = `SecondaryAuth_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
   const secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
   const secondaryAuth = getAuth(secondaryApp);
   try {
-    await createUserWithEmailAndPassword(secondaryAuth, email.toLowerCase().trim(), passwordInput);
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email.toLowerCase().trim(), passwordInput);
     console.log(`[FirebaseAuth] Registered user ${email} in Auth successfully.`);
+    return cred.user.uid;
   } catch (err: any) {
     if (err && err.code === 'auth/email-already-in-use') {
       console.log(`[FirebaseAuth] User ${email} already exists in Auth.`);
+      const existingUser = cachedUsers.find(u => u.email.toLowerCase() === email.toLowerCase().trim());
+      if (existingUser && existingUser.uid) {
+        return existingUser.uid;
+      }
+      throw err;
     } else if (err && err.code === 'auth/operation-not-allowed') {
       console.error(`[FirebaseAuth] Error: Email/Password provider is disabled in the Firebase Console. Please enable it in Authentication -> Sign-in method -> Email/Password.`, err);
       throw err;
@@ -248,13 +254,14 @@ export function initializeStore() {
   onAuthStateChanged(auth, async (firebaseUser) => {
     if (firebaseUser) {
       const email = firebaseUser.email;
+      const uid = firebaseUser.uid;
       if (email) {
         const normalized = email.toLowerCase().trim();
         // Look up user role dynamically
-        let userProfile = cachedUsers.find(u => u.email.toLowerCase() === normalized);
+        let userProfile = cachedUsers.find(u => u.uid === uid);
         if (!userProfile) {
           try {
-            const docRef = doc(db, 'users', normalized);
+            const docRef = doc(db, 'users', uid);
             const userDoc = await getDocFromServer(docRef);
             if (userDoc.exists()) {
               userProfile = userDoc.data() as User;
@@ -287,32 +294,33 @@ export function initializeStore() {
     ];
 
     for (const item of defaultUsersToSeed) {
-      // Safe Firestore role migration/verification
+      // Safe Firestore role migration/verification using UID
       try {
-        const docRef = doc(db, 'users', item.email);
+        let uid = '';
+        try {
+          uid = await registerInAuthOnly(item.email, item.password);
+        } catch (err) {
+          console.error(`Auth seed error for ${item.email}`, err);
+          continue;
+        }
+
+        if (!uid) continue;
+
+        const docRef = doc(db, 'users', uid);
         const userDoc = await getDocFromServer(docRef);
         if (userDoc.exists()) {
           const data = userDoc.data() as User;
-          if (data.role !== item.role || data.isAdmin !== (item.role !== 'customer')) {
-            if (isLoggedUserAdminOrSuper()) {
-              await setDoc(docRef, {
-                role: item.role,
-                isAdmin: item.role !== 'customer'
-              }, { merge: true });
-              console.log(`[Migration] Migrated role/isAdmin for ${item.email} safely.`);
-            } else {
-              console.log(`[Migration] Skip migrating role/isAdmin for ${item.email} (not admin).`);
-            }
+          if (data.role !== item.role || data.isAdmin !== (item.role !== 'customer') || !data.uid) {
+            await setDoc(docRef, {
+              uid,
+              role: item.role,
+              isAdmin: item.role !== 'customer'
+            }, { merge: true });
+            console.log(`[Migration] Migrated role/isAdmin for ${item.email} safely.`);
           }
         } else {
-          // Create the user in Auth first
-          try {
-            await registerInAuthOnly(item.email, item.password);
-          } catch (err) {
-            // Auth error logged inside registerInAuthOnly
-          }
-
           await setDoc(docRef, {
+            uid,
             email: item.email,
             name: item.name,
             phone: item.email === 'fareed.ghulam@gmail.com' ? '03157891234' : '03453090146',
@@ -333,45 +341,44 @@ export function initializeStore() {
   // 1. Listen to users
   onSnapshot(collection(db, 'users'), (snapshot) => {
     if (snapshot.empty) {
-      DEFAULT_USERS.forEach(async (user) => {
-        try {
-          await setDoc(doc(db, 'users', user.email.toLowerCase()), user);
-        } catch (e) {
-          console.error("Failed to seed default user doc:", e);
-        }
-      });
+      // Seeding is already handled inside seedAndMigrateDefaultUsers
     } else {
-      cachedUsers = snapshot.docs.map(doc => {
+      const tempUsers = snapshot.docs.map(doc => {
         const data = doc.data() as User;
-        
-        const isSuper = (
-          data.role === 'superAdmin' ||
-          data.role === 'admin'
-        );
-
-        const isDataEntry = (
-          data.role === 'dataEntryAdmin'
-        );
-
-        if (isSuper) {
-          return {
-            ...data,
-            isAdmin: true,
-            role: 'superAdmin'
-          };
-        } else if (isDataEntry) {
-          return {
-            ...data,
-            isAdmin: true,
-            role: 'dataEntryAdmin'
-          };
-        }
-        return {
+        const uid = doc.id;
+        const mappedUser: User = {
           ...data,
-          isAdmin: data.isAdmin || false,
-          role: data.role || 'customer'
+          uid: data.uid || uid,
         };
+        const isSuper = data.role === 'superAdmin' || data.role === 'admin';
+        const isDataEntry = data.role === 'dataEntryAdmin';
+        if (isSuper) {
+          mappedUser.isAdmin = true;
+          mappedUser.role = 'superAdmin';
+        } else if (isDataEntry) {
+          mappedUser.isAdmin = true;
+          mappedUser.role = 'dataEntryAdmin';
+        } else {
+          mappedUser.isAdmin = data.isAdmin || false;
+          mappedUser.role = data.role || 'customer';
+        }
+        return mappedUser;
       });
+
+      // Filter out duplicate profiles prioritizing true UID docs over legacy email ones
+      const emailMap = new Map<string, User>();
+      tempUsers.forEach(u => {
+        const emailLower = u.email.toLowerCase().trim();
+        const existing = emailMap.get(emailLower);
+        if (!existing) {
+          emailMap.set(emailLower, u);
+        } else {
+          if (existing.uid?.includes('@') && !u.uid?.includes('@')) {
+            emailMap.set(emailLower, u);
+          }
+        }
+      });
+      cachedUsers = Array.from(emailMap.values());
       notifyListeners();
     }
   });
@@ -574,7 +581,11 @@ export function getUsers(): User[] {
 
 export function saveUsers(users: User[]) {
   users.forEach(u => {
-    setDoc(doc(db, 'users', u.email.toLowerCase()), u);
+    if (u.uid) {
+      setDoc(doc(db, 'users', u.uid), u);
+    } else {
+      setDoc(doc(db, 'users', u.email.toLowerCase()), u);
+    }
   });
 }
 
@@ -648,19 +659,9 @@ export function setAdminConfiguredEmail(email: string) {
   }, { merge: true });
   
   const user = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
-  if (user) {
-    setDoc(doc(db, 'users', normalizedEmail), {
+  if (user && user.uid) {
+    setDoc(doc(db, 'users', user.uid), {
       ...user,
-      isAdmin: true,
-      role: 'admin'
-    });
-  } else {
-    setDoc(doc(db, 'users', normalizedEmail), {
-      email: normalizedEmail,
-      name: 'ایڈمن قریشی صاحب',
-      phone: '03453090146',
-      city: 'لاہور',
-      balance: 500000,
       isAdmin: true,
       role: 'admin'
     });
@@ -688,8 +689,10 @@ export async function updateUserPassword(email: string, passwordInput: string): 
     }
 
     for (const em of emailsToUpdate) {
+      const cached = cachedUsers.find(u => u.email.toLowerCase() === em);
+      const uid = cached?.uid || em;
       // Store profile updates only, DO NOT store plain-text passwords
-      await setDoc(doc(db, 'users', em), {
+      await setDoc(doc(db, 'users', uid), {
         isAdmin: true
       }, { merge: true });
     }
@@ -743,8 +746,10 @@ export async function updateCustomerPassword(email: string, passwordInput: strin
     } else {
       await sendPasswordResetEmail(auth, normalizedEmail);
     }
+    const cached = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
+    const uid = cached?.uid || normalizedEmail;
     // Profile metadata merge only, DO NOT store plain-text passwords
-    await setDoc(doc(db, 'users', normalizedEmail), {
+    await setDoc(doc(db, 'users', uid), {
       email: normalizedEmail
     }, { merge: true });
     return true;
@@ -766,20 +771,25 @@ export async function registerUser(name: string, phone: string, city: string, em
     return existing;
   }
   const isAdmin = normalizedEmail === cachedAdminEmail.toLowerCase();
-  const newUser: User = {
-    email: normalizedEmail,
-    name,
-    phone,
-    city,
-    balance: 100, // starting balance
-    isAdmin,
-    role: isAdmin ? 'admin' : 'customer'
-  };
+  
   try {
     // 1. Create account in Firebase Authentication
-    await createUserWithEmailAndPassword(auth, normalizedEmail, password);
-    // 2. Write profile information to Firestore
-    await setDoc(doc(db, 'users', normalizedEmail), newUser);
+    const cred = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+    const uid = cred.user.uid;
+
+    const newUser: User = {
+      uid,
+      email: normalizedEmail,
+      name,
+      phone,
+      city,
+      balance: 100, // starting balance
+      isAdmin,
+      role: isAdmin ? 'admin' : 'customer'
+    };
+
+    // 2. Write profile information to Firestore with UID key
+    await setDoc(doc(db, 'users', uid), newUser);
     return newUser;
   } catch (e) {
     console.error("Error in registerUser:", e);
@@ -791,8 +801,14 @@ export async function rechargeWallet(email: string, amount: number): Promise<boo
   const online = await checkInternetConnection();
   if (!online) return false;
 
-  const normalizedEmail = email.toLowerCase();
-  const userRef = doc(db, 'users', normalizedEmail);
+  const normalizedEmail = email.toLowerCase().trim();
+  const cached = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
+  if (!cached || !cached.uid) {
+    console.error("Recharge failed: customer not found in cache or has no UID");
+    return false;
+  }
+  const uid = cached.uid;
+  const userRef = doc(db, 'users', uid);
 
   try {
     await runTransaction(db, async (transaction) => {
@@ -824,8 +840,13 @@ export async function addBooking(
     return { success: false, error: 'NO_INTERNET' };
   }
 
-  const normalizedEmail = email.toLowerCase();
-  const userRef = doc(db, 'users', normalizedEmail);
+  const normalizedEmail = email.toLowerCase().trim();
+  const cached = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
+  if (!cached || !cached.uid) {
+    return { success: false, error: 'کسٹمر ریکارڈ نہیں ملا' };
+  }
+  const uid = cached.uid;
+  const userRef = doc(db, 'users', uid);
   const bookingId = 'booking-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
   const bookingRef = doc(db, 'bookings', bookingId);
   const totalCost = firstAmount + secondAmount;
@@ -892,8 +913,9 @@ export async function cancelBooking(bookingId: string): Promise<{ success: boole
     return { success: false, error: 'کینسل کرنے کا وقت (2 منٹ) ختم ہو چکا ہے' };
   }
 
-  const userEmail = booking.userEmail.toLowerCase();
-  const userRef = doc(db, 'users', userEmail);
+  const userEmail = booking.userEmail.toLowerCase().trim();
+  const cached = cachedUsers.find(u => u.email.toLowerCase() === userEmail);
+  const userRef = doc(db, 'users', cached?.uid || userEmail);
   const bookingRef = doc(db, 'bookings', bookingId);
   const refundAmount = booking.firstAmount + booking.secondAmount;
 
@@ -925,8 +947,9 @@ export async function cancelBookingByAdmin(bookingId: string): Promise<{ success
   const booking = cachedBookings.find(b => b.id === bookingId);
   if (!booking) return { success: false, error: 'بکنگ کا ریکارڈ نہیں ملا' };
 
-  const userEmail = booking.userEmail.toLowerCase();
-  const userRef = doc(db, 'users', userEmail);
+  const userEmail = booking.userEmail.toLowerCase().trim();
+  const cached = cachedUsers.find(u => u.email.toLowerCase() === userEmail);
+  const userRef = doc(db, 'users', cached?.uid || userEmail);
   const bookingRef = doc(db, 'bookings', bookingId);
   const refundAmount = booking.firstAmount + booking.secondAmount;
 
@@ -1037,8 +1060,9 @@ export async function approveDemand(demandId: string): Promise<{ success: boolea
     return { success: false, error: 'یہ ڈیمانڈ پہلے ہی عمل میں لائی جا چکی ہے' };
   }
 
-  const userEmail = demand.userEmail.toLowerCase();
-  const userRef = doc(db, 'users', userEmail);
+  const userEmail = demand.userEmail.toLowerCase().trim();
+  const cached = cachedUsers.find(u => u.email.toLowerCase() === userEmail);
+  const userRef = doc(db, 'users', cached?.uid || userEmail);
   const bookingId = 'booking-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
   const bookingRef = doc(db, 'bookings', bookingId);
   const demandRef = doc(db, 'demands', demandId);

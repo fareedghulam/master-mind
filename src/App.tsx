@@ -33,7 +33,7 @@ import {
 } from './utils/store';
 import { User, Booking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult } from './types';
 import { db, auth } from './lib/firebase';
-import { doc, getDocFromServer, collection, query, where, getDocsFromServer, setDoc } from 'firebase/firestore';
+import { doc, getDocFromServer, collection, query, where, getDocsFromServer, setDoc, deleteDoc } from 'firebase/firestore';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import DashboardHeader from './components/DashboardHeader';
 import RegistrationForm from './components/RegistrationForm';
@@ -215,57 +215,34 @@ export default function App() {
       }
 
       const idLower = identifier.toLowerCase().trim();
-      let matchedUser: User | null = null;
       let emailToAuth = '';
 
-      try {
-        if (idLower.includes('@')) {
-          let docId = idLower;
-          if (docId === 'mastermaindqureshi110@gmail.com') {
-            docId = 'mastermaind.qureshi110@gmail.com';
-          }
-          
-          let userDocRef = doc(db, 'users', docId);
-          let userDoc = await getDocFromServer(userDocRef);
-          
-          if (!userDoc.exists() && docId !== idLower) {
-            userDocRef = doc(db, 'users', idLower);
-            userDoc = await getDocFromServer(userDocRef);
-          }
-          
-          if (userDoc.exists()) {
-            matchedUser = userDoc.data() as User;
-            emailToAuth = matchedUser.email;
-          } else {
-            emailToAuth = docId;
-          }
-        } else {
+      if (idLower.includes('@')) {
+        emailToAuth = idLower;
+        if (emailToAuth === 'mastermaindqureshi110@gmail.com') {
+          emailToAuth = 'mastermaind.qureshi110@gmail.com';
+        }
+      } else {
+        try {
           const q = query(collection(db, 'users'), where('phone', '==', identifier.trim()));
           const querySnapshot = await getDocsFromServer(q);
           if (!querySnapshot.empty) {
-            matchedUser = querySnapshot.docs[0].data() as User;
-            emailToAuth = matchedUser.email;
+            const data = querySnapshot.docs[0].data() as User;
+            emailToAuth = data.email;
           }
+        } catch (err) {
+          console.error("Secure login phone query failed:", err);
         }
-      } catch (err) {
-        console.error("Secure login server query failed:", err);
       }
 
       if (!emailToAuth) {
         return { success: false, error: 'یہ اکاؤنٹ رجسٹرڈ نہیں ہے۔ (This account is not registered.)' };
       }
 
+      let uid = '';
       try {
-        await signInWithEmailAndPassword(auth, emailToAuth.toLowerCase().trim(), passwordInput);
-        if (!matchedUser) {
-          const userDocRef = doc(db, 'users', emailToAuth.toLowerCase().trim());
-          const userDoc = await getDocFromServer(userDocRef);
-          if (userDoc.exists()) {
-            matchedUser = userDoc.data() as User;
-          } else {
-            return { success: false, error: 'پروفائل ریکارڈ نہیں ملا۔ (Profile record not found.)' };
-          }
-        }
+        const cred = await signInWithEmailAndPassword(auth, emailToAuth.toLowerCase().trim(), passwordInput);
+        uid = cred.user.uid;
       } catch (err: any) {
         console.error("Firebase Auth sign in failed:", err);
         if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found') {
@@ -274,6 +251,48 @@ export default function App() {
           return { success: false, error: 'آپ کا اکاؤنٹ غیر فعال کر دیا گیا ہے۔ (Your account has been disabled.)' };
         }
         return { success: false, error: `لاگ ان ناکام رہا: ${err.message || 'نامعلوم خامی'}` };
+      }
+
+      let matchedUser: User | null = null;
+      try {
+        // 1. First try to load from the modern users/{uid} document
+        const userDocRef = doc(db, 'users', uid);
+        const userDoc = await getDocFromServer(userDocRef);
+        if (userDoc.exists()) {
+          matchedUser = userDoc.data() as User;
+        } else {
+          // 2. Fallback to legacy users/{email} document
+          const legacyDocRef = doc(db, 'users', emailToAuth.toLowerCase().trim());
+          const legacyDoc = await getDocFromServer(legacyDocRef);
+          if (legacyDoc.exists()) {
+            const legacyData = legacyDoc.data() as User;
+            matchedUser = {
+              ...legacyData,
+              uid
+            };
+            // Automatically migrate to new users/{uid} document
+            await setDoc(userDocRef, matchedUser);
+            // Delete the legacy document
+            await deleteDoc(legacyDocRef);
+            console.log(`Successfully migrated legacy user profile for ${emailToAuth} to users/{uid}`);
+          } else {
+            // Profile not found in either, create one for them on the fly
+            matchedUser = {
+              uid,
+              email: emailToAuth.toLowerCase().trim(),
+              name: 'صارف',
+              phone: identifier,
+              city: 'لاہور',
+              balance: 100,
+              isAdmin: false,
+              role: 'customer'
+            };
+            await setDoc(userDocRef, matchedUser);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load/migrate user profile:", err);
+        return { success: false, error: 'پروفائل لوڈ کرنے میں ناکامی۔' };
       }
 
       const isSuper = (
@@ -301,7 +320,7 @@ export default function App() {
         sessionStorage.setItem('admin_verified', 'true');
         // Update last login timestamp in Firestore
         try {
-          await setDoc(doc(db, 'users', matchedUser.email.toLowerCase().trim()), {
+          await setDoc(doc(db, 'users', uid), {
             lastLogin: new Date().toISOString()
           }, { merge: true });
         } catch (timestampErr) {
