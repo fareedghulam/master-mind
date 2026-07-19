@@ -581,10 +581,15 @@ export function getUsers(): User[] {
 
 export function saveUsers(users: User[]) {
   users.forEach(u => {
-    if (u.uid) {
-      setDoc(doc(db, 'users', u.uid), u);
+    let targetUid = u.uid;
+    if (!targetUid) {
+      const cached = cachedUsers.find(x => x.email.toLowerCase() === u.email.toLowerCase());
+      targetUid = cached?.uid;
+    }
+    if (targetUid) {
+      setDoc(doc(db, 'users', targetUid), { ...u, uid: targetUid });
     } else {
-      setDoc(doc(db, 'users', u.email.toLowerCase()), u);
+      console.warn("Skipping save for user without UID:", u.email);
     }
   });
 }
@@ -611,9 +616,8 @@ export function saveNumberLimits(limits: NumberLimit[]) {
 
 export function getLoggedInUser(): User | null {
   const firebaseUser = auth.currentUser;
-  if (!firebaseUser || !firebaseUser.email) return null;
-  const normalizedEmail = firebaseUser.email.toLowerCase().trim();
-  const user = cachedUsers.find((u) => u.email.toLowerCase() === normalizedEmail) || null;
+  if (!firebaseUser) return null;
+  const user = cachedUsers.find((u) => u.uid === firebaseUser.uid) || null;
   
   if (user && (user.isAdmin || user.role === 'superAdmin' || user.role === 'admin' || user.role === 'dataEntryAdmin')) {
     if (sessionStorage.getItem('admin_verified') === 'true') {
@@ -628,9 +632,9 @@ export function getLoggedInUser(): User | null {
   return user;
 }
 
-export function setLoggedInUser(email: string) {
-  const normalizedEmail = email.toLowerCase().trim();
-  const user = cachedUsers.find((u) => u.email.toLowerCase() === normalizedEmail);
+export function setLoggedInUser(emailOrUid: string) {
+  const clean = emailOrUid.toLowerCase().trim();
+  const user = cachedUsers.find((u) => u.email.toLowerCase() === clean || u.uid === emailOrUid);
   const isSuper = user && (user.role === 'superAdmin' || user.role === 'admin');
   const isDataEntry = user && (user.role === 'dataEntryAdmin');
 
@@ -690,11 +694,14 @@ export async function updateUserPassword(email: string, passwordInput: string): 
 
     for (const em of emailsToUpdate) {
       const cached = cachedUsers.find(u => u.email.toLowerCase() === em);
-      const uid = cached?.uid || em;
-      // Store profile updates only, DO NOT store plain-text passwords
-      await setDoc(doc(db, 'users', uid), {
-        isAdmin: true
-      }, { merge: true });
+      if (cached?.uid) {
+        // Store profile updates only, DO NOT store plain-text passwords
+        await setDoc(doc(db, 'users', cached.uid), {
+          isAdmin: true
+        }, { merge: true });
+      } else {
+        console.warn(`Could not update admin role in Firestore for ${em} because no UID was found.`);
+      }
     }
     return true;
   } catch (e: any) {
@@ -747,11 +754,14 @@ export async function updateCustomerPassword(email: string, passwordInput: strin
       await sendPasswordResetEmail(auth, normalizedEmail);
     }
     const cached = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
-    const uid = cached?.uid || normalizedEmail;
-    // Profile metadata merge only, DO NOT store plain-text passwords
-    await setDoc(doc(db, 'users', uid), {
-      email: normalizedEmail
-    }, { merge: true });
+    if (cached?.uid) {
+      // Profile metadata merge only, DO NOT store plain-text passwords
+      await setDoc(doc(db, 'users', cached.uid), {
+        email: normalizedEmail
+      }, { merge: true });
+    } else {
+      console.warn(`Could not update customer metadata in Firestore for ${normalizedEmail} because no UID was found.`);
+    }
     return true;
   } catch (e: any) {
     console.error("Error updating customer password:", e);
@@ -915,7 +925,10 @@ export async function cancelBooking(bookingId: string): Promise<{ success: boole
 
   const userEmail = booking.userEmail.toLowerCase().trim();
   const cached = cachedUsers.find(u => u.email.toLowerCase() === userEmail);
-  const userRef = doc(db, 'users', cached?.uid || userEmail);
+  if (!cached || !cached.uid) {
+    return { success: false, error: 'کسٹمر ریکارڈ (یا یو آئی ڈی) نہیں ملا۔' };
+  }
+  const userRef = doc(db, 'users', cached.uid);
   const bookingRef = doc(db, 'bookings', bookingId);
   const refundAmount = booking.firstAmount + booking.secondAmount;
 
@@ -949,7 +962,10 @@ export async function cancelBookingByAdmin(bookingId: string): Promise<{ success
 
   const userEmail = booking.userEmail.toLowerCase().trim();
   const cached = cachedUsers.find(u => u.email.toLowerCase() === userEmail);
-  const userRef = doc(db, 'users', cached?.uid || userEmail);
+  if (!cached || !cached.uid) {
+    return { success: false, error: 'کسٹمر ریکارڈ (یا یو آئی ڈی) نہیں ملا۔' };
+  }
+  const userRef = doc(db, 'users', cached.uid);
   const bookingRef = doc(db, 'bookings', bookingId);
   const refundAmount = booking.firstAmount + booking.secondAmount;
 
@@ -1062,7 +1078,10 @@ export async function approveDemand(demandId: string): Promise<{ success: boolea
 
   const userEmail = demand.userEmail.toLowerCase().trim();
   const cached = cachedUsers.find(u => u.email.toLowerCase() === userEmail);
-  const userRef = doc(db, 'users', cached?.uid || userEmail);
+  if (!cached || !cached.uid) {
+    return { success: false, error: 'کسٹمر ریکارڈ (یا یو آئی ڈی) نہیں ملا۔' };
+  }
+  const userRef = doc(db, 'users', cached.uid);
   const bookingId = 'booking-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
   const bookingRef = doc(db, 'bookings', bookingId);
   const demandRef = doc(db, 'demands', demandId);
