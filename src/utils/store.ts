@@ -644,7 +644,7 @@ export function saveNumberLimits(limits: NumberLimit[]) {
 export function getLoggedInUser(): User | null {
   const firebaseUser = auth.currentUser;
   if (!firebaseUser) return null;
-  const user = cachedUsers.find((u) => u.uid === firebaseUser.uid) || null;
+  const user = cachedUsers.find((u) => u.uid === firebaseUser.uid) || cachedUsers.find((u) => u.email?.toLowerCase().trim() === firebaseUser.email?.toLowerCase().trim()) || null;
   
   if (user) {
     const isSuper = user.role === 'superAdmin' || user.role === 'admin';

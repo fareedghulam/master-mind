@@ -347,7 +347,7 @@ export default function App() {
         }
       }
 
-      setLoggedInUser(matchedUser.email);
+      setLoggedInUser(matchedUser.uid);
       syncWithStore();
       if (matchedUser.isAdmin) {
         setActiveTab('admin');
