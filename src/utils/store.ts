@@ -798,7 +798,7 @@ export async function registerUser(name: string, phone: string, city: string, em
       role: isAdmin ? 'admin' : 'customer'
     };
 
-    // 2. Write profile information to Firestore with UID key
+    // [UID-Migration] Write profile information to Firestore with UID key
     await setDoc(doc(db, 'users', uid), newUser);
     return newUser;
   } catch (e) {

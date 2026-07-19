@@ -445,6 +445,7 @@ export default function AdminPortal({
         lastLogin: null
       };
 
+      // [UID-Migration] Save the admin profile document in Firestore under users/{uid}
       await setDoc(doc(db, 'users', uid), newAdminDoc);
 
       setAdminManageSuccess(`کامیاب: نیا ایڈمن ${newAdminName} کامیابی سے بنا دیا گیا ہے اور لاگ ان کے لیے تیار ہے۔`);

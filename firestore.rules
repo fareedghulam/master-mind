@@ -94,6 +94,7 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
+      // Fully migrated to Firebase Auth UID architecture
       allow read: if isSuperAdmin() || isDataEntryAdmin() || (request.auth != null && request.auth.uid == uid);
       allow create: if isValidId(uid) && isValidUser(request.resource.data);
       allow update: if isValidId(uid) && (

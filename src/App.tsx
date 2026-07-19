@@ -255,7 +255,7 @@ export default function App() {
 
       let matchedUser: User | null = null;
       try {
-        // 1. First try to load from the modern users/{uid} document
+        // [UID-Migration] Try to load from the modern users/{uid} document
         const userDocRef = doc(db, 'users', uid);
         const userDoc = await getDocFromServer(userDocRef);
         if (userDoc.exists()) {
