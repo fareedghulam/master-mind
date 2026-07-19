@@ -222,20 +222,47 @@ function notifyListeners() {
 }
 
 export function isLoggedUserAdminOrSuper(): boolean {
-  const email = auth.currentUser?.email?.toLowerCase().trim();
-  if (!email) return false;
-  if (email === 'mastermaindqureshi110@gmail.com' || email === 'mastermaind.qureshi110@gmail.com') {
-    return true;
+  const firebaseUser = auth.currentUser;
+  if (!firebaseUser) return false;
+  
+  // 1. Direct search by UID
+  const user = cachedUsers.find(u => u.uid === firebaseUser.uid);
+  if (user) {
+    return user.role === 'superAdmin' || user.role === 'admin' || user.isAdmin === true;
   }
-  const user = cachedUsers.find(u => u.email.toLowerCase() === email);
-  return !!(user && (user.role === 'superAdmin' || user.role === 'admin'));
+  
+  // 2. Fallback search by email
+  const email = firebaseUser.email?.toLowerCase().trim();
+  if (email) {
+    if (email === 'mastermaindqureshi110@gmail.com' || email === 'mastermaind.qureshi110@gmail.com') {
+      return true;
+    }
+    const userByEmail = cachedUsers.find(u => u.email.toLowerCase() === email);
+    return !!(userByEmail && (userByEmail.role === 'superAdmin' || userByEmail.role === 'admin' || userByEmail.isAdmin === true));
+  }
+  return false;
 }
 
 export function isLoggedUserDataEntry(): boolean {
-  const email = auth.currentUser?.email?.toLowerCase().trim();
-  if (!email) return false;
-  const user = cachedUsers.find(u => u.email.toLowerCase() === email);
-  return !!(user && user.role === 'dataEntryAdmin');
+  const firebaseUser = auth.currentUser;
+  if (!firebaseUser) return false;
+  
+  // 1. Direct search by UID
+  const user = cachedUsers.find(u => u.uid === firebaseUser.uid);
+  if (user) {
+    return user.role === 'dataEntryAdmin';
+  }
+  
+  // 2. Fallback search by email
+  const email = firebaseUser.email?.toLowerCase().trim();
+  if (email) {
+    if (email === 'fareed.ghulam@gmail.com') {
+      return true;
+    }
+    const userByEmail = cachedUsers.find(u => u.email.toLowerCase() === email);
+    return !!(userByEmail && userByEmail.role === 'dataEntryAdmin');
+  }
+  return false;
 }
 
 export function initializeStore() {
@@ -619,17 +646,34 @@ export function getLoggedInUser(): User | null {
   if (!firebaseUser) return null;
   const user = cachedUsers.find((u) => u.uid === firebaseUser.uid) || null;
   
-  if (user && (user.isAdmin || user.role === 'superAdmin' || user.role === 'admin' || user.role === 'dataEntryAdmin')) {
-    if (sessionStorage.getItem('admin_verified') === 'true') {
+  if (user) {
+    const isSuper = user.role === 'superAdmin' || user.role === 'admin';
+    const isDataEntry = user.role === 'dataEntryAdmin';
+    if (user.isAdmin || isSuper || isDataEntry) {
       return {
         ...user,
         isAdmin: true,
-        role: user.role === 'dataEntryAdmin' ? 'dataEntryAdmin' : 'superAdmin'
+        role: isDataEntry ? 'dataEntryAdmin' : 'superAdmin'
       };
     }
-    return null;
+    return user;
   }
-  return user;
+  
+  // Robust timing fallback to prevent white screens / login kicks before cachedUsers is fully populated
+  const emailLower = firebaseUser.email?.toLowerCase().trim() || '';
+  const isDefaultSuper = emailLower === 'mastermaind.qureshi110@gmail.com' || emailLower === 'mastermaindqureshi110@gmail.com';
+  const isDefaultDataEntry = emailLower === 'fareed.ghulam@gmail.com';
+  
+  return {
+    uid: firebaseUser.uid,
+    email: emailLower,
+    name: isDefaultSuper ? 'ایڈمن قریشی صاحب ڈاٹ' : (isDefaultDataEntry ? 'غلام فرید' : 'لوڈ ہو رہا ہے...'),
+    phone: '',
+    city: '',
+    balance: isDefaultSuper ? 500000 : (isDefaultDataEntry ? 15000 : 0),
+    isAdmin: isDefaultSuper || isDefaultDataEntry,
+    role: isDefaultSuper ? 'superAdmin' : (isDefaultDataEntry ? 'dataEntryAdmin' : 'customer')
+  };
 }
 
 export function setLoggedInUser(emailOrUid: string) {
@@ -640,6 +684,13 @@ export function setLoggedInUser(emailOrUid: string) {
 
   if (user && (user.isAdmin || isSuper || isDataEntry)) {
     sessionStorage.setItem('admin_verified', 'true');
+  } else {
+    // Also support fallback for default emails to sync sessions
+    const isDefaultSuper = clean === 'mastermaind.qureshi110@gmail.com' || clean === 'mastermaindqureshi110@gmail.com';
+    const isDefaultDataEntry = clean === 'fareed.ghulam@gmail.com';
+    if (isDefaultSuper || isDefaultDataEntry) {
+      sessionStorage.setItem('admin_verified', 'true');
+    }
   }
   notifyListeners();
 }

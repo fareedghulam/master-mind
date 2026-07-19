@@ -101,6 +101,8 @@ export default function App() {
   const whatsappNumber = getSupportWhatsAppNumber();
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent("السلام علیکم! مجھے ماسٹر مائینڈ قریشی انٹرپرائز پرائز بانڈ سسٹم کے بارے میں مدد چاہئے۔")}`;
 
+  const [hasAutoNavigated, setHasAutoNavigated] = useState<boolean>(false);
+
   // Initialize and load state
   useEffect(() => {
     initializeStore();
@@ -110,6 +112,7 @@ export default function App() {
     });
 
     const unsubscribeAuth = onAuthStateChanged(auth, () => {
+      syncWithStore();
       setAuthLoading(false);
     });
 
@@ -118,6 +121,20 @@ export default function App() {
       unsubscribeAuth();
     };
   }, []);
+
+  // Auto navigate based on user role upon login or session recovery
+  useEffect(() => {
+    if (currentUser && !hasAutoNavigated) {
+      if (currentUser.isAdmin) {
+        setActiveTab('admin');
+      } else {
+        setActiveTab('dashboard');
+      }
+      setHasAutoNavigated(true);
+    } else if (!currentUser) {
+      setHasAutoNavigated(false);
+    }
+  }, [currentUser, hasAutoNavigated]);
 
   const syncWithStore = () => {
     const loggedIn = getLoggedInUser();
@@ -332,7 +349,11 @@ export default function App() {
 
       setLoggedInUser(matchedUser.email);
       syncWithStore();
-      setActiveTab('dashboard');
+      if (matchedUser.isAdmin) {
+        setActiveTab('admin');
+      } else {
+        setActiveTab('dashboard');
+      }
       return { success: true };
     };
 
