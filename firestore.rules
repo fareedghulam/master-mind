@@ -94,7 +94,7 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow read: if true;
+      allow read: if isSuperAdmin() || isDataEntryAdmin() || (request.auth != null && request.auth.uid == uid);
       allow create: if isValidId(uid) && isValidUser(request.resource.data);
       allow update: if isValidId(uid) && (
         isSuperAdmin() || (

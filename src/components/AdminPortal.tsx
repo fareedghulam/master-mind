@@ -475,12 +475,14 @@ export default function AdminPortal({
 
     try {
       const cached = users.find(u => u.email.toLowerCase() === emailClean);
-      const uid = cached?.uid || emailClean;
-      await deleteDoc(doc(db, 'users', uid));
+      if (!cached || !cached.uid) {
+        throw new Error('ایڈمن کا UID نہیں ملا۔ (Admin UID not found.)');
+      }
+      await deleteDoc(doc(db, 'users', cached.uid));
       setAdminManageSuccess(`کامیاب: ایڈمن (${email}) کا ریکارڈ کامیابی سے حذف کر دیا گیا ہے۔`);
     } catch (err: any) {
       console.error("Delete admin error:", err);
-      setAdminManageError('ایڈمن ریکارڈ حذف کرنے میں خرابی پیش آئی۔');
+      setAdminManageError(err?.message || 'ایڈمن ریکارڈ حذف کرنے میں خرابی پیش آئی۔');
     }
   };
 
@@ -498,14 +500,16 @@ export default function AdminPortal({
     try {
       const isDeactivating = (currentActive !== false);
       const cached = users.find(u => u.email.toLowerCase() === emailClean);
-      const uid = cached?.uid || emailClean;
-      await setDoc(doc(db, 'users', uid), {
+      if (!cached || !cached.uid) {
+        throw new Error('ایڈمن کا UID نہیں ملا۔ (Admin UID not found.)');
+      }
+      await setDoc(doc(db, 'users', cached.uid), {
         active: !isDeactivating
       }, { merge: true });
       setAdminManageSuccess(`ایڈمن اکاؤنٹ کامیابی سے ${!isDeactivating ? 'فعال (Activate)' : 'غیر فعال (Deactivate)'} کر دیا گیا ہے۔`);
     } catch (err: any) {
       console.error("Toggle active status error:", err);
-      setAdminManageError('سٹیٹس تبدیل کرنے میں خرابی پیش آئی۔');
+      setAdminManageError(err?.message || 'سٹیٹس تبدیل کرنے میں خرابی پیش آئی۔');
     }
   };
 
@@ -522,14 +526,16 @@ export default function AdminPortal({
 
     try {
       const cached = users.find(u => u.email.toLowerCase() === emailClean);
-      const uid = cached?.uid || emailClean;
-      await setDoc(doc(db, 'users', uid), {
+      if (!cached || !cached.uid) {
+        throw new Error('ایڈمن کا UID نہیں ملا۔ (Admin UID not found.)');
+      }
+      await setDoc(doc(db, 'users', cached.uid), {
         role: roleToSet
       }, { merge: true });
       setAdminManageSuccess(`ایڈمن رول کامیابی سے تبدیل کر کے ${roleToSet === 'superAdmin' ? 'Super Admin' : 'Data Entry Admin'} کر دیا گیا ہے۔`);
     } catch (err: any) {
       console.error("Change admin role error:", err);
-      setAdminManageError('ایڈمن کا رول تبدیل کرنے میں خرابی پیش آئی۔');
+      setAdminManageError(err?.message || 'ایڈمن کا رول تبدیل کرنے میں خرابی پیش آئی۔');
     }
   };
 
