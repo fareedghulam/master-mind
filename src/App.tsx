@@ -255,28 +255,29 @@ export default function App() {
 
       let matchedUser: User | null = null;
       try {
-        // [UID-Migration] Try to load from the modern users/{uid} document
+        // [UID-Migration] Step 1: Query the primary users/{uid} document for the signed-in user
         const userDocRef = doc(db, 'users', uid);
         const userDoc = await getDocFromServer(userDocRef);
         if (userDoc.exists()) {
           matchedUser = userDoc.data() as User;
+          console.log(`[UID-Migration] Found existing modern UID-based user record for: ${emailToAuth}`);
         } else {
-          // 2. Fallback to legacy users/{email} document
+          // [UID-Migration] Step 2: Fallback to the legacy users/{email} document
           const legacyDocRef = doc(db, 'users', emailToAuth.toLowerCase().trim());
           const legacyDoc = await getDocFromServer(legacyDocRef);
           if (legacyDoc.exists()) {
             const legacyData = legacyDoc.data() as User;
             matchedUser = {
               ...legacyData,
-              uid
+              uid: uid // Attach modern auth UID securely
             };
-            // Automatically migrate to new users/{uid} document
+            // [UID-Migration] Step 3: Automatically migrate data to the new users/{uid} document
             await setDoc(userDocRef, matchedUser);
-            // Delete the legacy document
+            // [UID-Migration] Step 4: Securely delete the legacy email-based document after successful migration
             await deleteDoc(legacyDocRef);
-            console.log(`Successfully migrated legacy user profile for ${emailToAuth} to users/{uid}`);
+            console.log(`[UID-Migration] Successfully migrated legacy user profile for ${emailToAuth} to users/{uid}`);
           } else {
-            // Profile not found in either, create one for them on the fly
+            // [UID-Migration] Step 5: Profile not found in either location, provision a brand new profile
             matchedUser = {
               uid,
               email: emailToAuth.toLowerCase().trim(),
@@ -288,6 +289,7 @@ export default function App() {
               role: 'customer'
             };
             await setDoc(userDocRef, matchedUser);
+            console.log(`[UID-Migration] Created a new profile under users/{uid} for signed up/migrated user: ${emailToAuth}`);
           }
         }
       } catch (err) {

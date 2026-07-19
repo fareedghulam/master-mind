@@ -479,6 +479,7 @@ export default function AdminPortal({
       if (!cached || !cached.uid) {
         throw new Error('ایڈمن کا UID نہیں ملا۔ (Admin UID not found.)');
       }
+      // [UID-Migration] Delete the admin record strictly using their secure UID
       await deleteDoc(doc(db, 'users', cached.uid));
       setAdminManageSuccess(`کامیاب: ایڈمن (${email}) کا ریکارڈ کامیابی سے حذف کر دیا گیا ہے۔`);
     } catch (err: any) {

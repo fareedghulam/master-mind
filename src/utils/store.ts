@@ -814,9 +814,11 @@ export async function rechargeWallet(email: string, amount: number): Promise<boo
   const normalizedEmail = email.toLowerCase().trim();
   const cached = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
   if (!cached || !cached.uid) {
-    console.error("Recharge failed: customer not found in cache or has no UID");
+    console.error(`[UID-Migration] Recharge failed: Customer ${normalizedEmail} has no valid firebase UID loaded.`);
     return false;
   }
+  
+  // Resolve user document strictly by their secure Firebase UID
   const uid = cached.uid;
   const userRef = doc(db, 'users', uid);
 
