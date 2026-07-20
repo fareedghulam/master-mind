@@ -3,12 +3,12 @@ import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 export const firebaseConfig = {
-  apiKey: "AIzaSyAdxB4gKa6AB9mrOuE6PeQGzbUVUtXKBKs",
-  authDomain: "cool-segment-c79b0.firebaseapp.com",
-  projectId: "cool-segment-c79b0",
-  storageBucket: "cool-segment-c79b0.firebasestorage.app",
-  messagingSenderId: "719868641304",
-  appId: "1:719868641304:web:3a1a98d832412375f8436d"
+  apiKey: "AIzaSyAx59hRoNxWI7a4iQtIaPkOGftFW1EMmfc",
+  authDomain: "master-mind-qureshi-enterprise.firebaseapp.com",
+  projectId: "master-mind-qureshi-enterprise",
+  storageBucket: "master-mind-qureshi-enterprise.firebasestorage.app",
+  messagingSenderId: "343587675373",
+  appId: "1:343587675373:web:26be133df0ec77ae4e40e4"
 };
 
 export const app = initializeApp(firebaseConfig);
