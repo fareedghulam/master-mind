@@ -199,7 +199,7 @@ export default function App() {
     const action = async () => {
       const usersList = getUsers();
       const emailLower = email.toLowerCase().trim();
-      const existingEmail = usersList.find(u => u.email.toLowerCase() === emailLower);
+      const existingEmail = usersList.find(u => (u.email || '').toLowerCase() === emailLower);
       if (existingEmail) {
         return { success: false, error: 'یہ ای میل پہلے سے رجسٹرڈ ہے۔ (This email is already registered.)' };
       }
@@ -347,7 +347,7 @@ export default function App() {
         }
       }
 
-      setLoggedInUser(matchedUser.uid);
+      setLoggedInUser(matchedUser.email || matchedUser.uid);
       syncWithStore();
       if (matchedUser.isAdmin) {
         setActiveTab('admin');

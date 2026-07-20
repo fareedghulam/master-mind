@@ -237,7 +237,7 @@ export function isLoggedUserAdminOrSuper(): boolean {
     if (email === 'mastermaindqureshi110@gmail.com' || email === 'mastermaind.qureshi110@gmail.com') {
       return true;
     }
-    const userByEmail = cachedUsers.find(u => u.email.toLowerCase() === email);
+    const userByEmail = cachedUsers.find(u => (u.email || '').toLowerCase() === email);
     return !!(userByEmail && (userByEmail.role === 'superAdmin' || userByEmail.role === 'admin' || userByEmail.isAdmin === true));
   }
   return false;
@@ -259,7 +259,7 @@ export function isLoggedUserDataEntry(): boolean {
     if (email === 'fareed.ghulam@gmail.com') {
       return true;
     }
-    const userByEmail = cachedUsers.find(u => u.email.toLowerCase() === email);
+    const userByEmail = cachedUsers.find(u => (u.email || '').toLowerCase() === email);
     return !!(userByEmail && userByEmail.role === 'dataEntryAdmin');
   }
   return false;
@@ -377,6 +377,18 @@ export function initializeStore() {
           ...data,
           uid: data.uid || uid,
         };
+
+        // Ensure email is always present and valid
+        if (!mappedUser.email) {
+          if (uid.includes('@')) {
+            mappedUser.email = uid;
+          } else if (mappedUser.uid === 's6dXc7vXJnd0uXfcYxacbKfwASF3') {
+            mappedUser.email = 'mastermaind.qureshi110@gmail.com';
+          } else {
+            mappedUser.email = '';
+          }
+        }
+
         const isSuper = data.role === 'superAdmin' || data.role === 'admin';
         const isDataEntry = data.role === 'dataEntryAdmin';
         if (isSuper) {
@@ -395,7 +407,8 @@ export function initializeStore() {
       // Filter out duplicate profiles prioritizing true UID docs over legacy email ones
       const emailMap = new Map<string, User>();
       tempUsers.forEach(u => {
-        const emailLower = u.email.toLowerCase().trim();
+        const emailLower = (u.email || '').toLowerCase().trim();
+        if (!emailLower) return;
         const existing = emailMap.get(emailLower);
         if (!existing) {
           emailMap.set(emailLower, u);
@@ -644,7 +657,7 @@ export function saveNumberLimits(limits: NumberLimit[]) {
 export function getLoggedInUser(): User | null {
   const firebaseUser = auth.currentUser;
   if (!firebaseUser) return null;
-  const user = cachedUsers.find((u) => u.uid === firebaseUser.uid) || cachedUsers.find((u) => u.email?.toLowerCase().trim() === firebaseUser.email?.toLowerCase().trim()) || null;
+  const user = cachedUsers.find((u) => u.uid === firebaseUser.uid) || null;
   
   if (user) {
     const isSuper = user.role === 'superAdmin' || user.role === 'admin';
@@ -678,7 +691,7 @@ export function getLoggedInUser(): User | null {
 
 export function setLoggedInUser(emailOrUid: string) {
   const clean = emailOrUid.toLowerCase().trim();
-  const user = cachedUsers.find((u) => u.email.toLowerCase() === clean || u.uid === emailOrUid);
+  const user = cachedUsers.find((u) => (u.email || '').toLowerCase() === clean || u.uid === emailOrUid);
   const isSuper = user && (user.role === 'superAdmin' || user.role === 'admin');
   const isDataEntry = user && (user.role === 'dataEntryAdmin');
 

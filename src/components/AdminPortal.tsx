@@ -35,6 +35,72 @@ interface AdminPortalProps {
   onDeleteResult: (id: string, category: 'pakistan_bond' | 'thailand_lottery') => Promise<{ success: boolean; error?: string }>;
 }
 
+function safeGetTime(value: any): number {
+  if (!value) return 0;
+  let date: Date;
+  if (value instanceof Date) {
+    date = value;
+  } else if (typeof value === 'number') {
+    date = new Date(value);
+  } else if (typeof value === 'string') {
+    date = new Date(value);
+  } else if (typeof value === 'object') {
+    if (typeof value.seconds === 'number') {
+      date = new Date(value.seconds * 1000);
+    } else if (typeof value.toDate === 'function') {
+      try {
+        date = value.toDate();
+      } catch (e) {
+        return 0;
+      }
+    } else {
+      date = new Date(value.toString());
+    }
+  } else {
+    return 0;
+  }
+  const time = date.getTime();
+  return isNaN(time) ? 0 : time;
+}
+
+function safeFormatDate(value: any, locale = 'en-US', options?: Intl.DateTimeFormatOptions): string {
+  if (!value) return 'N/A';
+  let date: Date;
+  if (value instanceof Date) {
+    date = value;
+  } else if (typeof value === 'number') {
+    date = new Date(value);
+  } else if (typeof value === 'string') {
+    date = new Date(value);
+  } else if (typeof value === 'object') {
+    if (typeof value.seconds === 'number') {
+      date = new Date(value.seconds * 1000);
+    } else if (typeof value.toDate === 'function') {
+      try {
+        date = value.toDate();
+      } catch (e) {
+        return 'N/A';
+      }
+    } else {
+      date = new Date(value.toString());
+    }
+  } else {
+    return 'N/A';
+  }
+  if (isNaN(date.getTime())) {
+    return 'N/A';
+  }
+  try {
+    return date.toLocaleString(locale, options);
+  } catch (e) {
+    try {
+      return date.toISOString();
+    } catch (err) {
+      return 'N/A';
+    }
+  }
+}
+
 export default function AdminPortal({
   users,
   limits,
@@ -327,8 +393,8 @@ export default function AdminPortal({
     }
 
     const matched = users.find(u => 
-      u.email.toLowerCase().trim() === queryClean || 
-      u.phone.trim() === queryClean
+      (u.email || '').toLowerCase().trim() === queryClean || 
+      (u.phone || '').trim() === queryClean
     );
 
     if (matched) {
@@ -475,7 +541,7 @@ export default function AdminPortal({
     setAdminManageSuccess('');
 
     try {
-      const cached = users.find(u => u.email.toLowerCase() === emailClean);
+      const cached = users.find(u => (u.email || '').toLowerCase() === emailClean);
       if (!cached || !cached.uid) {
         throw new Error('ایڈمن کا UID نہیں ملا۔ (Admin UID not found.)');
       }
@@ -501,7 +567,7 @@ export default function AdminPortal({
 
     try {
       const isDeactivating = (currentActive !== false);
-      const cached = users.find(u => u.email.toLowerCase() === emailClean);
+      const cached = users.find(u => (u.email || '').toLowerCase() === emailClean);
       if (!cached || !cached.uid) {
         throw new Error('ایڈمن کا UID نہیں ملا۔ (Admin UID not found.)');
       }
@@ -527,7 +593,7 @@ export default function AdminPortal({
     setAdminManageSuccess('');
 
     try {
-      const cached = users.find(u => u.email.toLowerCase() === emailClean);
+      const cached = users.find(u => (u.email || '').toLowerCase() === emailClean);
       if (!cached || !cached.uid) {
         throw new Error('ایڈمن کا UID نہیں ملا۔ (Admin UID not found.)');
       }
@@ -608,8 +674,8 @@ export default function AdminPortal({
 
     const ok = await onRecharge(rechargeEmail, amountNum);
     if (ok) {
-      const updatedUser = users.find(u => u.email.toLowerCase() === rechargeEmail.toLowerCase());
-      setRechargeSuccess(` Rs. ${amountNum.toLocaleString()} والٹ میں کامیابی سے جمع کر دیئے گئے۔ کسٹمر کا نیا والٹ بیلنس: Rs. ${updatedUser?.balance.toLocaleString() || ''}`);
+      const updatedUser = users.find(u => (u.email || '').toLowerCase() === (rechargeEmail || '').toLowerCase());
+      setRechargeSuccess(` Rs. ${amountNum.toLocaleString()} والٹ میں کامیابی سے جمع کر دیئے گئے۔ کسٹمر کا نیا والٹ بیلنس: Rs. ${(updatedUser?.balance ?? 0).toLocaleString()}`);
       setRechargeAmount('');
     } else {
       setRechargeError('اس ایمیل کا کوئی کسٹمر نہیں ملا۔ براہ کرم درست ایمیل لکھیں۔');
@@ -788,7 +854,7 @@ export default function AdminPortal({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {demands.map((d) => {
-                  const customer = users.find(u => u.email.toLowerCase() === d.userEmail.toLowerCase());
+                  const customer = users.find(u => (u.email || '').toLowerCase() === (d.userEmail || '').toLowerCase());
                   return (
                      <tr key={d.id} className="hover:bg-slate-50/50 transition-colors">
                        {/* Action Buttons */}
@@ -923,9 +989,9 @@ export default function AdminPortal({
             const matchesSearch =
               !bookingSearchQuery ||
               b.number.includes(bookingSearchQuery) ||
-              b.userEmail.toLowerCase().includes(bookingSearchQuery.toLowerCase());
+              (b.userEmail || '').toLowerCase().includes(bookingSearchQuery.toLowerCase());
             return matchesCategory && matchesSearch;
-          }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          }).sort((a, b) => safeGetTime(b.timestamp) - safeGetTime(a.timestamp));
 
           if (filteredBookings.length === 0) {
             return <p className="text-slate-400 text-xs text-center py-6 font-sans">کوئی بکنگ ریکارڈ نہیں ملا۔</p>;
@@ -948,7 +1014,7 @@ export default function AdminPortal({
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredBookings.map((b) => {
-                    const customer = users.find(u => u.email.toLowerCase() === b.userEmail.toLowerCase());
+                    const customer = users.find(u => (u.email || '').toLowerCase() === (b.userEmail || '').toLowerCase());
                     return (
                       <tr key={b.id} className="hover:bg-slate-50/50 transition-colors">
                         {/* Cancel Action Button */}
@@ -964,7 +1030,7 @@ export default function AdminPortal({
 
                         {/* Timestamp */}
                         <td className="py-3 px-3 text-slate-400 font-mono text-[10px]">
-                          {new Date(b.timestamp).toLocaleString('en-US', {
+                          {safeFormatDate(b.timestamp, 'en-US', {
                             hour: '2-digit',
                             minute: '2-digit',
                             second: '2-digit',
@@ -1080,14 +1146,14 @@ export default function AdminPortal({
             <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
               {users.map((u) => (
                 <div 
-                  key={u.email} 
-                  onClick={() => setRechargeEmail(u.email)}
+                  key={u.email || u.uid} 
+                  onClick={() => setRechargeEmail(u.email || '')}
                   className="flex justify-between items-center bg-slate-50 hover:bg-amber-50/50 p-2.5 rounded-xl text-xs transition-all cursor-pointer border border-slate-100"
                 >
-                  <span className="font-mono text-slate-600 font-semibold">Rs. {u.balance.toLocaleString()}</span>
+                  <span className="font-mono text-slate-600 font-semibold">Rs. {(u.balance ?? 0).toLocaleString()}</span>
                   <div className="text-right">
                     <span className="font-semibold block text-slate-800">{u.name} {u.isAdmin && '(ایڈمن)'}</span>
-                    <span className="text-[10px] text-slate-400 font-mono">{u.email}</span>
+                    <span className="text-[10px] text-slate-400 font-mono">{u.email || 'ای میل کے بغیر'}</span>
                   </div>
                 </div>
               ))}
@@ -1367,7 +1433,7 @@ export default function AdminPortal({
             <h5 className="text-xs font-bold text-slate-700 mb-3">موجودہ فعال بکنگ ڈیڈلائنز کی حیثیت</h5>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {deadlines.map((d) => {
-                const isOver = d.status === 'closed' || new Date(d.deadlineIso).getTime() <= Date.now();
+                const isOver = d.status === 'closed' || safeGetTime(d.deadlineIso) <= Date.now();
                 return (
                   <div key={d.category} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-2 flex flex-col justify-between">
                     <div>
@@ -1388,7 +1454,7 @@ export default function AdminPortal({
                         عنوان: <strong className="text-slate-800">{d.titleUrdu}</strong>
                       </p>
                       <p className="text-[11px] text-slate-500 font-mono">
-                        تاریخ: {new Date(d.deadlineIso).toLocaleString('en-US')}
+                        تاریخ: {safeFormatDate(d.deadlineIso, 'en-US')}
                       </p>
                       {d.category === 'pakistan_bond' ? (
                         <div className="mt-1 pt-1 border-t border-slate-200/50 space-y-0.5 text-[10px] text-slate-500">
@@ -2314,14 +2380,13 @@ export default function AdminPortal({
                   {users
                     .filter(u => u.isAdmin === true || u.role === 'superAdmin' || u.role === 'dataEntryAdmin' || u.role === 'admin')
                     .map((admin) => {
-                      const isMainOwner = admin.email.toLowerCase() === getAdminConfiguredEmail().toLowerCase().trim();
+                      const isMainOwner = (admin.email || '').toLowerCase() === getAdminConfiguredEmail().toLowerCase().trim();
                       const isActive = admin.active !== false;
-                      const formattedLogin = admin.lastLogin 
-                        ? new Date(admin.lastLogin).toLocaleString('ur-PK', { timeZone: 'Asia/Karachi' })
-                        : 'لاگ ان نہیں ہوا (No Login)';
+                      const loginTime = admin.lastLogin ? safeFormatDate(admin.lastLogin, 'ur-PK', { timeZone: 'Asia/Karachi' }) : 'N/A';
+                      const formattedLogin = loginTime === 'N/A' ? 'لاگ ان نہیں ہوا (No Login)' : loginTime;
 
                       return (
-                        <tr key={admin.email} className="hover:bg-slate-50/50 transition-colors">
+                        <tr key={admin.email || admin.uid} className="hover:bg-slate-50/50 transition-colors">
                           {/* Actions Column */}
                           <td className="py-3 px-3 text-left">
                             {!isMainOwner ? (
