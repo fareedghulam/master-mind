@@ -941,11 +941,11 @@ export async function addBooking(
 
       const limit = cachedLimits.find(l => l.category === category && l.number === number);
       if (limit) {
-        if (firstAmount > limit.maxAmount) {
-          throw new Error(`اس نمبر (${number}) کے لئے فرسٹ کی انفرادی حد Rs. ${limit.maxAmount} ہے`);
+        if (firstAmount > (limit.firstMaxAmount ?? limit.maxAmount)) {
+          throw new Error(`اس نمبر (${number}) کے لئے فرسٹ کی انفرادی حد Rs. ${limit.firstMaxAmount ?? limit.maxAmount} ہے`);
         }
-        if (secondAmount > limit.maxAmount) {
-          throw new Error(`اس نمبر (${number}) کے لئے سیکنڈ کی انفرادی حد Rs. ${limit.maxAmount} ہے`);
+        if (secondAmount > (limit.secondMaxAmount ?? limit.maxAmount)) {
+          throw new Error(`اس نمبر (${number}) کے لئے سیکنڈ کی انفرادی حد Rs. ${limit.secondMaxAmount ?? limit.maxAmount} ہے`);
         }
       }
 
@@ -1054,7 +1054,7 @@ export async function cancelBookingByAdmin(bookingId: string): Promise<{ success
   }
 }
 
-export async function setOrUpdateLimit(category: 'pakistan_bond' | 'thailand_lottery', number: string, maxAmount: number): Promise<void> {
+export async function setOrUpdateLimit(category: 'pakistan_bond' | 'thailand_lottery', number: string, firstMaxAmount: number, secondMaxAmount: number): Promise<void> {
   const online = await checkInternetConnection();
   if (!online) return;
 
@@ -1065,7 +1065,9 @@ export async function setOrUpdateLimit(category: 'pakistan_bond' | 'thailand_lot
     id: limitId,
     category,
     number,
-    maxAmount
+    firstMaxAmount,
+      secondMaxAmount,
+      maxAmount: Math.max(firstMaxAmount, secondMaxAmount)
   };
   await setDoc(doc(db, 'limits', limitId), limit);
 }
