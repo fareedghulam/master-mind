@@ -37,67 +37,42 @@ interface AdminPortalProps {
 
 function safeGetTime(value: any): number {
   if (!value) return 0;
-  let date: Date;
-  if (value instanceof Date) {
-    date = value;
-  } else if (typeof value === 'number') {
-    date = new Date(value);
-  } else if (typeof value === 'string') {
-    date = new Date(value);
-  } else if (typeof value === 'object') {
-    if (typeof value.seconds === 'number') {
-      date = new Date(value.seconds * 1000);
-    } else if (typeof value.toDate === 'function') {
-      try {
-        date = value.toDate();
-      } catch (e) {
-        return 0;
-      }
+
+  try {
+    let d: Date;
+
+    if (value instanceof Date) {
+      d = value;
+    } else if (typeof value?.toDate === "function") {
+      d = value.toDate();
+    } else if (typeof value?.seconds === "number") {
+      d = new Date(value.seconds * 1000);
     } else {
-      date = new Date(value.toString());
+      d = new Date(value);
     }
-  } else {
+
+    const t = d.getTime();
+    return Number.isNaN(t) ? 0 : t;
+  } catch {
     return 0;
   }
-  const time = date.getTime();
-  return isNaN(time) ? 0 : time;
 }
 
-function safeFormatDate(value: any, locale = 'en-US', options?: Intl.DateTimeFormatOptions): string {
-  if (!value) return 'N/A';
-  let date: Date;
-  if (value instanceof Date) {
-    date = value;
-  } else if (typeof value === 'number') {
-    date = new Date(value);
-  } else if (typeof value === 'string') {
-    date = new Date(value);
-  } else if (typeof value === 'object') {
-    if (typeof value.seconds === 'number') {
-      date = new Date(value.seconds * 1000);
-    } else if (typeof value.toDate === 'function') {
-      try {
-        date = value.toDate();
-      } catch (e) {
-        return 'N/A';
-      }
-    } else {
-      date = new Date(value.toString());
-    }
-  } else {
-    return 'N/A';
-  }
-  if (isNaN(date.getTime())) {
-    return 'N/A';
-  }
+function safeFormatDate(
+  value: any,
+  locale = "en-US",
+  options?: Intl.DateTimeFormatOptions
+): string {
+  const t = safeGetTime(value);
+
+  if (!t) return "N/A";
+
   try {
-    return date.toLocaleString(locale, options);
-  } catch (e) {
-    try {
-      return date.toISOString();
-    } catch (err) {
-      return 'N/A';
-    }
+    return new Date(t).toLocaleString(locale, options);
+  } catch {
+    return "N/A";
+  }
+}
   }
 }
 
@@ -890,7 +865,7 @@ export default function AdminPortal({
 
                        {/* Total Amount */}
                        <td className="py-3 px-3 font-mono font-semibold text-slate-700">
-                         Rs. {(d.firstAmount + d.secondAmount).toLocaleString()}
+                         Rs. {((d.firstAmount ?? 0) + (d.secondAmount ?? 0)).toLocaleString()}
                        </td>
 
                        {/* Breakdown First/Second */}
@@ -988,8 +963,10 @@ export default function AdminPortal({
             const matchesCategory = categoryFilter === 'all' || b.category === categoryFilter;
             const matchesSearch =
               !bookingSearchQuery ||
-              b.number.includes(bookingSearchQuery) ||
-              (b.userEmail || '').toLowerCase().includes(bookingSearchQuery.toLowerCase());
+
+              (b.number || '').includes(bookingSearchQuery) ||
+              b.userEmail.toLowerCase().includes(bookingSearchQuery.toLowerCase());
+
             return matchesCategory && matchesSearch;
           }).sort((a, b) => safeGetTime(b.timestamp) - safeGetTime(a.timestamp));
 
@@ -1041,17 +1018,17 @@ export default function AdminPortal({
 
                         {/* Total Amount */}
                         <td className="py-3 px-3 font-mono font-semibold text-slate-700">
-                          Rs. {(b.firstAmount + b.secondAmount).toLocaleString()}
+                          Rs. {((b.firstAmount ?? 0) + (b.secondAmount ?? 0)).toLocaleString()}
                         </td>
 
                         {/* Breakdown Second */}
                         <td className="py-3 px-3 font-mono text-slate-550 text-xs">
-                          Rs. {b.secondAmount.toLocaleString()}
+                          Rs. {(b.secondAmount ?? 0).toLocaleString()}
                         </td>
 
                         {/* Breakdown First */}
                         <td className="py-3 px-3 font-mono text-slate-550 text-xs">
-                          Rs. {b.firstAmount.toLocaleString()}
+                          Rs. {(b.firstAmount ?? 0).toLocaleString()}
                         </td>
 
                         {/* Target Number */}
@@ -2382,8 +2359,11 @@ export default function AdminPortal({
                     .map((admin) => {
                       const isMainOwner = (admin.email || '').toLowerCase() === getAdminConfiguredEmail().toLowerCase().trim();
                       const isActive = admin.active !== false;
-                      const loginTime = admin.lastLogin ? safeFormatDate(admin.lastLogin, 'ur-PK', { timeZone: 'Asia/Karachi' }) : 'N/A';
-                      const formattedLogin = loginTime === 'N/A' ? 'لاگ ان نہیں ہوا (No Login)' : loginTime;
+
+                      const formattedLogin = admin.lastLogin 
+                        ? safeFormatDate(admin.lastLogin, 'ur-PK', { timeZone: 'Asia/Karachi' })
+                        : 'لاگ ان نہیں ہوا (No Login)';
+
 
                       return (
                         <tr key={admin.email || admin.uid} className="hover:bg-slate-50/50 transition-colors">
