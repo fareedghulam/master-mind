@@ -73,8 +73,6 @@ function safeFormatDate(
     return "N/A";
   }
 }
-  }
-}
 
 export default function AdminPortal({
   users,
