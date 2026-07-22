@@ -136,12 +136,8 @@ export default function AdminPortal({
   const [nextDrawNumber, setNextDrawNumber] = useState('');
   const [nextDrawDate, setNextDrawDate] = useState('');
 
-  const [deadlineLoaded, setDeadlineLoaded] = useState(false);
-
-  // Pre-populate deadline inputs only on first load
+  // Pre-populate deadline inputs when category or deadlines change
   useEffect(() => {
-    if (deadlineLoaded) return;
-
     const existing = deadlines.find(d => d.category === deadlineCategory);
     if (existing) {
       setDeadlineTitle(existing.titleUrdu);
@@ -157,8 +153,7 @@ export default function AdminPortal({
       setNextDrawNumber('');
       setNextDrawDate('');
     }
-    setDeadlineLoaded(true);
-  }, [deadlineCategory, deadlines, deadlineLoaded]);
+  }, [deadlineCategory, deadlines]);
 
   // Demand management state
   const [demandError, setDemandError] = useState('');
@@ -235,12 +230,12 @@ export default function AdminPortal({
   }, [resFirstPrize, resCategory]);
 
   const resetResultForm = () => {
-    setResCategory('pakistan_bond');
+    setResCategory(resultViewCategory);
     setResBondValue('Rs. 200');
     setResDrawNoOnly('');
     setResDrawNo('');
     setResDate('');
-    setResCity('');
+    setResCity(resultViewCategory === 'thailand_lottery' ? 'بنکاک' : '');
     setResFirstPrize('');
     setResSecondPrizesStr('');
     setResLast2Digits('');
@@ -316,25 +311,8 @@ export default function AdminPortal({
 
     if (response.success) {
       setResultSuccess(resultFormMode === 'add' ? 'قرعہ اندازی کا نتیجہ کامیابی سے شامل کر دیا گیا ہے۔' : 'قرعہ اندازی کا نتیجہ کامیابی سے اپ ڈیٹ کر دیا گیا ہے۔');
+      setResultFormOpen(false);
       resetResultForm();
-
-      setResultFormMode('add');
-      setEditingResultId('');
-
-      setTimeout(() => {
-        setResultFormOpen(false);
-      }, 50);
-      setResCategory('pakistan_bond');
-      setResBondValue('');
-      setResDrawNoOnly('');
-      setResDrawNo('');
-      setResDate('');
-      setResCity('');
-      setResFirstPrize('');
-      setResSecondPrizesStr('');
-      setResLast2Digits('');
-      setResFront3Digits('');
-      setResBack3Digits('');
     } else {
       setResultError(response.error || 'نتیجہ محفوظ کرنے میں خرابی پیش آئی۔');
     }
@@ -733,7 +711,6 @@ export default function AdminPortal({
   };
 
   const handleDeadlineSubmit = (e: FormEvent) => {
-    alert('HANDLE DEADLINE SUBMIT RUNNING');
     e.preventDefault();
     setDeadlineError('');
     setDeadlineSuccess('');
@@ -742,19 +719,6 @@ export default function AdminPortal({
       setDeadlineError('براہ کرم تاریخ اور وقت منتخب کریں۔');
       return;
     }
-
-    alert(
-      JSON.stringify(
-        {
-          nextPrizeBondValue,
-          nextDrawCity,
-          nextDrawNumber,
-          nextDrawDate
-        },
-        null,
-        2
-      )
-    );
 
     onSetDeadline(
       deadlineCategory,
@@ -767,18 +731,6 @@ export default function AdminPortal({
       nextDrawDate
     );
     setDeadlineSuccess(`کامیاب: ${deadlineCategory === 'pakistan_bond' ? 'پاکستان بانڈ' : 'تھائی لینڈ لاٹری'} کی سیٹنگز کامیابی سے محفوظ ہو گئی ہیں!`);
-    setDeadlineTitle('');
-    setDeadlineDateTime('');
-    setNextPrizeBondValue('');
-    setNextDrawCity('');
-    setNextDrawNumber('');
-    setNextDrawDate('');
-    setDeadlineTitle('');
-    setDeadlineDateTime('');
-    setNextPrizeBondValue('');
-    setNextDrawCity('');
-    setNextDrawNumber('');
-    setNextDrawDate('');
   };
 
 
@@ -1884,18 +1836,7 @@ export default function AdminPortal({
                 type="button"
                 onClick={() => {
                   setResultFormMode('add');
-                  setEditingResultId('');
-                  setResCategory('pakistan_bond');
-                  setResBondValue('');
-                  setResDrawNoOnly('');
-                  setResDrawNo('');
-                  setResDate('');
-                  setResCity('');
-                  setResFirstPrize('');
-                  setResSecondPrizesStr('');
-                  setResLast2Digits('');
-                  setResFront3Digits('');
-                  setResBack3Digits('');
+                  resetResultForm();
                   setResultFormOpen(true);
                 }}
                 className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-5 py-2.5 rounded-2xl flex items-center justify-center gap-2 cursor-pointer shadow-sm shadow-amber-500/10 transition-all text-xs"

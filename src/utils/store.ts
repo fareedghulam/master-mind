@@ -7,7 +7,8 @@ import {
   deleteDoc, 
   onSnapshot,
   runTransaction,
-  getDocFromServer
+  getDocFromServer,
+    getDocs
 } from 'firebase/firestore';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { 
@@ -266,7 +267,11 @@ export function isLoggedUserDataEntry(): boolean {
 }
 
 export function initializeStore() {
-  if (started) return;
+  if (started) {
+    console.log("Store already started");
+    return;
+  }
+
   started = true;
   
   // Set local helper default keys if not set
@@ -481,6 +486,7 @@ export function initializeStore() {
       }
     } else {
       cachedDeadlines = snapshot.docs.map(doc => doc.data() as DrawDeadline);
+      console.log('DEADLINES FROM FIREBASE:', cachedDeadlines);
       notifyListeners();
     }
   });
@@ -904,6 +910,49 @@ export async function rechargeWallet(email: string, amount: number): Promise<boo
   }
 }
 
+
+export async function deductWallet(email: string, amount: number): Promise<boolean> {
+  const online = await checkInternetConnection();
+  if (!online) return false;
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const cached = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
+
+  if (!cached || !cached.uid) {
+    console.error(`[UID-Migration] Deduct failed: Customer ${normalizedEmail} has no valid firebase UID loaded.`);
+    return false;
+  }
+
+  const uid = cached.uid;
+  const userRef = doc(db, 'users', uid);
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const userDoc = await transaction.get(userRef);
+
+      if (!userDoc.exists()) {
+        throw new Error('کسٹمر ریکارڈ نہیں ملا');
+      }
+
+      const user = userDoc.data() as User;
+
+      if ((user.balance ?? 0) < amount) {
+        throw new Error('والٹ بیلنس کم ہے');
+      }
+
+      transaction.update(userRef, {
+        balance: user.balance - amount
+      });
+    });
+
+    return true;
+
+  } catch (e) {
+    console.error("Deduct wallet failed:", e);
+    return false;
+  }
+}
+
 export async function addBooking(
   email: string,
   category: 'pakistan_bond' | 'thailand_lottery',
@@ -1243,6 +1292,7 @@ export async function setDrawDeadline(
   const online = await checkInternetConnection();
   if (!online) return;
 
+  alert('SET DRAW DEADLINE RECEIVED: ' + JSON.stringify({category, nextPrizeBondValue, nextDrawCity, nextDrawNumber, nextDrawDate}));
   const deadline: DrawDeadline = {
     category,
     deadlineIso,
@@ -1253,7 +1303,10 @@ export async function setDrawDeadline(
     ...(nextDrawNumber !== undefined && { nextDrawNumber }),
     ...(nextDrawDate !== undefined && { nextDrawDate })
   };
+  console.log("SAVED DEADLINE DATA >>>", JSON.stringify(deadline));
+  alert('FIREBASE SAVE DATA: ' + JSON.stringify(deadline));
   await setDoc(doc(db, 'deadlines', category), deadline);
+  alert('FIRESTORE SAVED SUCCESS: ' + JSON.stringify(deadline));
 }
 
 // Memory caches for results
@@ -1300,6 +1353,24 @@ export async function addResult(result: AllResultType): Promise<{ success: boole
   try {
     const colName = result.category === 'pakistan_bond' ? 'pakistanBondResults' : 'thaiLotteryResults';
     await setDoc(doc(db, colName, result.id), result);
+
+    // Auto cleanup after new result save
+    const bookingSnap = await getDocs(collection(db, 'bookings'));
+    for (const b of bookingSnap.docs) {
+      const data = b.data();
+      if (data.category === result.category) {
+        await deleteDoc(doc(db, 'bookings', b.id));
+      }
+    }
+
+    const limitSnap = await getDocs(collection(db, 'limits'));
+    for (const l of limitSnap.docs) {
+      const data = l.data();
+      if (data.category === result.category) {
+        await deleteDoc(doc(db, 'limits', l.id));
+      }
+    }
+
     return { success: true };
   } catch (err: any) {
     console.error("Add result failed:", err);
