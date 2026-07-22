@@ -12,7 +12,7 @@ export const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, "ai-studio-mastermindquresh-ff3983e2-8998-40ba-9564-0a2763001795");
+export const db = getFirestore(app);
 export const auth = getAuth(app);
 
 async function testConnection() {
