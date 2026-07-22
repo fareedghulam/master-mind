@@ -86,7 +86,8 @@ export async function checkInternetConnection(): Promise<boolean> {
       });
       
       clearTimeout(timeoutId);
-      return true;
+      notifyListeners();
+    return true;
     } catch (e) {
       // Fallback to the next endpoint if one fails
     }
@@ -238,7 +239,8 @@ export function isLoggedUserAdminOrSuper(): boolean {
   const email = firebaseUser.email?.toLowerCase().trim();
   if (email) {
     if (email === 'mastermaindqureshi110@gmail.com' || email === 'mastermaind.qureshi110@gmail.com') {
-      return true;
+      notifyListeners();
+    return true;
     }
     const userByEmail = cachedUsers.find(u => (u.email || '').toLowerCase() === email);
     return !!(userByEmail && (userByEmail.role === 'superAdmin' || userByEmail.role === 'admin' || userByEmail.isAdmin === true));
@@ -260,7 +262,8 @@ export function isLoggedUserDataEntry(): boolean {
   const email = firebaseUser.email?.toLowerCase().trim();
   if (email) {
     if (email === 'fareed.ghulam@gmail.com') {
-      return true;
+      notifyListeners();
+    return true;
     }
     const userByEmail = cachedUsers.find(u => (u.email || '').toLowerCase() === email);
     return !!(userByEmail && userByEmail.role === 'dataEntryAdmin');
@@ -366,10 +369,24 @@ export function initializeStore() {
       }
     }
   };
-  seedAndMigrateDefaultUsers();
+  // Run default user migration only once per installation
+  const migrationDone = localStorage.getItem('mqe_startup_migration_done');
+
+  if (!migrationDone) {
+    seedAndMigrateDefaultUsers()
+      .then(() => {
+        localStorage.setItem('mqe_startup_migration_done', 'true');
+        console.log('[Migration] Startup migration completed once.');
+      })
+      .catch((e) => {
+        console.error('[Migration] Startup migration failed:', e);
+      });
+  }
 
   // 1. Listen to users
+  console.time('Firestore users load');
   onSnapshot(collection(db, 'users'), (snapshot) => {
+    console.timeEnd('Firestore users load');
     if (snapshot.empty) {
       // Seeding is already handled inside seedAndMigrateDefaultUsers
     } else {
@@ -770,6 +787,7 @@ export async function updateUserPassword(email: string, passwordInput: string): 
         console.warn(`Could not update admin role in Firestore for ${em} because no UID was found.`);
       }
     }
+    notifyListeners();
     return true;
   } catch (e: any) {
     console.error("Error updating user password:", e);
@@ -829,6 +847,7 @@ export async function updateCustomerPassword(email: string, passwordInput: strin
     } else {
       console.warn(`Could not update customer metadata in Firestore for ${normalizedEmail} because no UID was found.`);
     }
+    notifyListeners();
     return true;
   } catch (e: any) {
     console.error("Error updating customer password:", e);
@@ -867,6 +886,10 @@ export async function registerUser(name: string, phone: string, city: string, em
 
     // [UID-Migration] Write profile information to Firestore with UID key
     await setDoc(doc(db, 'users', uid), newUser);
+
+    cachedUsers = [...cachedUsers.filter(u => u.uid !== uid), newUser];
+    notifyListeners();
+
     return newUser;
   } catch (e) {
     console.error("Error in registerUser:", e);
@@ -958,11 +981,22 @@ export async function rechargeWallet(email: string, amount: number): Promise<boo
       if (!userDoc.exists()) {
         throw new Error('کسٹمر ریکارڈ نہیں ملا');
       }
+
       const user = userDoc.data() as User;
+
+      const currentBalance = Number(user.balance || 0);
+      const newBalance = currentBalance + Number(amount);
+
       transaction.update(userRef, {
-        balance: user.balance + amount
+        balance: newBalance,
+        updatedAt: new Date().toISOString(),
+        lastRecharge: {
+          amount: Number(amount),
+          timestamp: new Date().toISOString()
+        }
       });
     });
+    notifyListeners();
     return true;
   } catch (e) {
     console.error(e);

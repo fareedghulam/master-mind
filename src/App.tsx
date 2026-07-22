@@ -111,7 +111,12 @@ export default function App() {
       syncWithStore();
     });
 
-    const unsubscribeAuth = onAuthStateChanged(auth, () => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async () => {
+      syncWithStore();
+
+      // Give Firestore/store listener a short moment to populate user data
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       syncWithStore();
       setAuthLoading(false);
     });
@@ -276,7 +281,10 @@ export default function App() {
         const userDocRef = doc(db, 'users', uid);
         const userDoc = await getDocFromServer(userDocRef);
         if (userDoc.exists()) {
-          matchedUser = userDoc.data() as User;
+          matchedUser = {
+            ...(userDoc.data() as User),
+            uid
+          };
           console.log(`[UID-Migration] Found existing modern UID-based user record for: ${emailToAuth}`);
         } else {
           // [UID-Migration] Step 2: Fallback to the legacy users/{email} document
@@ -347,6 +355,7 @@ export default function App() {
         }
       }
 
+      console.log("[LOGIN PROFILE]", matchedUser);
       setLoggedInUser(matchedUser.email || matchedUser.uid);
       syncWithStore();
       if (matchedUser.isAdmin) {
