@@ -6,7 +6,8 @@ import {
   getBookings, 
   getNumberLimits, 
   registerUser, 
-  rechargeWallet, 
+  rechargeWallet,
+  deductWallet, 
   addBooking, 
   cancelBooking, 
   cancelBookingByAdmin, 
@@ -111,15 +112,26 @@ export default function App() {
       syncWithStore();
     });
 
-    const unsubscribeAuth = onAuthStateChanged(auth, async () => {
-      syncWithStore();
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      console.log("Firebase Auth State:", user?.email || "No User");
 
-      // Give Firestore/store listener a short moment to populate user data
-      await new Promise(resolve => setTimeout(resolve, 500));
+      try {
+        syncWithStore();
 
-      syncWithStore();
-      setAuthLoading(false);
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        syncWithStore();
+      } catch (error) {
+        console.error("Auth loading error:", error);
+      } finally {
+        setAuthLoading(false);
+      }
     });
+
+    // Safety timeout: if Firebase does not respond
+    setTimeout(() => {
+      setAuthLoading(false);
+    }, 8000);
 
     return () => {
       unsubscribe();
@@ -379,13 +391,44 @@ export default function App() {
     setActiveTab('dashboard');
   };
 
+
+  const handleDeductWallet = async (
+    email: string,
+    amount: number,
+    reason: string = "Admin adjustment"
+  ): Promise<boolean> => {
+
+    const result = await deductWallet(
+      email,
+      amount,
+      reason
+    );
+
+    if (result.success) {
+      syncWithStore();
+      return true;
+    }
+
+    console.error(
+      "Deduct wallet failed:",
+      result.error
+    );
+
+    return false;
+  };
+
+
   const handleRecharge = async (email: string, amount: number): Promise<boolean> => {
     const action = async () => {
-      const success = await rechargeWallet(email, amount);
-      if (success) {
+      const result = await rechargeWallet(email, amount);
+
+      if (result.success) {
         syncWithStore();
+      } else {
+        console.error("Recharge failed:", result.error);
       }
-      return success;
+
+      return result.success;
     };
     const res = await verifyNetworkAndExecute(action);
     return typeof res === 'boolean' ? res : false;
@@ -518,17 +561,14 @@ export default function App() {
   // If user is not authenticated, override and show Registration/Login component
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
-        <div className="flex flex-col items-center gap-4 max-w-sm text-center">
-          <div className="relative w-16 h-16">
-            <div className="absolute inset-0 rounded-full border-4 border-slate-800"></div>
-            <div className="absolute inset-0 rounded-full border-4 border-t-amber-400 animate-spin"></div>
-          </div>
-          <h2 className="text-xl font-bold text-slate-100 font-sans tracking-wide mt-2">
-            لوڈ ہو رہا ہے... (Loading...)
-          </h2>
-          <p className="text-xs text-slate-400 font-sans">
-            براہ کرم انتظار کریں، سیکیورٹی سسٹم اور ڈیٹا بیس کو مربوط کیا جا رہا ہے۔
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-slate-900">
+            ماسٹر مائنڈ قریشی انٹرپرائز
+          </h1>
+
+          <p className="mt-4 text-slate-600">
+            سسٹم شروع ہو رہا ہے...
           </p>
         </div>
       </div>
@@ -705,6 +745,7 @@ export default function App() {
               currentUser={currentUser}
               onCancelBookingByAdmin={handleCancelBookingByAdmin}
               onRecharge={handleRecharge}
+              onDeductWallet={handleDeductWallet}
               onSetLimit={handleSetLimit}
               onDeleteLimit={handleDeleteLimit}
               onApproveDemand={handleApproveDemand}

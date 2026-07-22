@@ -16,6 +16,11 @@ interface AdminPortalProps {
   currentUser: User | null;
   onCancelBookingByAdmin: (bookingId: string) => Promise<{ success: boolean; error?: string }>;
   onRecharge: (email: string, amount: number) => Promise<boolean>;
+  onDeductWallet: (
+    email: string,
+    amount: number,
+    reason?: string
+  ) => Promise<boolean>;
   onSetLimit: (category: 'pakistan_bond' | 'thailand_lottery', number: string, maxAmount: number) => Promise<any>;
   onDeleteLimit: (id: string) => Promise<any>;
   onApproveDemand: (id: string) => Promise<{ success: boolean; error?: string }>;
@@ -112,6 +117,7 @@ export default function AdminPortal({
   currentUser,
   onCancelBookingByAdmin,
   onRecharge,
+  onDeductWallet,
   onSetLimit,
   onDeleteLimit,
   onApproveDemand,
@@ -137,6 +143,13 @@ export default function AdminPortal({
   // Recharge States
   const [rechargeEmail, setRechargeEmail] = useState('');
   const [rechargeAmount, setRechargeAmount] = useState('');
+
+  // Wallet Deduction States
+  const [deductEmail, setDeductEmail] = useState('');
+  const [deductAmount, setDeductAmount] = useState('');
+  const [deductReason, setDeductReason] = useState('');
+  const [deductError, setDeductError] = useState('');
+  const [deductSuccess, setDeductSuccess] = useState('');
   const [rechargeError, setRechargeError] = useState('');
   const [rechargeSuccess, setRechargeSuccess] = useState('');
 
@@ -1162,6 +1175,74 @@ export default function AdminPortal({
         </div>
       </div>
     )}
+        {/* Wallet Deduction Module */}
+        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md">
+
+          <h4 className="text-base font-bold text-slate-800 pb-3 border-b mb-5">
+            کسٹمر والٹ سے رقم واپس کاٹیں
+          </h4>
+
+          {deductError && (
+            <div className="p-3 bg-red-50 text-red-700 rounded-xl mb-3">
+              ⚠️ {deductError}
+            </div>
+          )}
+
+          {deductSuccess && (
+            <div className="p-3 bg-green-50 text-green-700 rounded-xl mb-3">
+              ✓ {deductSuccess}
+            </div>
+          )}
+
+          <input
+            type="email"
+            placeholder="Customer Email"
+            value={deductEmail}
+            onChange={(e)=>setDeductEmail(e.target.value)}
+            className="w-full border rounded-xl p-3 mb-3"
+          />
+
+          <input
+            type="number"
+            placeholder="Amount"
+            value={deductAmount}
+            onChange={(e)=>setDeductAmount(e.target.value)}
+            className="w-full border rounded-xl p-3 mb-3"
+          />
+
+          <input
+            type="text"
+            placeholder="Reason"
+            value={deductReason}
+            onChange={(e)=>setDeductReason(e.target.value)}
+            className="w-full border rounded-xl p-3 mb-3"
+          />
+
+          <button
+            onClick={async()=>{
+
+              const ok = await onDeductWallet(
+                deductEmail,
+                Number(deductAmount),
+                deductReason || "Admin adjustment"
+              );
+
+              if(ok){
+                setDeductSuccess("رقم کامیابی سے واپس کاٹ دی گئی");
+                setDeductAmount('');
+                setDeductReason('');
+              }else{
+                setDeductError("رقم کاٹنے میں مسئلہ آیا");
+              }
+
+            }}
+            className="w-full bg-red-600 text-white font-bold py-3 rounded-xl"
+          >
+            رقم واپس کاٹیں
+          </button>
+
+        </div>
+
 
       {activeAdminTab === 'limits_deadlines' && isSuper && (
         <div className="space-y-8">

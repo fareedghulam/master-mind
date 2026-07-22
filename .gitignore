@@ -8,3 +8,6 @@ coverage/
 !.env.example
 .env
 .env.local
+*.backup*
+*.before-*
+image_backup/
