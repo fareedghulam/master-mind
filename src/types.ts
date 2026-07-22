@@ -26,9 +26,7 @@ export interface NumberLimit {
   id: string;
   category: 'pakistan_bond' | 'thailand_lottery';
   number: string;
-  firstMaxAmount: number;
-  secondMaxAmount: number;
-  maxAmount?: number;
+  maxAmount: number;
 }
 
 export interface Demand {

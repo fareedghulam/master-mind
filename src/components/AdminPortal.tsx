@@ -16,7 +16,6 @@ interface AdminPortalProps {
   currentUser: User | null;
   onCancelBookingByAdmin: (bookingId: string) => Promise<{ success: boolean; error?: string }>;
   onRecharge: (email: string, amount: number) => Promise<boolean>;
-  onDeduct: (email: string, amount: number) => Promise<boolean>;
   onSetLimit: (category: 'pakistan_bond' | 'thailand_lottery', number: string, maxAmount: number) => Promise<any>;
   onDeleteLimit: (id: string) => Promise<any>;
   onApproveDemand: (id: string) => Promise<{ success: boolean; error?: string }>;
@@ -38,40 +37,67 @@ interface AdminPortalProps {
 
 function safeGetTime(value: any): number {
   if (!value) return 0;
-
-  try {
-    let d: Date;
-
-    if (value instanceof Date) {
-      d = value;
-    } else if (typeof value?.toDate === "function") {
-      d = value.toDate();
-    } else if (typeof value?.seconds === "number") {
-      d = new Date(value.seconds * 1000);
+  let date: Date;
+  if (value instanceof Date) {
+    date = value;
+  } else if (typeof value === 'number') {
+    date = new Date(value);
+  } else if (typeof value === 'string') {
+    date = new Date(value);
+  } else if (typeof value === 'object') {
+    if (typeof value.seconds === 'number') {
+      date = new Date(value.seconds * 1000);
+    } else if (typeof value.toDate === 'function') {
+      try {
+        date = value.toDate();
+      } catch (e) {
+        return 0;
+      }
     } else {
-      d = new Date(value);
+      date = new Date(value.toString());
     }
-
-    const t = d.getTime();
-    return Number.isNaN(t) ? 0 : t;
-  } catch {
+  } else {
     return 0;
   }
+  const time = date.getTime();
+  return isNaN(time) ? 0 : time;
 }
 
-function safeFormatDate(
-  value: any,
-  locale = "en-US",
-  options?: Intl.DateTimeFormatOptions
-): string {
-  const t = safeGetTime(value);
-
-  if (!t) return "N/A";
-
+function safeFormatDate(value: any, locale = 'en-US', options?: Intl.DateTimeFormatOptions): string {
+  if (!value) return 'N/A';
+  let date: Date;
+  if (value instanceof Date) {
+    date = value;
+  } else if (typeof value === 'number') {
+    date = new Date(value);
+  } else if (typeof value === 'string') {
+    date = new Date(value);
+  } else if (typeof value === 'object') {
+    if (typeof value.seconds === 'number') {
+      date = new Date(value.seconds * 1000);
+    } else if (typeof value.toDate === 'function') {
+      try {
+        date = value.toDate();
+      } catch (e) {
+        return 'N/A';
+      }
+    } else {
+      date = new Date(value.toString());
+    }
+  } else {
+    return 'N/A';
+  }
+  if (isNaN(date.getTime())) {
+    return 'N/A';
+  }
   try {
-    return new Date(t).toLocaleString(locale, options);
-  } catch {
-    return "N/A";
+    return date.toLocaleString(locale, options);
+  } catch (e) {
+    try {
+      return date.toISOString();
+    } catch (err) {
+      return 'N/A';
+    }
   }
 }
 
@@ -86,7 +112,6 @@ export default function AdminPortal({
   currentUser,
   onCancelBookingByAdmin,
   onRecharge,
-  onDeduct,
   onSetLimit,
   onDeleteLimit,
   onApproveDemand,
@@ -118,8 +143,7 @@ export default function AdminPortal({
   // Limit States
   const [limitCategory, setLimitCategory] = useState<'pakistan_bond' | 'thailand_lottery'>('pakistan_bond');
   const [limitNumber, setLimitNumber] = useState('');
-  const [firstLimitAmount, setFirstLimitAmount] = useState('');
-  const [secondLimitAmount, setSecondLimitAmount] = useState('');
+  const [limitAmount, setLimitAmount] = useState('');
   const [limitError, setLimitError] = useState('');
   const [limitSuccess, setLimitSuccess] = useState('');
 
@@ -136,12 +160,8 @@ export default function AdminPortal({
   const [nextDrawNumber, setNextDrawNumber] = useState('');
   const [nextDrawDate, setNextDrawDate] = useState('');
 
-  const [deadlineLoaded, setDeadlineLoaded] = useState(false);
-
-  // Pre-populate deadline inputs only on first load
+  // Pre-populate deadline inputs when category or deadlines change
   useEffect(() => {
-    if (deadlineLoaded) return;
-
     const existing = deadlines.find(d => d.category === deadlineCategory);
     if (existing) {
       setDeadlineTitle(existing.titleUrdu);
@@ -157,8 +177,7 @@ export default function AdminPortal({
       setNextDrawNumber('');
       setNextDrawDate('');
     }
-    setDeadlineLoaded(true);
-  }, [deadlineCategory, deadlines, deadlineLoaded]);
+  }, [deadlineCategory, deadlines]);
 
   // Demand management state
   const [demandError, setDemandError] = useState('');
@@ -235,12 +254,12 @@ export default function AdminPortal({
   }, [resFirstPrize, resCategory]);
 
   const resetResultForm = () => {
-    setResCategory('pakistan_bond');
+    setResCategory(resultViewCategory);
     setResBondValue('Rs. 200');
     setResDrawNoOnly('');
     setResDrawNo('');
     setResDate('');
-    setResCity('');
+    setResCity(resultViewCategory === 'thailand_lottery' ? 'بنکاک' : '');
     setResFirstPrize('');
     setResSecondPrizesStr('');
     setResLast2Digits('');
@@ -316,25 +335,8 @@ export default function AdminPortal({
 
     if (response.success) {
       setResultSuccess(resultFormMode === 'add' ? 'قرعہ اندازی کا نتیجہ کامیابی سے شامل کر دیا گیا ہے۔' : 'قرعہ اندازی کا نتیجہ کامیابی سے اپ ڈیٹ کر دیا گیا ہے۔');
+      setResultFormOpen(false);
       resetResultForm();
-
-      setResultFormMode('add');
-      setEditingResultId('');
-
-      setTimeout(() => {
-        setResultFormOpen(false);
-      }, 50);
-      setResCategory('pakistan_bond');
-      setResBondValue('');
-      setResDrawNoOnly('');
-      setResDrawNo('');
-      setResDate('');
-      setResCity('');
-      setResFirstPrize('');
-      setResSecondPrizesStr('');
-      setResLast2Digits('');
-      setResFront3Digits('');
-      setResBack3Digits('');
     } else {
       setResultError(response.error || 'نتیجہ محفوظ کرنے میں خرابی پیش آئی۔');
     }
@@ -643,34 +645,6 @@ export default function AdminPortal({
     }
   };
 
-
-  const handleDeductSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setRechargeError('');
-    setRechargeSuccess('');
-
-    if (!rechargeEmail || !rechargeAmount) {
-      setRechargeError('براہ کرم کسٹمر ایمیل اور رقم دونوں لکھیں۔');
-      return;
-    }
-
-    const amountNum = parseInt(rechargeAmount, 10);
-
-    if (isNaN(amountNum) || amountNum <= 0) {
-      setRechargeError('براہ کرم درست رقم درج کریں۔');
-      return;
-    }
-
-    const ok = await onDeduct(rechargeEmail, amountNum);
-
-    if (ok) {
-      setRechargeSuccess(`Rs. ${amountNum.toLocaleString()} کسٹمر کے والٹ سے کامیابی سے کم کر دیئے گئے۔`);
-      setRechargeAmount('');
-    } else {
-      setRechargeError('والٹ سے رقم کم کرنے میں مسئلہ پیش آیا۔');
-    }
-  };
-
   const handleCancelBookingClick = async (bookingId: string, number: string) => {
     setCancelSuccess('');
     setCancelError('');
@@ -713,27 +687,24 @@ export default function AdminPortal({
     setLimitError('');
     setLimitSuccess('');
 
-    if (!limitNumber || !firstLimitAmount || !secondLimitAmount) {
+    if (!limitNumber || !limitAmount) {
       setLimitError('نمبر اور زیادہ سے زیادہ رقم دونوں لازمی ہیں۔');
       return;
     }
 
-    const firstLimit = parseInt(firstLimitAmount, 10);
-    const secondLimit = parseInt(secondLimitAmount, 10);
+    const limitNumVal = parseInt(limitAmount, 10);
     if (isNaN(limitNumVal) || limitNumVal <= 0) {
       setLimitError('براہ کرم درست لمٹ رقم لکھیں۔');
       return;
     }
 
-    await onSetLimit(limitCategory, limitNumber, firstLimit, secondLimit);
-    setLimitSuccess(`کامیاب: نمبر ${limitNumber} کی فرسٹ لمٹ Rs. ${firstLimit} اور سیکنڈ لمٹ Rs. ${secondLimit} مقرر کر دی گئی ہے۔`);
+    await onSetLimit(limitCategory, limitNumber, limitNumVal);
+    setLimitSuccess(`کامیاب: نمبر ${limitNumber} کی حد Rs. ${limitNumVal} مقرر کر دی گئی ہے۔`);
     setLimitNumber('');
-    setFirstLimitAmount('');
-    setSecondLimitAmount('');
+    setLimitAmount('');
   };
 
   const handleDeadlineSubmit = (e: FormEvent) => {
-    alert('HANDLE DEADLINE SUBMIT RUNNING');
     e.preventDefault();
     setDeadlineError('');
     setDeadlineSuccess('');
@@ -742,19 +713,6 @@ export default function AdminPortal({
       setDeadlineError('براہ کرم تاریخ اور وقت منتخب کریں۔');
       return;
     }
-
-    alert(
-      JSON.stringify(
-        {
-          nextPrizeBondValue,
-          nextDrawCity,
-          nextDrawNumber,
-          nextDrawDate
-        },
-        null,
-        2
-      )
-    );
 
     onSetDeadline(
       deadlineCategory,
@@ -767,18 +725,6 @@ export default function AdminPortal({
       nextDrawDate
     );
     setDeadlineSuccess(`کامیاب: ${deadlineCategory === 'pakistan_bond' ? 'پاکستان بانڈ' : 'تھائی لینڈ لاٹری'} کی سیٹنگز کامیابی سے محفوظ ہو گئی ہیں!`);
-    setDeadlineTitle('');
-    setDeadlineDateTime('');
-    setNextPrizeBondValue('');
-    setNextDrawCity('');
-    setNextDrawNumber('');
-    setNextDrawDate('');
-    setDeadlineTitle('');
-    setDeadlineDateTime('');
-    setNextPrizeBondValue('');
-    setNextDrawCity('');
-    setNextDrawNumber('');
-    setNextDrawDate('');
   };
 
 
@@ -944,7 +890,7 @@ export default function AdminPortal({
 
                        {/* Total Amount */}
                        <td className="py-3 px-3 font-mono font-semibold text-slate-700">
-                         Rs. {((d.firstAmount ?? 0) + (d.secondAmount ?? 0)).toLocaleString()}
+                         Rs. {(d.firstAmount + d.secondAmount).toLocaleString()}
                        </td>
 
                        {/* Breakdown First/Second */}
@@ -1042,10 +988,8 @@ export default function AdminPortal({
             const matchesCategory = categoryFilter === 'all' || b.category === categoryFilter;
             const matchesSearch =
               !bookingSearchQuery ||
-
-              (b.number || '').includes(bookingSearchQuery) ||
-              b.userEmail.toLowerCase().includes(bookingSearchQuery.toLowerCase());
-
+              b.number.includes(bookingSearchQuery) ||
+              (b.userEmail || '').toLowerCase().includes(bookingSearchQuery.toLowerCase());
             return matchesCategory && matchesSearch;
           }).sort((a, b) => safeGetTime(b.timestamp) - safeGetTime(a.timestamp));
 
@@ -1097,17 +1041,17 @@ export default function AdminPortal({
 
                         {/* Total Amount */}
                         <td className="py-3 px-3 font-mono font-semibold text-slate-700">
-                          Rs. {((b.firstAmount ?? 0) + (b.secondAmount ?? 0)).toLocaleString()}
+                          Rs. {(b.firstAmount + b.secondAmount).toLocaleString()}
                         </td>
 
                         {/* Breakdown Second */}
                         <td className="py-3 px-3 font-mono text-slate-550 text-xs">
-                          Rs. {(b.secondAmount ?? 0).toLocaleString()}
+                          Rs. {b.secondAmount.toLocaleString()}
                         </td>
 
                         {/* Breakdown First */}
                         <td className="py-3 px-3 font-mono text-slate-550 text-xs">
-                          Rs. {(b.firstAmount ?? 0).toLocaleString()}
+                          Rs. {b.firstAmount.toLocaleString()}
                         </td>
 
                         {/* Target Number */}
@@ -1194,14 +1138,6 @@ export default function AdminPortal({
             >
               <span>والٹ رقم جمع کریں (Recharge)</span>
             </button>
-
-              <button
-                type="button"
-                onClick={handleDeductSubmit}
-                className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-2xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <span>والٹ سے رقم کم کریں (Deduct)</span>
-              </button>
           </form>
 
           {/* Quick list of registered customers to quickly recharge */}
@@ -1281,27 +1217,16 @@ export default function AdminPortal({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                    <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                      فرسٹ لمٹ *
-                    </label>
-                    <input
-                      type="number"
-                      placeholder="مثال: 100"
-                      value={firstLimitAmount}
-                      onChange={(e) => setFirstLimitAmount(e.target.value)}
-                      className="w-full text-left bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
-                    />
-
-                    <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right mt-3">
-                      سیکنڈ لمٹ *
-                    </label>
-                    <input
-                      type="number"
-                      placeholder="مثال: 50"
-                      value={secondLimitAmount}
-                      onChange={(e) => setSecondLimitAmount(e.target.value)}
-                      className="w-full text-left bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
-                    />
+                  <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
+                    زیادہ سے زیادہ رقم لمٹ *
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="مثال: 50"
+                    value={limitAmount}
+                    onChange={(e) => setLimitAmount(e.target.value)}
+                    className="w-full text-left bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
+                  />
                 </div>
                 
                 <div>
@@ -1884,18 +1809,7 @@ export default function AdminPortal({
                 type="button"
                 onClick={() => {
                   setResultFormMode('add');
-                  setEditingResultId('');
-                  setResCategory('pakistan_bond');
-                  setResBondValue('');
-                  setResDrawNoOnly('');
-                  setResDrawNo('');
-                  setResDate('');
-                  setResCity('');
-                  setResFirstPrize('');
-                  setResSecondPrizesStr('');
-                  setResLast2Digits('');
-                  setResFront3Digits('');
-                  setResBack3Digits('');
+                  resetResultForm();
                   setResultFormOpen(true);
                 }}
                 className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-5 py-2.5 rounded-2xl flex items-center justify-center gap-2 cursor-pointer shadow-sm shadow-amber-500/10 transition-all text-xs"
@@ -2468,11 +2382,8 @@ export default function AdminPortal({
                     .map((admin) => {
                       const isMainOwner = (admin.email || '').toLowerCase() === getAdminConfiguredEmail().toLowerCase().trim();
                       const isActive = admin.active !== false;
-
-                      const formattedLogin = admin.lastLogin 
-                        ? safeFormatDate(admin.lastLogin, 'ur-PK', { timeZone: 'Asia/Karachi' })
-                        : 'لاگ ان نہیں ہوا (No Login)';
-
+                      const loginTime = admin.lastLogin ? safeFormatDate(admin.lastLogin, 'ur-PK', { timeZone: 'Asia/Karachi' }) : 'N/A';
+                      const formattedLogin = loginTime === 'N/A' ? 'لاگ ان نہیں ہوا (No Login)' : loginTime;
 
                       return (
                         <tr key={admin.email || admin.uid} className="hover:bg-slate-50/50 transition-colors">

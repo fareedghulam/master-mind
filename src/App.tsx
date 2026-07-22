@@ -160,8 +160,6 @@ export default function App() {
 
   const handleUpdateAdminEmail = async (email: string) => {
     const action = async () => {
-      alert('APP HANDLE SET DEADLINE: ' + JSON.stringify({category, status, nextPrizeBondValue, nextDrawCity, nextDrawNumber, nextDrawDate}));
-      console.log('APP HANDLE SET DEADLINE DATA >>>', { category, deadlineIso, titleUrdu, status, nextPrizeBondValue, nextDrawCity, nextDrawNumber, nextDrawDate });
       setAdminConfiguredEmail(email);
       setAdminConfiguredEmailState(email);
       syncWithStore();
@@ -384,23 +382,9 @@ export default function App() {
     return typeof res === 'boolean' ? res : false;
   };
 
-  
-
-  const handleDeduct = async (email: string, amount: number): Promise<boolean> => {
+  const handleSetLimit = async (category: 'pakistan_bond' | 'thailand_lottery', number: string, maxAmount: number) => {
     const action = async () => {
-      const success = await deductWallet(email, amount);
-      if (success) {
-        syncWithStore();
-      }
-      return success;
-    };
-    const res = await verifyNetworkAndExecute(action);
-    return typeof res === 'boolean' ? res : false;
-  };
-
-const handleSetLimit = async (category: 'pakistan_bond' | 'thailand_lottery', number: string, firstMaxAmount: number, secondMaxAmount: number) => {
-    const action = async () => {
-      await setOrUpdateLimit(category, number, firstMaxAmount, secondMaxAmount);
+      await setOrUpdateLimit(category, number, maxAmount);
       syncWithStore();
       return true;
     };
@@ -514,29 +498,7 @@ const handleSetLimit = async (category: 'pakistan_bond' | 'thailand_lottery', nu
     return await verifyNetworkAndExecute(action);
   };
 
-  
-const handleAddResult = async (result: PakistanBondResult | ThaiLotteryResult) => {
-  const res = await addResult(result);
-  if (res.success) syncWithStore();
-  return res;
-};
-
-const handleEditResult = async (result: PakistanBondResult | ThaiLotteryResult) => {
-  const res = await editResult(result);
-  if (res.success) syncWithStore();
-  return res;
-};
-
-const handleDeleteResult = async (
-  id: string,
-  category: 'pakistan_bond' | 'thailand_lottery'
-) => {
-  const res = await deleteResult(id, category);
-  if (res.success) syncWithStore();
-  return res;
-};
-
-const toggleAdminView = () => {
+  const toggleAdminView = () => {
     if (activeTab === 'admin') {
       setActiveTab('dashboard');
     } else {
@@ -734,15 +696,14 @@ const toggleAdminView = () => {
               currentUser={currentUser}
               onCancelBookingByAdmin={handleCancelBookingByAdmin}
               onRecharge={handleRecharge}
-                onDeduct={handleDeduct}
               onSetLimit={handleSetLimit}
               onDeleteLimit={handleDeleteLimit}
               onApproveDemand={handleApproveDemand}
               onRejectDemand={handleRejectDemand}
               onSetDeadline={handleSetDeadline}
-              onAddResult={handleAddResult}
-              onEditResult={handleEditResult}
-              onDeleteResult={handleDeleteResult}
+              onAddResult={addResult}
+              onEditResult={editResult}
+              onDeleteResult={deleteResult}
             />
           )}
 

@@ -8,7 +8,9 @@ import {
   onSnapshot,
   runTransaction,
   getDocFromServer,
-    getDocs
+  getDocs,
+  query,
+  where
 } from 'firebase/firestore';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { 
@@ -267,11 +269,7 @@ export function isLoggedUserDataEntry(): boolean {
 }
 
 export function initializeStore() {
-  if (started) {
-    console.log("Store already started");
-    return;
-  }
-
+  if (started) return;
   started = true;
   
   // Set local helper default keys if not set
@@ -486,7 +484,6 @@ export function initializeStore() {
       }
     } else {
       cachedDeadlines = snapshot.docs.map(doc => doc.data() as DrawDeadline);
-      console.log('DEADLINES FROM FIREBASE:', cachedDeadlines);
       notifyListeners();
     }
   });
@@ -877,6 +874,69 @@ export async function registerUser(name: string, phone: string, city: string, em
   }
 }
 
+export async function updateUserProfile(
+  uid: string,
+  updatedData: { name: string; phone: string; city: string }
+): Promise<{ success: boolean; message: string }> {
+  const online = await checkInternetConnection();
+  if (!online) {
+    return {
+      success: false,
+      message: 'انٹرنیٹ کنکشن دستیاب نہیں ہے۔ براہ کرم اپنا انٹرنیٹ کنکشن چیک کریں۔'
+    };
+  }
+
+  const name = updatedData.name.trim();
+  const phone = updatedData.phone.trim();
+  const city = updatedData.city.trim();
+
+  if (!name) {
+    return { success: false, message: 'نام درج کرنا لازمی ہے۔' };
+  }
+  if (name.length < 2 || name.length > 100) {
+    return { success: false, message: 'نام 2 سے 100 حروف کے درمیان ہونا چاہیے۔' };
+  }
+
+  if (!phone) {
+    return { success: false, message: 'موبائل نمبر درج کرنا لازمی ہے۔' };
+  }
+  const phoneRegex = /^[\d\+\-\s]{10,20}$/;
+  if (!phoneRegex.test(phone)) {
+    return { success: false, message: 'براہ کرم درست فون نمبر درج کریں۔ (مثلاً: 03001234567)' };
+  }
+
+  if (!city) {
+    return { success: false, message: 'شہر کا نام درج کرنا لازمی ہے۔' };
+  }
+  if (city.length > 50) {
+    return { success: false, message: 'شہر کا نام 50 حروف سے زیادہ نہیں ہو سکتا۔' };
+  }
+
+  if (!uid) {
+    return { success: false, message: 'صارف کی شناخت (UID) موجود نہیں ہے۔' };
+  }
+
+  try {
+    const userRef = doc(db, 'users', uid);
+    await setDoc(userRef, {
+      name,
+      phone,
+      city
+    }, { merge: true });
+
+    return {
+      success: true,
+      message: 'آپ کی پروفائل کامیابی سے اپ ڈیٹ ہو گئی ہے۔'
+    };
+  } catch (error: any) {
+    console.error('Error updating user profile in Firestore:', error);
+    return {
+      success: false,
+      message: 'پروفائل اپ ڈیٹ کرتے وقت ایک خطاء پیش آئی: ' + (error?.message || 'نامعلوم غلطی')
+    };
+  }
+}
+
 export async function rechargeWallet(email: string, amount: number): Promise<boolean> {
   const online = await checkInternetConnection();
   if (!online) return false;
@@ -906,49 +966,6 @@ export async function rechargeWallet(email: string, amount: number): Promise<boo
     return true;
   } catch (e) {
     console.error(e);
-    return false;
-  }
-}
-
-
-export async function deductWallet(email: string, amount: number): Promise<boolean> {
-  const online = await checkInternetConnection();
-  if (!online) return false;
-
-  const normalizedEmail = email.toLowerCase().trim();
-  const cached = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
-
-  if (!cached || !cached.uid) {
-    console.error(`[UID-Migration] Deduct failed: Customer ${normalizedEmail} has no valid firebase UID loaded.`);
-    return false;
-  }
-
-  const uid = cached.uid;
-  const userRef = doc(db, 'users', uid);
-
-  try {
-    await runTransaction(db, async (transaction) => {
-      const userDoc = await transaction.get(userRef);
-
-      if (!userDoc.exists()) {
-        throw new Error('کسٹمر ریکارڈ نہیں ملا');
-      }
-
-      const user = userDoc.data() as User;
-
-      if ((user.balance ?? 0) < amount) {
-        throw new Error('والٹ بیلنس کم ہے');
-      }
-
-      transaction.update(userRef, {
-        balance: user.balance - amount
-      });
-    });
-
-    return true;
-
-  } catch (e) {
-    console.error("Deduct wallet failed:", e);
     return false;
   }
 }
@@ -990,11 +1007,11 @@ export async function addBooking(
 
       const limit = cachedLimits.find(l => l.category === category && l.number === number);
       if (limit) {
-        if (firstAmount > (limit.firstMaxAmount ?? limit.maxAmount)) {
-          throw new Error(`اس نمبر (${number}) کے لئے فرسٹ کی انفرادی حد Rs. ${limit.firstMaxAmount ?? limit.maxAmount} ہے`);
+        if (firstAmount > limit.maxAmount) {
+          throw new Error(`اس نمبر (${number}) کے لئے فرسٹ کی انفرادی حد Rs. ${limit.maxAmount} ہے`);
         }
-        if (secondAmount > (limit.secondMaxAmount ?? limit.maxAmount)) {
-          throw new Error(`اس نمبر (${number}) کے لئے سیکنڈ کی انفرادی حد Rs. ${limit.secondMaxAmount ?? limit.maxAmount} ہے`);
+        if (secondAmount > limit.maxAmount) {
+          throw new Error(`اس نمبر (${number}) کے لئے سیکنڈ کی انفرادی حد Rs. ${limit.maxAmount} ہے`);
         }
       }
 
@@ -1103,7 +1120,7 @@ export async function cancelBookingByAdmin(bookingId: string): Promise<{ success
   }
 }
 
-export async function setOrUpdateLimit(category: 'pakistan_bond' | 'thailand_lottery', number: string, firstMaxAmount: number, secondMaxAmount: number): Promise<void> {
+export async function setOrUpdateLimit(category: 'pakistan_bond' | 'thailand_lottery', number: string, maxAmount: number): Promise<void> {
   const online = await checkInternetConnection();
   if (!online) return;
 
@@ -1114,9 +1131,7 @@ export async function setOrUpdateLimit(category: 'pakistan_bond' | 'thailand_lot
     id: limitId,
     category,
     number,
-    firstMaxAmount,
-      secondMaxAmount,
-      maxAmount: Math.max(firstMaxAmount, secondMaxAmount)
+    maxAmount
   };
   await setDoc(doc(db, 'limits', limitId), limit);
 }
@@ -1292,7 +1307,6 @@ export async function setDrawDeadline(
   const online = await checkInternetConnection();
   if (!online) return;
 
-  alert('SET DRAW DEADLINE RECEIVED: ' + JSON.stringify({category, nextPrizeBondValue, nextDrawCity, nextDrawNumber, nextDrawDate}));
   const deadline: DrawDeadline = {
     category,
     deadlineIso,
@@ -1303,10 +1317,7 @@ export async function setDrawDeadline(
     ...(nextDrawNumber !== undefined && { nextDrawNumber }),
     ...(nextDrawDate !== undefined && { nextDrawDate })
   };
-  console.log("SAVED DEADLINE DATA >>>", JSON.stringify(deadline));
-  alert('FIREBASE SAVE DATA: ' + JSON.stringify(deadline));
   await setDoc(doc(db, 'deadlines', category), deadline);
-  alert('FIRESTORE SAVED SUCCESS: ' + JSON.stringify(deadline));
 }
 
 // Memory caches for results
@@ -1319,6 +1330,47 @@ export function getPakistanBondResults(): PakistanBondResult[] {
 
 export function getThaiLotteryResults(): ThaiLotteryResult[] {
   return cachedThaiLotteryResults;
+}
+
+export async function autoCleanOldDrawData(category: 'pakistan_bond' | 'thailand_lottery'): Promise<void> {
+  try {
+    console.log(`Starting auto cleanup for old draw data of category: ${category}`);
+    
+    // 1. Remove all bookings of this category
+    const bookingsRef = collection(db, 'bookings');
+    const bookingsQuery = query(bookingsRef, where('category', '==', category));
+    const bookingsSnapshot = await getDocs(bookingsQuery);
+    
+    for (const d of bookingsSnapshot.docs) {
+      await deleteDoc(doc(db, 'bookings', d.id));
+    }
+    console.log(`Cleaned ${bookingsSnapshot.size} bookings for category ${category}`);
+
+    // 2. Clear all number limits of this category
+    const limitsRef = collection(db, 'limits');
+    const limitsQuery = query(limitsRef, where('category', '==', category));
+    const limitsSnapshot = await getDocs(limitsQuery);
+    
+    for (const d of limitsSnapshot.docs) {
+      await deleteDoc(doc(db, 'limits', d.id));
+    }
+    console.log(`Cleaned ${limitsSnapshot.size} limits for category ${category}`);
+
+    // 3. Prepare system for the next draw (opening the deadline)
+    const deadlineRef = doc(db, 'deadlines', category);
+    const deadlineSnap = await getDocFromServer(deadlineRef);
+    if (deadlineSnap.exists()) {
+      const currentDeadline = deadlineSnap.data() as DrawDeadline;
+      const updatedDeadline: DrawDeadline = {
+        ...currentDeadline,
+        status: 'open'
+      };
+      await setDoc(deadlineRef, updatedDeadline);
+      console.log(`Prepared system for next draw by opening deadline for ${category}`);
+    }
+  } catch (err) {
+    console.error("Auto clean-up of old draw data failed:", err);
+  }
 }
 
 export async function addResult(result: AllResultType): Promise<{ success: boolean; error?: string }> {
@@ -1353,24 +1405,8 @@ export async function addResult(result: AllResultType): Promise<{ success: boole
   try {
     const colName = result.category === 'pakistan_bond' ? 'pakistanBondResults' : 'thaiLotteryResults';
     await setDoc(doc(db, colName, result.id), result);
-
-    // Auto cleanup after new result save
-    const bookingSnap = await getDocs(collection(db, 'bookings'));
-    for (const b of bookingSnap.docs) {
-      const data = b.data();
-      if (data.category === result.category) {
-        await deleteDoc(doc(db, 'bookings', b.id));
-      }
-    }
-
-    const limitSnap = await getDocs(collection(db, 'limits'));
-    for (const l of limitSnap.docs) {
-      const data = l.data();
-      if (data.category === result.category) {
-        await deleteDoc(doc(db, 'limits', l.id));
-      }
-    }
-
+    // Clean old draw data automatically
+    await autoCleanOldDrawData(result.category);
     return { success: true };
   } catch (err: any) {
     console.error("Add result failed:", err);
@@ -1385,6 +1421,8 @@ export async function editResult(result: AllResultType): Promise<{ success: bool
   try {
     const colName = result.category === 'pakistan_bond' ? 'pakistanBondResults' : 'thaiLotteryResults';
     await setDoc(doc(db, colName, result.id), result, { merge: true });
+    // Clean old draw data automatically
+    await autoCleanOldDrawData(result.category);
     return { success: true };
   } catch (err: any) {
     console.error("Edit result failed:", err);

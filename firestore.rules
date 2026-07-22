@@ -57,30 +57,11 @@ service cloud.firestore {
 
     // Helper to validate DrawDeadline
     function isValidDeadline(data) {
-      return data.keys().hasAll([
-          'category',
-          'titleUrdu',
-          'deadlineIso',
-          'status'
-        ])
-        && data.keys().hasOnly([
-          'category',
-          'titleUrdu',
-          'deadlineIso',
-          'status',
-          'nextPrizeBondValue',
-          'nextDrawCity',
-          'nextDrawNumber',
-          'nextDrawDate'
-        ])
+      return data.keys().hasAll(['category', 'titleUrdu', 'deadlineIso', 'status'])
         && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery')
         && data.titleUrdu is string
         && data.deadlineIso is string
-        && (data.status == 'open' || data.status == 'closed')
-        && (!('nextPrizeBondValue' in data) || data.nextPrizeBondValue is string)
-        && (!('nextDrawCity' in data) || data.nextDrawCity is string)
-        && (!('nextDrawNumber' in data) || data.nextDrawNumber is string)
-        && (!('nextDrawDate' in data) || data.nextDrawDate is string);
+        && (data.status == 'open' || data.status == 'closed');
     }
 
     // Helper to validate Settings

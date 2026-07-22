@@ -3,16 +3,16 @@ import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 export const firebaseConfig = {
-  apiKey: "AIzaSyAx59hRoNxWI7a4iQtIaPkOGftFW1EMmfc",
-  authDomain: "master-mind-qureshi-enterprise.firebaseapp.com",
-  projectId: "master-mind-qureshi-enterprise",
-  storageBucket: "master-mind-qureshi-enterprise.firebasestorage.app",
-  messagingSenderId: "343587675373",
-  appId: "1:343587675373:web:26be133df0ec77ae4e40e4"
+  apiKey: "AIzaSyAdxB4gKa6AB9mrOuE6PeQGzbUVUtXKBKs",
+  authDomain: "cool-segment-c79b0.firebaseapp.com",
+  projectId: "cool-segment-c79b0",
+  storageBucket: "cool-segment-c79b0.firebasestorage.app",
+  messagingSenderId: "719868641304",
+  appId: "1:719868641304:web:3a1a98d832412375f8436d"
 };
 
 export const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+export const db = getFirestore(app, "ai-studio-mastermindquresh-ff3983e2-8998-40ba-9564-0a2763001795");
 export const auth = getAuth(app);
 
 async function testConnection() {
