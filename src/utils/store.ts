@@ -1429,6 +1429,10 @@ export async function addBooking(
   const totalCost = firstAmount + secondAmount;
 
   try {
+    console.log("Current UID:", auth.currentUser?.uid);
+    console.log("Current Email:", auth.currentUser?.email);
+    console.log("Booking Email:", normalizedEmail);
+
     const result = await runTransaction(db, async (transaction) => {
       const userDoc = await transaction.get(userRef);
       if (!userDoc.exists()) {
@@ -1452,6 +1456,7 @@ export async function addBooking(
 
       const newBooking: Booking = {
         id: bookingId,
+        userUid: uid,
         userEmail: normalizedEmail,
         category,
         number,
@@ -1469,7 +1474,10 @@ export async function addBooking(
     });
     return result;
   } catch (err: any) {
-    console.error("Booking transaction failed:", err);
+    console.error("Booking transaction failed");
+    console.error("Error code:", err?.code);
+    console.error("Error message:", err?.message);
+    console.error("Full error:", err);
     return { success: false, error: err.message || 'بکنگ کے دوران غلطی پیش آئی۔' };
   }
 }

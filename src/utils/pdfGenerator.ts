@@ -1,8 +1,9 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Booking } from '../types';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 
-export function generateBookingPDF(
+export async function generateBookingPDF(
   customerName: string,
   customerEmail: string,
   customerPhone: string,
@@ -104,9 +105,18 @@ export function generateBookingPDF(
   doc.text('This is an official receipt of bookings with MasterMind Qureshi Enterprise.', 105, finalY + 15, { align: 'center' });
   doc.text('Please verify your profile email in final logs.', 105, finalY + 20, { align: 'center' });
 
-  // Save the PDF
+  // Save the PDF (Android Capacitor)
   const filename = `${category}_${customerName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
-  doc.save(filename);
+
+  const pdfBase64 = doc.output('datauristring').split(',')[1];
+
+  await Filesystem.writeFile({
+    path: filename,
+    data: pdfBase64,
+    directory: Directory.Documents
+  });
+
+  alert('✓ PDF فائل Documents فولڈر میں محفوظ ہو گئی ہے!');
 }
 
 const urduToEnglishCity: Record<string, string> = {
@@ -139,7 +149,7 @@ function translateDrawNo(drawNo: string): string {
   return drawNo.replace(/ڈرا نمبر/g, 'Draw No.');
 }
 
-export function generateDrawHistoryPDF(
+export async function generateDrawHistoryPDF(
   draws: any[],
   category: 'all' | 'pakistan_bond' | 'thailand_lottery'
 ) {
@@ -219,5 +229,13 @@ export function generateDrawHistoryPDF(
 
   // Save the PDF
   const filename = `${category}_history_record_${new Date().toISOString().split('T')[0]}.pdf`;
-  doc.save(filename);
+  const pdfBase64 = doc.output('datauristring').split(',')[1];
+
+  await Filesystem.writeFile({
+    path: filename,
+    data: pdfBase64,
+    directory: Directory.Documents
+  });
+
+  alert('✓ رزلٹ PDF فائل Documents فولڈر میں محفوظ ہو گئی ہے!');
 }
