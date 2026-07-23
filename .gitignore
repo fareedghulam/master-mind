@@ -11,3 +11,7 @@ coverage/
 *.backup*
 *.before-*
 image_backup/
+
+# Android signing files
+*.jks
+key.properties
