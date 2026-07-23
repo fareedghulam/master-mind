@@ -1025,8 +1025,10 @@ export async function registerUser(name: string, phone: string, city: string, em
     notifyListeners();
 
     return newUser;
-  } catch (e) {
-    console.error("Error in registerUser:", e);
+  } catch (e: any) {
+    console.error("Register Error Code:", e?.code);
+    console.error("Register Error Message:", e?.message);
+    console.error("Register Full Error:", e);
     return null;
   }
 }
