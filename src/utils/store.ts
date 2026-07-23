@@ -271,6 +271,77 @@ export function isLoggedUserDataEntry(): boolean {
   return false;
 }
 
+// Tracks whether we are actively resolving the current user's profile from
+// Firestore, so the UI can show a real "loading" state instead of treating
+// a placeholder object as the final answer.
+let profileResolving = false;
+export function isProfileResolving(): boolean {
+  return profileResolving;
+}
+
+// [FIX] Single source of truth for turning a signed-in Firebase Auth user
+// (uid + email) into a Firestore profile. Looks up users/{uid} first; if
+// missing, falls back to the legacy users/{email} doc and migrates it to
+// users/{uid}. Updates cachedUsers so getLoggedInUser()/getUsers() see the
+// result immediately. This used to live only inside the interactive
+// handleLogin() flow in App.tsx, which meant it never ran again once a
+// session was auto-restored (e.g. reopening the Android app while still
+// logged in) - that gap is what caused the profile to stay stuck on the
+// placeholder ("Loading...", balance 0) on Android while working fine in
+// the browser (where the user was going through the explicit login form).
+export async function ensureUserProfile(uid: string, email: string): Promise<User | null> {
+  const existing = cachedUsers.find(u => u.uid === uid);
+  if (existing) return existing;
+
+  profileResolving = true;
+  notifyListeners();
+
+  try {
+    const uidDocRef = doc(db, 'users', uid);
+    const uidDoc = await getDocFromServer(uidDocRef);
+
+    let profile: User | null = null;
+
+    if (uidDoc.exists()) {
+      profile = { ...(uidDoc.data() as User), uid };
+    } else {
+      // Legacy doc keyed by email instead of uid - migrate it.
+      const emailLower = email.toLowerCase().trim();
+      const legacyDocRef = doc(db, 'users', emailLower);
+      try {
+        const legacyDoc = await getDocFromServer(legacyDocRef);
+        if (legacyDoc.exists()) {
+          profile = { ...(legacyDoc.data() as User), uid };
+          await setDoc(uidDocRef, profile);
+          await deleteDoc(legacyDocRef);
+          console.log(`[UID-Migration] Auto-migrated ${emailLower} to users/{uid} on session restore.`);
+        }
+      } catch (legacyErr) {
+        console.error('[ensureUserProfile] Legacy doc lookup failed:', legacyErr);
+      }
+    }
+
+    if (profile) {
+      const isSuper = profile.role === 'superAdmin' || profile.role === 'admin';
+      const isDataEntry = profile.role === 'dataEntryAdmin';
+      profile.isAdmin = isSuper || isDataEntry || profile.isAdmin || false;
+      profile.role = isSuper ? 'superAdmin' : (isDataEntry ? 'dataEntryAdmin' : (profile.role || 'customer'));
+
+      cachedUsers = [...cachedUsers.filter(u => u.uid !== uid), profile];
+      return profile;
+    }
+
+    console.error(`[ensureUserProfile] No profile found for uid=${uid} email=${email} in users/{uid} or users/{email}.`);
+    return null;
+  } catch (err) {
+    console.error('[ensureUserProfile] Failed to resolve profile:', err);
+    return null;
+  } finally {
+    profileResolving = false;
+    notifyListeners();
+  }
+}
+
 export function initializeStore() {
   if (started) return;
   started = true;
@@ -289,21 +360,15 @@ export function initializeStore() {
       const email = firebaseUser.email;
       const uid = firebaseUser.uid;
       if (email) {
-        const normalized = email.toLowerCase().trim();
-        // Look up user role dynamically
-        let userProfile = cachedUsers.find(u => u.uid === uid);
-        if (!userProfile) {
-          try {
-            const docRef = doc(db, 'users', uid);
-            const userDoc = await getDocFromServer(docRef);
-            if (userDoc.exists()) {
-              userProfile = userDoc.data() as User;
-            }
-          } catch (e) {
-            console.error("Failed to fetch user role on auth state change:", e);
-          }
-        }
-        
+        // [FIX] Resolve the profile (uid doc, or migrate from legacy email
+        // doc) on EVERY auth state change - not only inside the explicit
+        // login button handler. This is what makes automatic session
+        // restore (which is exactly what happens on Android/Capacitor
+        // when the app is reopened while already logged in) actually
+        // find the real profile instead of silently falling back to a
+        // placeholder.
+        const userProfile = await ensureUserProfile(uid, email);
+
         const isSuper = userProfile && (userProfile.role === 'superAdmin' || userProfile.role === 'admin');
         const isDataEntry = userProfile && userProfile.role === 'dataEntryAdmin';
         
@@ -441,6 +506,11 @@ export function initializeStore() {
       cachedUsers = Array.from(emailMap.values());
       notifyListeners();
     }
+  }, (error) => {
+    // [FIX] Previously there was no error callback here at all, so any
+    // failure (permission-denied, offline, etc.) was completely silent -
+    // cachedUsers would just stay empty forever with no diagnostic trace.
+    console.error('[initializeStore] users collection listener failed:', error.code, error.message);
   });
 
   // 2. Listen to bookings

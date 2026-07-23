@@ -112,30 +112,31 @@ export default function App() {
       syncWithStore();
     });
 
-    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+    // [FIX] Removed the fixed 500ms timeout that used to run here. It was a
+    // guess at how long the Firestore profile fetch takes, tuned for
+    // browser/Wi-Fi conditions. On a slower Android connection (or a cold
+    // WebView start) the real fetch can easily take longer, so the app was
+    // moving on with whatever placeholder data existed at the 500ms mark.
+    // The actual profile resolution now happens in ensureUserProfile()
+    // inside store.ts's own onAuthStateChanged listener, and every time it
+    // finishes it calls notifyListeners() -> the subscribeToStore callback
+    // above -> syncWithStore(), which updates currentUser with real data
+    // whenever it becomes available, however long that takes.
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       console.log("Firebase Auth State:", user?.email || "No User");
-
-      try {
-        syncWithStore();
-
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        syncWithStore();
-      } catch (error) {
-        console.error("Auth loading error:", error);
-      } finally {
-        setAuthLoading(false);
-      }
+      syncWithStore();
+      setAuthLoading(false);
     });
 
-    // Safety timeout: if Firebase does not respond
-    setTimeout(() => {
+    // Safety timeout: only as a last resort if Firebase never responds at all
+    const safetyTimeout = setTimeout(() => {
       setAuthLoading(false);
     }, 8000);
 
     return () => {
       unsubscribe();
       unsubscribeAuth();
+      clearTimeout(safetyTimeout);
     };
   }, []);
 
@@ -314,19 +315,9 @@ export default function App() {
             await deleteDoc(legacyDocRef);
             console.log(`[UID-Migration] Successfully migrated legacy user profile for ${emailToAuth} to users/{uid}`);
           } else {
-            // [UID-Migration] Step 5: Profile not found in either location, provision a brand new profile
-            matchedUser = {
-              uid,
-              email: emailToAuth.toLowerCase().trim(),
-              name: 'صارف',
-              phone: identifier,
-              city: 'لاہور',
-              balance: 100,
-              isAdmin: false,
-              role: 'customer'
-            };
-            await setDoc(userDocRef, matchedUser);
-            console.log(`[UID-Migration] Created a new profile under users/{uid} for signed up/migrated user: ${emailToAuth}`);
+            // [UID-Migration] Step 5: Profile not found - stop instead of creating dummy profile
+            console.error("[UID-Migration] User profile not found in users/{uid} or users/{email}");
+            return { success: false, error: 'صارف کی پروفائل نہیں ملی۔' };
           }
         }
       } catch (err) {
