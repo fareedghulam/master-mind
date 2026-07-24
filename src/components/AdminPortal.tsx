@@ -1246,7 +1246,9 @@ export default function AdminPortal({
         </div>
 
 
-      {activeAdminTab === 'limits_deadlines' && isSuper && (
+      
+
+{activeAdminTab === 'limits_deadlines' && isSuper && (
         <div className="space-y-8">
           {/* Module 2: Number Booking Limit Configuration (نمبر لمٹ مقرر کریں) */}
         <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md flex flex-col justify-between">
