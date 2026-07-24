@@ -15,7 +15,7 @@ interface AdminPortalProps {
   thaiLotteryResults: ThaiLotteryResult[];
   currentUser: User | null;
   onCancelBookingByAdmin: (bookingId: string) => Promise<{ success: boolean; error?: string }>;
-  onRecharge: (email: string, amount: number) => Promise<boolean>;
+  onRecharge: (email: string, amount: number) => Promise<{ success: boolean; error?: string }>;
   onDeductWallet: (
     email: string,
     amount: number,
@@ -1221,18 +1221,20 @@ export default function AdminPortal({
           <button
             onClick={async()=>{
 
-              const ok = await onDeductWallet(
+              const result = await onDeductWallet(
                 deductEmail,
                 Number(deductAmount),
                 deductReason || "Admin adjustment"
               );
 
-              if(ok){
+              if(result.success){
                 setDeductSuccess("رقم کامیابی سے واپس کاٹ دی گئی");
+                setDeductError("");
                 setDeductAmount('');
                 setDeductReason('');
               }else{
-                setDeductError("رقم کاٹنے میں مسئلہ آیا");
+                setDeductSuccess("");
+                setDeductError(result.error || "رقم کاٹنے میں مسئلہ آیا");
               }
 
             }}

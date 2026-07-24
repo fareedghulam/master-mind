@@ -387,7 +387,7 @@ export default function App() {
     email: string,
     amount: number,
     reason: string = "Admin adjustment"
-  ): Promise<boolean> => {
+  ): Promise<{ success: boolean; error?: string }> => {
 
     const result = await deductWallet(
       email,
@@ -397,15 +397,9 @@ export default function App() {
 
     if (result.success) {
       syncWithStore();
-      return true;
     }
 
-    console.error(
-      "Deduct wallet failed:",
-      result.error
-    );
-
-    return false;
+    return result;
   };
 
 
