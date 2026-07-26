@@ -330,69 +330,6 @@ export default function DashboardOverview({
             </div>
           </div>
 
-          {/* Category 3: Dubai Draw */}
-          <div 
-            onClick={() => onTabChange('dubai_draw')}
-            className="bg-white rounded-3xl p-6 border border-slate-200 shadow-md hover:shadow-xl transition-all hover:-translate-y-1 cursor-pointer flex flex-col justify-between h-64 group relative overflow-hidden"
-          >
-            <div className="flex justify-between items-start">
-              <div className="bg-blue-50 text-blue-700 p-3.5 rounded-2xl group-hover:bg-blue-600 group-hover:text-white transition-all">
-                <CreditCard className="w-6 h-6" />
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] text-blue-600 font-bold tracking-wider font-mono uppercase bg-blue-50 px-2 py-0.5 rounded-md">
-                  Category 3
-                </span>
-                <h3 className="text-xl font-bold text-slate-900 mt-1 group-hover:text-blue-600 transition-colors">
-                  دبئی ڈرا (Dubai Draw)
-                </h3>
-              </div>
-            </div>
-
-            <div>
-              <p className="text-slate-500 text-xs leading-relaxed mb-4">
-                دبئی لکی ڈرا کی آن لائن بکنگ کریں۔ اپنے پسندیدہ ہندسوں کا اندراج کریں اور شیٹ محفوظ کریں۔
-              </p>
-              <div className="pt-3 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500 font-mono">
-                <span className="text-blue-700 font-bold flex items-center gap-1 group-hover:translate-x-[-4px] transition-transform">
-                  <ArrowUpRight className="w-4 h-4" /> بکنگ کے لیے کھولیں
-                </span>
-                <span>میری بکنگ: Rs. {getCategoryTotal('dubai_draw').toLocaleString()}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Category 4: Zee Music Draw */}
-          <div 
-            onClick={() => onTabChange('zee_music_draw')}
-            className="bg-white rounded-3xl p-6 border border-slate-200 shadow-md hover:shadow-xl transition-all hover:-translate-y-1 cursor-pointer flex flex-col justify-between h-64 group relative overflow-hidden"
-          >
-            <div className="flex justify-between items-start">
-              <div className="bg-purple-50 text-purple-700 p-3.5 rounded-2xl group-hover:bg-purple-600 group-hover:text-white transition-all">
-                <Music className="w-6 h-6" />
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] text-purple-600 font-bold tracking-wider font-mono uppercase bg-purple-50 px-2 py-0.5 rounded-md">
-                  Category 4
-                </span>
-                <h3 className="text-xl font-bold text-slate-900 mt-1 group-hover:text-purple-600 transition-colors">
-                  زی میوزک ڈرا (Zee Music Draw)
-                </h3>
-              </div>
-            </div>
-
-            <div>
-              <p className="text-slate-500 text-xs leading-relaxed mb-4">
-                زی میوزک اسپیشل ڈرا کی باقاعدہ بکنگ کریں۔ کم سے کم اور زیادہ سے زیادہ حد کے ساتھ۔
-              </p>
-              <div className="pt-3 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500 font-mono">
-                <span className="text-purple-700 font-bold flex items-center gap-1 group-hover:translate-x-[-4px] transition-transform">
-                  <ArrowUpRight className="w-4 h-4" /> بکنگ کے لیے کھولیں
-                </span>
-                <span>میری بکنگ: Rs. {getCategoryTotal('zee_music_draw').toLocaleString()}</span>
-              </div>
-            </div>
-          </div>
 
         </div>
       </div>
