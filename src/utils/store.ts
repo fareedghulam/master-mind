@@ -1,4 +1,4 @@
-import { User, Booking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult, AllResultType } from '../types';
+import { User, Booking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult, AllResultType, DrawCategory, Transaction } from '../types';
 import { db, auth, firebaseConfig } from '../lib/firebase';
 import { 
   collection, 
@@ -22,7 +22,9 @@ import {
   updatePassword,
   onAuthStateChanged,
   EmailAuthProvider,
-  reauthenticateWithCredential
+  reauthenticateWithCredential,
+  GoogleAuthProvider,
+  signInWithPopup
 } from 'firebase/auth';
 import { pakistanBondDraws } from './pakistanBondData';
 import { thaiHistoricalDraws } from './thaiLotteryData';
@@ -38,7 +40,7 @@ export async function registerInAuthOnly(email: string, passwordInput: string): 
   } catch (err: any) {
     if (err && err.code === 'auth/email-already-in-use') {
       console.log(`[FirebaseAuth] User ${email} already exists in Auth.`);
-      const existingUser = await findUserByEmail(email);
+      const existingUser = cachedUsers.find(u => u.email.toLowerCase() === email.toLowerCase().trim());
       if (existingUser && existingUser.uid) {
         return existingUser.uid;
       }
@@ -86,8 +88,7 @@ export async function checkInternetConnection(): Promise<boolean> {
       });
       
       clearTimeout(timeoutId);
-      notifyListeners();
-    return true;
+      return true;
     } catch (e) {
       // Fallback to the next endpoint if one fails
     }
@@ -101,14 +102,26 @@ export async function checkInternetConnection(): Promise<boolean> {
 const DEFAULT_DEADLINES: DrawDeadline[] = [
   {
     category: 'pakistan_bond',
-    titleUrdu: 'بکنگ فائنل کھل گئی ہے',
+    titleUrdu: 'پاکستان پرائز بانڈ بکنگ کھل گئی ہے',
     deadlineIso: '2026-08-30T18:00',
     status: 'open'
   },
   {
     category: 'thailand_lottery',
-    titleUrdu: 'بکنگ فائنل کھل گئی ہے',
+    titleUrdu: 'تھائی لینڈ ڈرا بکنگ کھل گئی ہے',
     deadlineIso: '2026-09-02T12:00',
+    status: 'open'
+  },
+  {
+    category: 'dubai_draw',
+    titleUrdu: 'دبئی ڈرا بکنگ کھل گئی ہے',
+    deadlineIso: '2026-09-05T20:00',
+    status: 'open'
+  },
+  {
+    category: 'zee_music_draw',
+    titleUrdu: 'زی میوزک ڈرا بکنگ کھل گئی ہے',
+    deadlineIso: '2026-09-10T15:00',
     status: 'open'
   }
 ];
@@ -200,6 +213,7 @@ let cachedBookings: Booking[] = [];
 let cachedLimits: NumberLimit[] = [];
 let cachedDemands: Demand[] = [];
 let cachedDeadlines: DrawDeadline[] = [];
+let cachedTransactions: Transaction[] = [];
 let cachedSupportWhatsApp = '923453090146';
 let cachedAdminEmail = 'mastermaindqureshi110@gmail.com';
 
@@ -239,8 +253,7 @@ export function isLoggedUserAdminOrSuper(): boolean {
   const email = firebaseUser.email?.toLowerCase().trim();
   if (email) {
     if (email === 'mastermaindqureshi110@gmail.com' || email === 'mastermaind.qureshi110@gmail.com') {
-      notifyListeners();
-    return true;
+      return true;
     }
     const userByEmail = cachedUsers.find(u => (u.email || '').toLowerCase() === email);
     return !!(userByEmail && (userByEmail.role === 'superAdmin' || userByEmail.role === 'admin' || userByEmail.isAdmin === true));
@@ -262,84 +275,12 @@ export function isLoggedUserDataEntry(): boolean {
   const email = firebaseUser.email?.toLowerCase().trim();
   if (email) {
     if (email === 'fareed.ghulam@gmail.com') {
-      notifyListeners();
-    return true;
+      return true;
     }
     const userByEmail = cachedUsers.find(u => (u.email || '').toLowerCase() === email);
     return !!(userByEmail && userByEmail.role === 'dataEntryAdmin');
   }
   return false;
-}
-
-// Tracks whether we are actively resolving the current user's profile from
-// Firestore, so the UI can show a real "loading" state instead of treating
-// a placeholder object as the final answer.
-let profileResolving = false;
-export function isProfileResolving(): boolean {
-  return profileResolving;
-}
-
-// [FIX] Single source of truth for turning a signed-in Firebase Auth user
-// (uid + email) into a Firestore profile. Looks up users/{uid} first; if
-// missing, falls back to the legacy users/{email} doc and migrates it to
-// users/{uid}. Updates cachedUsers so getLoggedInUser()/getUsers() see the
-// result immediately. This used to live only inside the interactive
-// handleLogin() flow in App.tsx, which meant it never ran again once a
-// session was auto-restored (e.g. reopening the Android app while still
-// logged in) - that gap is what caused the profile to stay stuck on the
-// placeholder ("Loading...", balance 0) on Android while working fine in
-// the browser (where the user was going through the explicit login form).
-export async function ensureUserProfile(uid: string, email: string): Promise<User | null> {
-  const existing = cachedUsers.find(u => u.uid === uid);
-  if (existing) return existing;
-
-  profileResolving = true;
-  notifyListeners();
-
-  try {
-    const uidDocRef = doc(db, 'users', uid);
-    const uidDoc = await getDocFromServer(uidDocRef);
-
-    let profile: User | null = null;
-
-    if (uidDoc.exists()) {
-      profile = { ...(uidDoc.data() as User), uid };
-    } else {
-      // Legacy doc keyed by email instead of uid - migrate it.
-      const emailLower = email.toLowerCase().trim();
-      const legacyDocRef = doc(db, 'users', emailLower);
-      try {
-        const legacyDoc = await getDocFromServer(legacyDocRef);
-        if (legacyDoc.exists()) {
-          profile = { ...(legacyDoc.data() as User), uid };
-          await setDoc(uidDocRef, profile);
-          await deleteDoc(legacyDocRef);
-          console.log(`[UID-Migration] Auto-migrated ${emailLower} to users/{uid} on session restore.`);
-        }
-      } catch (legacyErr) {
-        console.error('[ensureUserProfile] Legacy doc lookup failed:', legacyErr);
-      }
-    }
-
-    if (profile) {
-      const isSuper = profile.role === 'superAdmin' || profile.role === 'admin';
-      const isDataEntry = profile.role === 'dataEntryAdmin';
-      profile.isAdmin = isSuper || isDataEntry || profile.isAdmin || false;
-      profile.role = isSuper ? 'superAdmin' : (isDataEntry ? 'dataEntryAdmin' : (profile.role || 'customer'));
-
-      cachedUsers = [...cachedUsers.filter(u => u.uid !== uid), profile];
-      return profile;
-    }
-
-    console.error(`[ensureUserProfile] No profile found for uid=${uid} email=${email} in users/{uid} or users/{email}.`);
-    return null;
-  } catch (err) {
-    console.error('[ensureUserProfile] Failed to resolve profile:', err);
-    return null;
-  } finally {
-    profileResolving = false;
-    notifyListeners();
-  }
 }
 
 export function initializeStore() {
@@ -360,15 +301,21 @@ export function initializeStore() {
       const email = firebaseUser.email;
       const uid = firebaseUser.uid;
       if (email) {
-        // [FIX] Resolve the profile (uid doc, or migrate from legacy email
-        // doc) on EVERY auth state change - not only inside the explicit
-        // login button handler. This is what makes automatic session
-        // restore (which is exactly what happens on Android/Capacitor
-        // when the app is reopened while already logged in) actually
-        // find the real profile instead of silently falling back to a
-        // placeholder.
-        const userProfile = await ensureUserProfile(uid, email);
-
+        const normalized = email.toLowerCase().trim();
+        // Look up user role dynamically
+        let userProfile = cachedUsers.find(u => u.uid === uid);
+        if (!userProfile) {
+          try {
+            const docRef = doc(db, 'users', uid);
+            const userDoc = await getDocFromServer(docRef);
+            if (userDoc.exists()) {
+              userProfile = userDoc.data() as User;
+            }
+          } catch (e) {
+            console.error("Failed to fetch user role on auth state change:", e);
+          }
+        }
+        
         const isSuper = userProfile && (userProfile.role === 'superAdmin' || userProfile.role === 'admin');
         const isDataEntry = userProfile && userProfile.role === 'dataEntryAdmin';
         
@@ -434,24 +381,10 @@ export function initializeStore() {
       }
     }
   };
-  // Run default user migration only once per installation
-  const migrationDone = localStorage.getItem('mqe_startup_migration_done');
-
-  if (!migrationDone) {
-    seedAndMigrateDefaultUsers()
-      .then(() => {
-        localStorage.setItem('mqe_startup_migration_done', 'true');
-        console.log('[Migration] Startup migration completed once.');
-      })
-      .catch((e) => {
-        console.error('[Migration] Startup migration failed:', e);
-      });
-  }
+  seedAndMigrateDefaultUsers();
 
   // 1. Listen to users
-  console.time('Firestore users load');
   onSnapshot(collection(db, 'users'), (snapshot) => {
-    console.timeEnd('Firestore users load');
     if (snapshot.empty) {
       // Seeding is already handled inside seedAndMigrateDefaultUsers
     } else {
@@ -507,10 +440,57 @@ export function initializeStore() {
       notifyListeners();
     }
   }, (error) => {
-    // [FIX] Previously there was no error callback here at all, so any
-    // failure (permission-denied, offline, etc.) was completely silent -
-    // cachedUsers would just stay empty forever with no diagnostic trace.
-    console.error('[initializeStore] users collection listener failed:', error.code, error.message);
+    // Non-admin users cannot read all users; single user document listener handles their profile
+    console.log("[UsersCollection] Collection listener restricted for non-admin user (using document listener):", error.message);
+  });
+
+  // Active single-user document listener for real-time customer profile & balance sync
+  let activeUserUnsub: (() => void) | null = null;
+  onAuthStateChanged(auth, (firebaseUser) => {
+    if (activeUserUnsub) {
+      activeUserUnsub();
+      activeUserUnsub = null;
+    }
+
+    if (firebaseUser) {
+      const uid = firebaseUser.uid;
+      const userDocRef = doc(db, 'users', uid);
+      
+      activeUserUnsub = onSnapshot(userDocRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data() as User;
+          const userObj: User = {
+            ...data,
+            uid: data.uid || uid,
+            email: data.email || firebaseUser.email || ''
+          };
+          const isSuper = data.role === 'superAdmin' || data.role === 'admin';
+          const isDataEntry = data.role === 'dataEntryAdmin';
+          if (isSuper) {
+            userObj.isAdmin = true;
+            userObj.role = 'superAdmin';
+          } else if (isDataEntry) {
+            userObj.isAdmin = true;
+            userObj.role = 'dataEntryAdmin';
+          } else {
+            userObj.isAdmin = data.isAdmin || false;
+            userObj.role = data.role || 'customer';
+          }
+
+          const idx = cachedUsers.findIndex(u => u.uid === uid || (u.email && userObj.email && u.email.toLowerCase() === userObj.email.toLowerCase()));
+          if (idx !== -1) {
+            cachedUsers[idx] = userObj;
+          } else {
+            cachedUsers.push(userObj);
+          }
+          notifyListeners();
+        } else {
+          console.warn(`[UserSync] Profile document users/${uid} not found yet.`);
+        }
+      }, (err) => {
+        console.error(`[UserSync] Error listening to user document ${uid}:`, err);
+      });
+    }
   });
 
   // 2. Listen to bookings
@@ -570,9 +550,16 @@ export function initializeStore() {
         });
       }
     } else {
-      cachedDeadlines = snapshot.docs.map(doc => doc.data() as DrawDeadline);
+      cachedDeadlines = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as DrawDeadline) }));
       notifyListeners();
     }
+  });
+
+  // 5.5. Listen to transactions
+  onSnapshot(collection(db, 'transactions'), (snapshot) => {
+    const list = snapshot.docs.map(doc => doc.data() as Transaction);
+    cachedTransactions = list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    notifyListeners();
   });
 
   // 6. Listen to settings/general
@@ -580,7 +567,7 @@ export function initializeStore() {
     if (!snapshot.exists()) {
       if (isLoggedUserAdminOrSuper()) {
         try {
-          setDoc(doc(db, 'settings', 'general'), {
+          await setDoc(doc(db, 'settings', 'general'), {
             adminEmail: 'mastermaindqureshi110@gmail.com',
             whatsappNumber: '923453090146'
           });
@@ -596,7 +583,7 @@ export function initializeStore() {
         if (isLoggedUserAdminOrSuper()) {
           try {
             // Auto-migrate in Firestore
-            setDoc(doc(db, 'settings', 'general'), { adminEmail }, { merge: true });
+            await setDoc(doc(db, 'settings', 'general'), { adminEmail }, { merge: true });
           } catch (e) {
             console.error("Failed to migrate adminEmail in settings:", e);
           }
@@ -688,6 +675,13 @@ export function initializeStore() {
     }
   });
 
+  // 9. Listen to transactions
+  onSnapshot(collection(db, 'transactions'), (snapshot) => {
+    const list = snapshot.docs.map(doc => doc.data() as Transaction);
+    cachedTransactions = list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    notifyListeners();
+  });
+
 }
 
 export function getSupportWhatsAppNumber(): string {
@@ -747,7 +741,8 @@ export function saveNumberLimits(limits: NumberLimit[]) {
 export function getLoggedInUser(): User | null {
   const firebaseUser = auth.currentUser;
   if (!firebaseUser) return null;
-  const user = cachedUsers.find((u) => u.uid === firebaseUser.uid) || null;
+  const emailLower = firebaseUser.email?.toLowerCase().trim() || '';
+  const user = cachedUsers.find((u) => u.uid === firebaseUser.uid || (emailLower && u.email && u.email.toLowerCase().trim() === emailLower)) || null;
   
   if (user) {
     const isSuper = user.role === 'superAdmin' || user.role === 'admin';
@@ -763,7 +758,6 @@ export function getLoggedInUser(): User | null {
   }
   
   // Robust timing fallback to prevent white screens / login kicks before cachedUsers is fully populated
-  const emailLower = firebaseUser.email?.toLowerCase().trim() || '';
   const isDefaultSuper = emailLower === 'mastermaind.qureshi110@gmail.com' || emailLower === 'mastermaindqureshi110@gmail.com';
   const isDefaultDataEntry = emailLower === 'fareed.ghulam@gmail.com';
   
@@ -808,17 +802,17 @@ export function getAdminConfiguredEmail(): string {
   return cachedAdminEmail;
 }
 
-export async function setAdminConfiguredEmail(email: string) {
+export function setAdminConfiguredEmail(email: string) {
   const normalizedEmail = email.trim().toLowerCase();
   
-  await setDoc(doc(db, 'settings', 'general'), {
+  setDoc(doc(db, 'settings', 'general'), {
     adminEmail: normalizedEmail,
     whatsappNumber: cachedSupportWhatsApp
   }, { merge: true });
   
-  const user = await findUserByEmail(normalizedEmail);
+  const user = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
   if (user && user.uid) {
-    await setDoc(doc(db, 'users', user.uid), {
+    setDoc(doc(db, 'users', user.uid), {
       ...user,
       isAdmin: true,
       role: 'admin'
@@ -828,12 +822,7 @@ export async function setAdminConfiguredEmail(email: string) {
 
 export async function updateUserPassword(email: string, passwordInput: string): Promise<boolean> {
   const online = await checkInternetConnection();
-  if (!online) {
-    return {
-      success: false,
-      error: "انٹرنیٹ کنکشن دستیاب نہیں ہے۔"
-    };
-  }
+  if (!online) return false;
 
   const normalizedEmail = email.toLowerCase().trim();
   const emailsToUpdate = [normalizedEmail];
@@ -852,7 +841,7 @@ export async function updateUserPassword(email: string, passwordInput: string): 
     }
 
     for (const em of emailsToUpdate) {
-      const cached = await findUserByEmail(em);
+      const cached = cachedUsers.find(u => u.email.toLowerCase() === em);
       if (cached?.uid) {
         // Store profile updates only, DO NOT store plain-text passwords
         await setDoc(doc(db, 'users', cached.uid), {
@@ -862,7 +851,6 @@ export async function updateUserPassword(email: string, passwordInput: string): 
         console.warn(`Could not update admin role in Firestore for ${em} because no UID was found.`);
       }
     }
-    notifyListeners();
     return true;
   } catch (e: any) {
     console.error("Error updating user password:", e);
@@ -904,12 +892,7 @@ export async function changeLoggedAdminPassword(currentPassword: string, newPass
 
 export async function updateCustomerPassword(email: string, passwordInput: string): Promise<boolean> {
   const online = await checkInternetConnection();
-  if (!online) {
-    return {
-      success: false,
-      error: "انٹرنیٹ کنکشن دستیاب نہیں ہے۔"
-    };
-  }
+  if (!online) return false;
 
   const normalizedEmail = email.toLowerCase().trim();
   try {
@@ -918,35 +901,7 @@ export async function updateCustomerPassword(email: string, passwordInput: strin
     } else {
       await sendPasswordResetEmail(auth, normalizedEmail);
     }
-    let cached = cachedUsers.find(
-    u => u.email?.toLowerCase() === normalizedEmail
-  );
-
-  if (!cached || !cached.uid) {
-    console.log("Loading user directly from Firebase:", normalizedEmail);
-
-    const q = query(
-      collection(db, 'users'),
-      where('email', '==', normalizedEmail)
-    );
-
-    const snapshot = await getDocsFromServer(q);
-
-    if (snapshot.empty) {
-      console.error("User not found in Firestore:", normalizedEmail);
-      return {
-        success: false,
-        error: "صارف کا ریکارڈ Firebase میں نہیں ملا۔"
-      };
-    }
-
-    const userData = snapshot.docs[0].data() as User;
-
-    cached = {
-      ...userData,
-      uid: snapshot.docs[0].id
-    };
-  }
+    const cached = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
     if (cached?.uid) {
       // Profile metadata merge only, DO NOT store plain-text passwords
       await setDoc(doc(db, 'users', cached.uid), {
@@ -955,97 +910,10 @@ export async function updateCustomerPassword(email: string, passwordInput: strin
     } else {
       console.warn(`Could not update customer metadata in Firestore for ${normalizedEmail} because no UID was found.`);
     }
-    notifyListeners();
     return true;
   } catch (e: any) {
     console.error("Error updating customer password:", e);
     return false;
-  }
-}
-
-
-// Secure User Lookup Helper
-// Uses cache first, Firebase fallback second
-export async function getUserByEmail(email: string): Promise<User | null> {
-
-  const normalizedEmail = email.toLowerCase().trim();
-
-  let user = cachedUsers.find(
-    u => u.email?.toLowerCase() === normalizedEmail
-  );
-
-  if (user?.uid) {
-    return user;
-  }
-
-  try {
-
-    console.log("Searching user directly from Firebase:", normalizedEmail);
-
-    const q = query(
-      collection(db, 'users'),
-      where('email', '==', normalizedEmail)
-    );
-
-    const snapshot = await getDocsFromServer(q);
-
-    if (snapshot.empty) {
-      console.error("User not found in Firestore:", normalizedEmail);
-      return null;
-    }
-
-    user = {
-      ...(snapshot.docs[0].data() as User),
-      uid: snapshot.docs[0].id
-    };
-
-    return user;
-
-  } catch (error) {
-
-    console.error("getUserByEmail error:", error);
-    return null;
-
-  }
-}
-
-
-// Professional Firebase UID based user finder
-export async function findUserByEmail(email:string): Promise<User | null> {
-
-  const normalizedEmail = email.toLowerCase().trim();
-
-  let user = cachedUsers.find(
-    u => u.email?.toLowerCase() === normalizedEmail
-  );
-
-  if(user?.uid){
-    return user;
-  }
-
-  try {
-
-    const q = query(
-      collection(db,'users'),
-      where('email','==',normalizedEmail)
-    );
-
-    const snapshot = await getDocsFromServer(q);
-
-    if(snapshot.empty){
-      console.error("User not found:", normalizedEmail);
-      return null;
-    }
-
-    return {
-      ...(snapshot.docs[0].data() as User),
-      uid:snapshot.docs[0].id
-    };
-
-  } catch(error){
-
-    console.error("findUserByEmail error:",error);
-    return null;
   }
 }
 
@@ -1056,11 +924,7 @@ export async function registerUser(name: string, phone: string, city: string, em
     return null;
   }
   const normalizedEmail = email.toLowerCase().trim();
-  const existing = await findUserByEmail(normalizedEmail);
-  if (existing) {
-    return existing;
-  }
-  const isAdmin = normalizedEmail === cachedAdminEmail.toLowerCase();
+  const isAdmin = normalizedEmail === cachedAdminEmail.toLowerCase() || normalizedEmail === 'mastermaindqureshi110@gmail.com' || normalizedEmail === 'mastermaind.qureshi110@gmail.com';
   
   try {
     // 1. Create account in Firebase Authentication
@@ -1070,42 +934,264 @@ export async function registerUser(name: string, phone: string, city: string, em
     const newUser: User = {
       uid,
       email: normalizedEmail,
-      name,
-      phone,
-      city,
+      name: name.trim(),
+      phone: phone.trim(),
+      city: city.trim(),
       balance: 100, // starting balance
       isAdmin,
       role: isAdmin ? 'admin' : 'customer'
     };
 
-    // [UID-Migration] Write profile information to Firestore with UID key
-    await setDoc(doc(db, 'users', uid), {
-      ...newUser,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    });
+    // Write profile information to Firestore with UID key
+    await setDoc(doc(db, 'users', uid), newUser);
 
-    cachedUsers = [
-      ...cachedUsers.filter(u => u.uid !== uid),
-      {
-        ...newUser,
-        updatedAt: new Date().toISOString()
-      }
-    ];
+    // Update in-memory cachedUsers list instantly
+    const existingIdx = cachedUsers.findIndex(u => u.uid === uid || u.email.toLowerCase() === normalizedEmail);
+    if (existingIdx !== -1) {
+      cachedUsers[existingIdx] = newUser;
+    } else {
+      cachedUsers.push(newUser);
+    }
     notifyListeners();
 
     return newUser;
   } catch (e: any) {
-    console.error("Register Error Code:", e?.code);
-    console.error("Register Error Message:", e?.message);
-    console.error("Register Full Error:", e);
+    console.error("Error in registerUser:", e);
     return null;
+  }
+}
+
+export async function signInWithGoogle(): Promise<{ success: boolean; user?: User; isNewOrIncomplete?: boolean; error?: string }> {
+  const online = await checkInternetConnection();
+  if (!online) {
+    return { success: false, error: 'انٹرنیٹ کنکشن دستیاب نہیں ہے۔ براہ کرم اپنا انٹرنیٹ کنکشن چیک کریں۔' };
+  }
+
+  try {
+    const provider = new GoogleAuthProvider();
+    const result = await signInWithPopup(auth, provider);
+    const firebaseUser = result.user;
+    if (!firebaseUser || !firebaseUser.email) {
+      return { success: false, error: 'گوگل اکاؤنٹ کی معلومات حاصل نہیں ہو سکیں۔' };
+    }
+
+    const uid = firebaseUser.uid;
+    const email = firebaseUser.email.toLowerCase().trim();
+    const photoURL = firebaseUser.photoURL || '';
+
+    const userRef = doc(db, 'users', uid);
+    const userDoc = await getDocFromServer(userRef);
+
+    let userProfile: User;
+    let isNewOrIncomplete = false;
+
+    if (userDoc.exists()) {
+      const data = userDoc.data() as User;
+      userProfile = {
+        ...data,
+        uid,
+        email,
+        photoURL: photoURL || data.photoURL || ''
+      };
+      if (photoURL && data.photoURL !== photoURL) {
+        await setDoc(userRef, { photoURL }, { merge: true });
+      }
+      if (!userProfile.phone || !userProfile.city) {
+        isNewOrIncomplete = true;
+      }
+    } else {
+      const isAdmin = email === cachedAdminEmail.toLowerCase() || email === 'mastermaindqureshi110@gmail.com' || email === 'mastermaind.qureshi110@gmail.com';
+      userProfile = {
+        uid,
+        email,
+        name: firebaseUser.displayName || 'گوگل صارف',
+        phone: '',
+        city: '',
+        photoURL,
+        balance: 100,
+        isAdmin,
+        role: isAdmin ? 'admin' : 'customer'
+      };
+      await setDoc(userRef, userProfile);
+      isNewOrIncomplete = true;
+    }
+
+    notifyListeners();
+    return { success: true, user: userProfile, isNewOrIncomplete };
+  } catch (err: any) {
+    console.error("Google sign in error:", err);
+    if (err && err.code === 'auth/popup-closed-by-user') {
+      return { success: false, error: 'گوگل لاگ ان منسوخ کر دیا گیا ہے۔' };
+    }
+    return { success: false, error: err?.message || 'گوگل سائن ان کے دوران غلطی پیش آئی۔' };
+  }
+}
+
+export function getTransactions(): Transaction[] {
+  return cachedTransactions;
+}
+
+export function getUserTransactions(userEmailOrUid: string): Transaction[] {
+  const clean = userEmailOrUid.toLowerCase().trim();
+  return cachedTransactions.filter(
+    t => t.userEmail.toLowerCase().trim() === clean || t.userId === userEmailOrUid
+  );
+}
+
+export async function requestRecharge(
+  userEmail: string,
+  userName: string,
+  amount: number,
+  paymentMethod: string,
+  accountDetails: string,
+  note?: string
+): Promise<{ success: boolean; error?: string }> {
+  const online = await checkInternetConnection();
+  if (!online) return { success: false, error: 'انٹرنیٹ کنکشن دستیاب نہیں ہے۔' };
+
+  if (amount <= 0) {
+    return { success: false, error: 'براہ کرم درست رقم درج کریں۔' };
+  }
+
+  const normalizedEmail = userEmail.toLowerCase().trim();
+  const cached = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
+
+  const txId = 'tx-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+  const tx: Transaction = {
+    id: txId,
+    userId: cached?.uid || '',
+    userEmail: normalizedEmail,
+    userName: userName || cached?.name || 'صارف',
+    type: 'recharge',
+    amount,
+    date: new Date().toISOString(),
+    status: 'pending',
+    paymentMethod,
+    accountDetails,
+    note: note || 'والٹ ریچارج کی درخواست'
+  };
+
+  try {
+    await setDoc(doc(db, 'transactions', txId), tx);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'درخواست بھیجنے میں غلطی پیش آئی۔' };
+  }
+}
+
+export async function requestWithdrawal(
+  userEmail: string,
+  userName: string,
+  amount: number,
+  paymentMethod: string,
+  accountDetails: string,
+  note?: string
+): Promise<{ success: boolean; error?: string }> {
+  const online = await checkInternetConnection();
+  if (!online) return { success: false, error: 'انٹرنیٹ کنکشن دستیاب نہیں ہے۔' };
+
+  if (amount <= 0) {
+    return { success: false, error: 'براہ کرم درست رقم درج کریں۔' };
+  }
+
+  const normalizedEmail = userEmail.toLowerCase().trim();
+  const cached = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
+  if (!cached) return { success: false, error: 'صارف کا ریکارڈ نہیں ملا۔' };
+
+  if (cached.balance < amount) {
+    return { success: false, error: 'آپ کے والٹ میں اتنی رقم موجود نہیں ہے۔' };
+  }
+
+  const txId = 'tx-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+  const tx: Transaction = {
+    id: txId,
+    userId: cached.uid || '',
+    userEmail: normalizedEmail,
+    userName: userName || cached.name || 'صارف',
+    type: 'withdrawal',
+    amount,
+    date: new Date().toISOString(),
+    status: 'pending',
+    paymentMethod,
+    accountDetails,
+    note: note || 'والٹ سے رقم نکلوانے (Withdrawal) کی درخواست'
+  };
+
+  try {
+    await setDoc(doc(db, 'transactions', txId), tx);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'درخواست بھیجنے میں غلطی پیش آئی۔' };
+  }
+}
+
+export async function approveTransaction(transactionId: string): Promise<{ success: boolean; error?: string }> {
+  const online = await checkInternetConnection();
+  if (!online) return { success: false, error: 'انٹرنیٹ کنکشن دستیاب نہیں ہے۔' };
+
+  const tx = cachedTransactions.find(t => t.id === transactionId);
+  if (!tx) return { success: false, error: 'ٹرانزیکشن نہیں ملی۔' };
+
+  if (tx.status !== 'pending') {
+    return { success: false, error: 'یہ ٹرانزیکشن پہلے ہی پراسیس ہو چکی ہے۔' };
+  }
+
+  const cachedUser = cachedUsers.find(u => u.email.toLowerCase() === tx.userEmail.toLowerCase());
+  if (!cachedUser || !cachedUser.uid) {
+    return { success: false, error: 'صارف کا UID نہیں ملا۔' };
+  }
+
+  const userRef = doc(db, 'users', cachedUser.uid);
+  const txRef = doc(db, 'transactions', transactionId);
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const userDoc = await transaction.get(userRef);
+      if (!userDoc.exists()) throw new Error('صارف ریکارڈ موجود نہیں ہے');
+
+      const userData = userDoc.data() as User;
+      let newBalance = userData.balance;
+
+      if (tx.type === 'recharge') {
+        newBalance = userData.balance + tx.amount;
+      } else if (tx.type === 'withdrawal') {
+        if (userData.balance < tx.amount) {
+          throw new Error('صارف کے پاس کافی بیلنس نہیں ہے');
+        }
+        newBalance = userData.balance - tx.amount;
+      }
+
+      transaction.update(userRef, { balance: newBalance });
+      transaction.update(txRef, { status: 'approved' });
+    });
+
+    return { success: true };
+  } catch (err: any) {
+    console.error("Approve transaction failed:", err);
+    return { success: false, error: err.message || 'منظوری کے دوران غلطی پیش آئی۔' };
+  }
+}
+
+export async function rejectTransaction(transactionId: string): Promise<{ success: boolean; error?: string }> {
+  const online = await checkInternetConnection();
+  if (!online) return { success: false, error: 'انٹرنیٹ کنکشن دستیاب نہیں ہے۔' };
+
+  const tx = cachedTransactions.find(t => t.id === transactionId);
+  if (!tx) return { success: false, error: 'ٹرانزیکشن نہیں ملی۔' };
+
+  try {
+    await setDoc(doc(db, 'transactions', transactionId), {
+      status: 'rejected'
+    }, { merge: true });
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'رد کرنے کے دوران غلطی پیش آئی۔' };
   }
 }
 
 export async function updateUserProfile(
   uid: string,
-  updatedData: { name: string; phone: string; city: string }
+  updatedData: { name: string; phone: string; city: string; photoURL?: string }
 ): Promise<{ success: boolean; message: string }> {
   const online = await checkInternetConnection();
   if (!online) {
@@ -1118,6 +1204,7 @@ export async function updateUserProfile(
   const name = updatedData.name.trim();
   const phone = updatedData.phone.trim();
   const city = updatedData.city.trim();
+  const photoURL = updatedData.photoURL?.trim() || '';
 
   if (!name) {
     return { success: false, message: 'نام درج کرنا لازمی ہے۔' };
@@ -1146,47 +1233,43 @@ export async function updateUserProfile(
   }
 
   try {
-    console.log("Profile update Firebase start:", uid);
-
     const userRef = doc(db, 'users', uid);
+    const existingUser = cachedUsers.find(u => u.uid === uid);
+    const userEmail = existingUser?.email || auth.currentUser?.email || '';
 
-    const existingDoc = await getDocFromServer(userRef);
-
-    if (!existingDoc.exists()) {
-      throw new Error("User document not found.");
+    const updatePayload: any = {
+      uid,
+      email: userEmail,
+      name,
+      phone,
+      city,
+      balance: existingUser?.balance ?? 0
+    };
+    if (photoURL) {
+      updatePayload.photoURL = photoURL;
     }
 
-    const existingData = existingDoc.data();
+    await setDoc(userRef, updatePayload, { merge: true });
 
-    await Promise.race([
-      setDoc(userRef, {
-        ...existingData,
+    // Instantly sync local memory state and notify listeners
+    if (existingUser) {
+      existingUser.name = name;
+      existingUser.phone = phone;
+      existingUser.city = city;
+      if (photoURL) existingUser.photoURL = photoURL;
+    } else {
+      cachedUsers.push({
+        uid,
+        email: userEmail,
         name,
         phone,
         city,
-        updatedAt: new Date().toISOString()
-      }, { merge: false }),
-
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Firebase timeout")), 10000)
-      )
-    ]);
-
-      const verifyDoc = await getDocFromServer(userRef);
-
-      if (!verifyDoc.exists()) {
-        throw new Error("User document was not created.");
-      }
-
-      console.log("Profile update Firebase verified");
-
-      console.log("Profile update Firebase success");
-
-
-    cachedUsers = cachedUsers.map(u =>
-      u.uid === uid ? { ...u, name, phone, city } : u
-    );
-
+        balance: 0,
+        photoURL,
+        isAdmin: false,
+        role: 'customer'
+      });
+    }
     notifyListeners();
 
     return {
@@ -1202,59 +1285,28 @@ export async function updateUserProfile(
   }
 }
 
-export async function rechargeWallet(
-  email: string,
-  amount: number
-): Promise<{success:boolean; error?:string}> {
+export async function rechargeWallet(email: string, amount: number): Promise<boolean> {
   const online = await checkInternetConnection();
-  if (!online) {
-    return {
-      success: false,
-      error: "انٹرنیٹ کنکشن دستیاب نہیں ہے۔"
-    };
-  }
+  if (!online) return false;
 
   const normalizedEmail = email.toLowerCase().trim();
-  let cached = cachedUsers.find(
-    u => u.email?.toLowerCase() === normalizedEmail
-  );
+  let cached = cachedUsers.find(u => (u.email || '').toLowerCase() === normalizedEmail);
 
   if (!cached || !cached.uid) {
-    console.log("Loading user directly from Firebase:", normalizedEmail);
-
-    const q = query(
-      collection(db, 'users'),
-      where('email', '==', normalizedEmail)
-    );
-
-    const snapshot = await getDocsFromServer(q);
-
-    if (snapshot.empty) {
-      console.error("User not found in Firestore:", normalizedEmail);
-      return {
-        success: false,
-        error: "صارف کا ریکارڈ Firebase میں نہیں ملا۔"
-      };
+    if (auth.currentUser && (auth.currentUser.email || '').toLowerCase() === normalizedEmail) {
+      cached = cachedUsers.find(u => u.uid === auth.currentUser?.uid);
     }
-
-    const userData = snapshot.docs[0].data() as User;
-
-    cached = {
-      ...userData,
-      uid: snapshot.docs[0].id
-    };
   }
+
   if (!cached || !cached.uid) {
     console.error(`[UID-Migration] Recharge failed: Customer ${normalizedEmail} has no valid firebase UID loaded.`);
-    return {
-      success: false,
-      error: "صارف کا ریکارڈ Firebase میں نہیں ملا۔"
-    };
+    return false;
   }
   
-  // Resolve user document strictly by their secure Firebase UID
   const uid = cached.uid;
   const userRef = doc(db, 'users', uid);
+  const txId = 'tx-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+  const txRef = doc(db, 'transactions', txId);
 
   try {
     await runTransaction(db, async (transaction) => {
@@ -1262,127 +1314,49 @@ export async function rechargeWallet(
       if (!userDoc.exists()) {
         throw new Error('کسٹمر ریکارڈ نہیں ملا');
       }
-
       const user = userDoc.data() as User;
-
-      const currentBalance = Number(user.balance || 0);
-      const newBalance = currentBalance + Number(amount);
-
+      const newBal = (user.balance || 0) + amount;
       transaction.update(userRef, {
-        balance: newBalance,
-        updatedAt: new Date().toISOString(),
-        lastRecharge: {
-          amount: Number(amount),
-          timestamp: new Date().toISOString()
-        }
-      });
-    });
-    notifyListeners();
-    return {
-      success: true
-    };
-  } catch (e:any) {
-    console.error("Recharge Error:", e);
-    return {
-      success: false,
-      error: e?.message || "ری چارج کے دوران خرابی پیش آئی۔"
-    };
-  }
-}
-
-
-export async function deductWallet(
-  email: string,
-  amount: number,
-  reason: string = "Admin adjustment"
-): Promise<{success:boolean; error?:string}> {
-
-  const online = await checkInternetConnection();
-
-  if (!online) {
-    return {
-      success:false,
-      error:"انٹرنیٹ کنکشن دستیاب نہیں ہے۔"
-    };
-  }
-
-
-  const user = await getUserByEmail(email);
-
-  if (!user?.uid) {
-    return {
-      success:false,
-      error:"صارف کا ریکارڈ نہیں ملا۔"
-    };
-  }
-
-
-  const userRef = doc(db,"users",user.uid);
-
-
-  try {
-
-    await runTransaction(db, async(transaction)=>{
-
-      const snap = await transaction.get(userRef);
-
-      if(!snap.exists()){
-        throw new Error("صارف موجود نہیں ہے");
-      }
-
-
-      const data = snap.data() as User;
-
-      const balance = Number(data.balance || 0);
-
-
-      if(balance < amount){
-        throw new Error("والٹ میں اتنی رقم موجود نہیں ہے");
-      }
-
-
-      transaction.update(userRef,{
-        balance: balance - Number(amount),
-        updatedAt:new Date().toISOString(),
-
-        lastDeduction:{
-          amount:Number(amount),
-          reason,
-          timestamp:new Date().toISOString()
-        }
+        balance: newBal
       });
 
+      const tx: Transaction = {
+        id: txId,
+        userId: uid,
+        userEmail: normalizedEmail,
+        userName: user.name || cached?.name || 'صارف',
+        type: amount >= 0 ? 'recharge' : 'withdrawal',
+        amount: Math.abs(amount),
+        date: new Date().toISOString(),
+        status: 'approved',
+        paymentMethod: 'ایڈمن والٹ چارج',
+        note: amount >= 0 ? 'ایڈمن کی جانب سے والٹ ریچارج' : 'ایڈمن کی جانب سے والٹ سے کٹوتی'
+      };
+      transaction.set(txRef, tx);
     });
 
-
+    if (cached) {
+      cached.balance = (cached.balance || 0) + amount;
+    }
     notifyListeners();
-
-
-    return {
-      success:true
-    };
-
-
-  } catch(e:any){
-
-    console.error("Wallet deduction error:",e);
-
-    return {
-      success:false,
-      error:e.message || "رقم منہا کرنے میں خرابی"
-    };
-
+    return true;
+  } catch (e) {
+    console.error("Recharge transaction failed:", e);
+    return false;
   }
-
 }
-
 
 export async function addBooking(
   email: string,
-  category: 'pakistan_bond' | 'thailand_lottery',
+  category: DrawCategory,
   number: string,
   firstAmount: number,
-  secondAmount: number
+  secondAmount: number,
+  bondValue?: string,
+  drawNumber?: string,
+  drawDate?: string,
+  drawCity?: string,
+  drawId?: string
 ): Promise<{ success: boolean; error?: string }> {
   const online = await checkInternetConnection();
   if (!online) {
@@ -1390,35 +1364,7 @@ export async function addBooking(
   }
 
   const normalizedEmail = email.toLowerCase().trim();
-  let cached = cachedUsers.find(
-    u => u.email?.toLowerCase() === normalizedEmail
-  );
-
-  if (!cached || !cached.uid) {
-    console.log("Loading user directly from Firebase:", normalizedEmail);
-
-    const q = query(
-      collection(db, 'users'),
-      where('email', '==', normalizedEmail)
-    );
-
-    const snapshot = await getDocsFromServer(q);
-
-    if (snapshot.empty) {
-      console.error("User not found in Firestore:", normalizedEmail);
-      return {
-        success: false,
-        error: "صارف کا ریکارڈ Firebase میں نہیں ملا۔"
-      };
-    }
-
-    const userData = snapshot.docs[0].data() as User;
-
-    cached = {
-      ...userData,
-      uid: snapshot.docs[0].id
-    };
-  }
+  const cached = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
   if (!cached || !cached.uid) {
     return { success: false, error: 'کسٹمر ریکارڈ نہیں ملا' };
   }
@@ -1426,13 +1372,11 @@ export async function addBooking(
   const userRef = doc(db, 'users', uid);
   const bookingId = 'booking-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
   const bookingRef = doc(db, 'bookings', bookingId);
+  const txId = 'tx-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+  const txRef = doc(db, 'transactions', txId);
   const totalCost = firstAmount + secondAmount;
 
   try {
-    console.log("Current UID:", auth.currentUser?.uid);
-    console.log("Current Email:", auth.currentUser?.email);
-    console.log("Booking Email:", normalizedEmail);
-
     const result = await runTransaction(db, async (transaction) => {
       const userDoc = await transaction.get(userRef);
       if (!userDoc.exists()) {
@@ -1456,16 +1400,40 @@ export async function addBooking(
 
       const newBooking: Booking = {
         id: bookingId,
-        userUid: uid,
         userEmail: normalizedEmail,
         category,
         number,
         firstAmount,
         secondAmount,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        ...(drawId && { drawId }),
+        ...(bondValue && { bondValue }),
+        ...(drawNumber && { drawNumber }),
+        ...(drawCity && { drawCity }),
+        ...(drawDate && { drawDate })
+      };
+
+      const categoryLabelMap: Record<DrawCategory, string> = {
+        pakistan_bond: 'پاکستان پرائز بانڈ',
+        thailand_lottery: 'تھائی لینڈ لاٹری',
+        dubai_draw: 'دبئی ڈرا',
+        zee_music_draw: 'زی میوزک ڈرا'
+      };
+
+      const tx: Transaction = {
+        id: txId,
+        userId: uid,
+        userEmail: normalizedEmail,
+        userName: userData.name || 'صارف',
+        type: 'booking_deduction',
+        amount: totalCost,
+        date: new Date().toISOString(),
+        status: 'approved',
+        note: `${categoryLabelMap[category]} نمبر #${number} بکنگ کٹوتی`
       };
 
       transaction.set(bookingRef, newBooking);
+      transaction.set(txRef, tx);
       transaction.update(userRef, {
         balance: userData.balance - totalCost
       });
@@ -1474,10 +1442,7 @@ export async function addBooking(
     });
     return result;
   } catch (err: any) {
-    console.error("Booking transaction failed");
-    console.error("Error code:", err?.code);
-    console.error("Error message:", err?.message);
-    console.error("Full error:", err);
+    console.error("Booking transaction failed:", err);
     return { success: false, error: err.message || 'بکنگ کے دوران غلطی پیش آئی۔' };
   }
 }
@@ -1499,7 +1464,7 @@ export async function cancelBooking(bookingId: string): Promise<{ success: boole
   }
 
   const userEmail = booking.userEmail.toLowerCase().trim();
-  const cached = await getUserByEmail(userEmail);
+  const cached = cachedUsers.find(u => u.email.toLowerCase() === userEmail);
   if (!cached || !cached.uid) {
     return { success: false, error: 'کسٹمر ریکارڈ (یا یو آئی ڈی) نہیں ملا۔' };
   }
@@ -1536,7 +1501,7 @@ export async function cancelBookingByAdmin(bookingId: string): Promise<{ success
   if (!booking) return { success: false, error: 'بکنگ کا ریکارڈ نہیں ملا' };
 
   const userEmail = booking.userEmail.toLowerCase().trim();
-  const cached = await getUserByEmail(userEmail);
+  const cached = cachedUsers.find(u => u.email.toLowerCase() === userEmail);
   if (!cached || !cached.uid) {
     return { success: false, error: 'کسٹمر ریکارڈ (یا یو آئی ڈی) نہیں ملا۔' };
   }
@@ -1563,7 +1528,7 @@ export async function cancelBookingByAdmin(bookingId: string): Promise<{ success
   }
 }
 
-export async function setOrUpdateLimit(category: 'pakistan_bond' | 'thailand_lottery', number: string, maxAmount: number): Promise<void> {
+export async function setOrUpdateLimit(category: DrawCategory, number: string, maxAmount: number): Promise<void> {
   const online = await checkInternetConnection();
   if (!online) return;
 
@@ -1577,12 +1542,23 @@ export async function setOrUpdateLimit(category: 'pakistan_bond' | 'thailand_lot
     maxAmount
   };
   await setDoc(doc(db, 'limits', limitId), limit);
+
+  const idx = cachedLimits.findIndex(l => l.id === limitId);
+  if (idx !== -1) {
+    cachedLimits[idx] = limit;
+  } else {
+    cachedLimits.push(limit);
+  }
+  notifyListeners();
 }
 
 export async function deleteLimit(id: string): Promise<void> {
   const online = await checkInternetConnection();
   if (!online) return;
   await deleteDoc(doc(db, 'limits', id));
+
+  cachedLimits = cachedLimits.filter(l => l.id !== id);
+  notifyListeners();
 }
 
 export function getDemands(): Demand[] {
@@ -1599,10 +1575,15 @@ export async function saveDemands(demands: Demand[]): Promise<void> {
 
 export async function addDemand(
   email: string,
-  category: 'pakistan_bond' | 'thailand_lottery',
+  category: DrawCategory,
   number: string,
   firstAmount: number,
-  secondAmount: number
+  secondAmount: number,
+  bondValue?: string,
+  drawNumber?: string,
+  drawDate?: string,
+  drawCity?: string,
+  drawId?: string
 ): Promise<{ success: boolean; error?: string }> {
   const online = await checkInternetConnection();
   if (!online) {
@@ -1610,7 +1591,7 @@ export async function addDemand(
   }
 
   const normalizedEmail = email.toLowerCase();
-  const user = await findUserByEmail(normalizedEmail);
+  const user = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
   if (!user) return { success: false, error: 'کسٹمر ریکارڈ نہیں ملا' };
 
   const totalCost = firstAmount + secondAmount;
@@ -1627,7 +1608,12 @@ export async function addDemand(
     firstAmount,
     secondAmount,
     timestamp: new Date().toISOString(),
-    status: 'pending'
+    status: 'pending',
+    ...(drawId && { drawId }),
+    ...(bondValue && { bondValue }),
+    ...(drawNumber && { drawNumber }),
+    ...(drawCity && { drawCity }),
+    ...(drawDate && { drawDate })
   };
 
   try {
@@ -1652,7 +1638,7 @@ export async function approveDemand(demandId: string): Promise<{ success: boolea
   }
 
   const userEmail = demand.userEmail.toLowerCase().trim();
-  const cached = await getUserByEmail(userEmail);
+  const cached = cachedUsers.find(u => u.email.toLowerCase() === userEmail);
   if (!cached || !cached.uid) {
     return { success: false, error: 'کسٹمر ریکارڈ (یا یو آئی ڈی) نہیں ملا۔' };
   }
@@ -1681,7 +1667,12 @@ export async function approveDemand(demandId: string): Promise<{ success: boolea
         number: demand.number,
         firstAmount: demand.firstAmount,
         secondAmount: demand.secondAmount,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        ...(demand.drawId && { drawId: demand.drawId }),
+        ...(demand.bondValue && { bondValue: demand.bondValue }),
+        ...(demand.drawNumber && { drawNumber: demand.drawNumber }),
+        ...(demand.drawCity && { drawCity: demand.drawCity }),
+        ...(demand.drawDate && { drawDate: demand.drawDate })
       };
 
       transaction.set(bookingRef, newBooking);
@@ -1733,24 +1724,31 @@ export async function saveDrawDeadlines(deadlines: DrawDeadline[]): Promise<void
   const online = await checkInternetConnection();
   if (!online) return;
   for (const d of deadlines) {
-    await setDoc(doc(db, 'deadlines', d.category), d);
+    const targetId = d.id || d.category;
+    await setDoc(doc(db, 'deadlines', targetId), { ...d, id: targetId });
   }
 }
 
 export async function setDrawDeadline(
-  category: 'pakistan_bond' | 'thailand_lottery',
+  category: DrawCategory,
   deadlineIso: string,
   titleUrdu: string,
-  status: 'open' | 'closed',
+  status: 'open' | 'closed' | 'result_announced',
   nextPrizeBondValue?: string,
   nextDrawCity?: string,
   nextDrawNumber?: string,
-  nextDrawDate?: string
+  nextDrawDate?: string,
+  drawId?: string
 ): Promise<void> {
   const online = await checkInternetConnection();
   if (!online) return;
 
+  const targetDocId = drawId || (category === 'pakistan_bond' ? `pb_draw_${Date.now()}` : category);
+  const existing = cachedDeadlines.find(d => (d.id || d.category) === targetDocId);
+  const now = new Date().toISOString();
+
   const deadline: DrawDeadline = {
+    id: targetDocId,
     category,
     deadlineIso,
     titleUrdu,
@@ -1758,9 +1756,27 @@ export async function setDrawDeadline(
     ...(nextPrizeBondValue !== undefined && { nextPrizeBondValue }),
     ...(nextDrawCity !== undefined && { nextDrawCity }),
     ...(nextDrawNumber !== undefined && { nextDrawNumber }),
-    ...(nextDrawDate !== undefined && { nextDrawDate })
+    ...(nextDrawDate !== undefined && { nextDrawDate }),
+    createdAt: existing?.createdAt || now,
+    updatedAt: now
   };
-  await setDoc(doc(db, 'deadlines', category), deadline);
+  await setDoc(doc(db, 'deadlines', targetDocId), deadline);
+
+  const idx = cachedDeadlines.findIndex(d => (d.id || d.category) === targetDocId);
+  if (idx !== -1) {
+    cachedDeadlines[idx] = deadline;
+  } else {
+    cachedDeadlines.push(deadline);
+  }
+  notifyListeners();
+}
+
+export async function deleteDrawDeadline(id: string): Promise<void> {
+  const online = await checkInternetConnection();
+  if (!online) return;
+  await deleteDoc(doc(db, 'deadlines', id));
+  cachedDeadlines = cachedDeadlines.filter(d => d.id !== id);
+  notifyListeners();
 }
 
 // Memory caches for results
@@ -1775,75 +1791,44 @@ export function getThaiLotteryResults(): ThaiLotteryResult[] {
   return cachedThaiLotteryResults;
 }
 
-export async function autoCleanOldDrawData(
-  category: 'pakistan_bond' | 'thailand_lottery'
-): Promise<void> {
-
+export async function autoCleanOldDrawData(category: 'pakistan_bond' | 'thailand_lottery'): Promise<void> {
   try {
-    console.log("Starting professional draw cleanup:", category);
-
-    // 1. Remove old bookings from Firestore
-    const bookingsQuery = query(
-      collection(db, 'bookings'),
-      where('category', '==', category)
-    );
-
+    console.log(`Starting auto cleanup for old draw data of category: ${category}`);
+    
+    // 1. Remove all bookings of this category
+    const bookingsRef = collection(db, 'bookings');
+    const bookingsQuery = query(bookingsRef, where('category', '==', category));
     const bookingsSnapshot = await getDocs(bookingsQuery);
-
-    for (const item of bookingsSnapshot.docs) {
-      await deleteDoc(doc(db, 'bookings', item.id));
+    
+    for (const d of bookingsSnapshot.docs) {
+      await deleteDoc(doc(db, 'bookings', d.id));
     }
+    console.log(`Cleaned ${bookingsSnapshot.size} bookings for category ${category}`);
 
-    // 2. Remove old number limits
-    const limitsQuery = query(
-      collection(db, 'limits'),
-      where('category', '==', category)
-    );
-
+    // 2. Clear all number limits of this category
+    const limitsRef = collection(db, 'limits');
+    const limitsQuery = query(limitsRef, where('category', '==', category));
     const limitsSnapshot = await getDocs(limitsQuery);
-
-    for (const item of limitsSnapshot.docs) {
-      await deleteDoc(doc(db, 'limits', item.id));
+    
+    for (const d of limitsSnapshot.docs) {
+      await deleteDoc(doc(db, 'limits', d.id));
     }
+    console.log(`Cleaned ${limitsSnapshot.size} limits for category ${category}`);
 
-
-    // 3. Clear local cache
-    cachedBookings = cachedBookings.filter(
-      b => b.category !== category
-    );
-
-    cachedLimits = cachedLimits.filter(
-      l => l.category !== category
-    );
-
-
-    // 4. Open next draw
-    const deadlineRef = doc(db,'deadlines',category);
-
-    await setDoc(
-      deadlineRef,
-      {
-        status:'open',
-        updatedAt:new Date().toISOString()
-      },
-      {merge:true}
-    );
-
-
-    notifyListeners();
-
-    console.log(
-      "Draw cleanup completed successfully:",
-      category
-    );
-
-  } catch(err) {
-
-    console.error(
-      "Professional draw cleanup failed:",
-      err
-    );
-
+    // 3. Prepare system for the next draw (opening the deadline)
+    const deadlineRef = doc(db, 'deadlines', category);
+    const deadlineSnap = await getDocFromServer(deadlineRef);
+    if (deadlineSnap.exists()) {
+      const currentDeadline = deadlineSnap.data() as DrawDeadline;
+      const updatedDeadline: DrawDeadline = {
+        ...currentDeadline,
+        status: 'open'
+      };
+      await setDoc(deadlineRef, updatedDeadline);
+      console.log(`Prepared system for next draw by opening deadline for ${category}`);
+    }
+  } catch (err) {
+    console.error("Auto clean-up of old draw data failed:", err);
   }
 }
 
@@ -1928,26 +1913,5 @@ export async function sendPasswordResetLink(email: string): Promise<{ success: b
   } catch (err: any) {
     console.error("Password reset error:", err);
     return { success: false, error: err.message || 'پاس ورڈ دوبارہ ترتیب دینے کی ای میل بھیجنے میں خرابی پیش آئی۔' };
-  }
-}
-
-
-// Temporary: Clear all old number limits
-export async function clearAllOldLimits(): Promise<boolean> {
-  try {
-    const snapshot = await getDocs(collection(db, "limits"));
-
-    const deletes = snapshot.docs.map(item =>
-      deleteDoc(doc(db, "limits", item.id))
-    );
-
-    await Promise.all(deletes);
-
-    console.log("All old limits cleared successfully");
-    return true;
-
-  } catch (error) {
-    console.error("Clear limits error:", error);
-    return false;
   }
 }

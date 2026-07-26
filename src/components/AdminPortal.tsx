@@ -1,7 +1,7 @@
 import React, { useState, useEffect, FormEvent } from 'react';
-import { User, NumberLimit, Demand, DrawDeadline, Booking, PakistanBondResult, ThaiLotteryResult, AllResultType } from '../types';
-import { Shield, Plus, Trash, Check, X, UserCheck, AlertTriangle, ShieldCheck, HelpCircle, Sparkles, Clock, MessageCircle, Search, History } from 'lucide-react';
-import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, updateUserPassword, getAdminConfiguredEmail, updateCustomerPassword, registerInAuthOnly, changeLoggedAdminPassword } from '../utils/store';
+import { User, NumberLimit, Demand, DrawDeadline, Booking, PakistanBondResult, ThaiLotteryResult, AllResultType, DrawCategory, Transaction } from '../types';
+import { Shield, Plus, Trash, Check, X, UserCheck, AlertTriangle, ShieldCheck, HelpCircle, Sparkles, Clock, MessageCircle, Search, History, Wallet } from 'lucide-react';
+import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, updateUserPassword, getAdminConfiguredEmail, updateCustomerPassword, registerInAuthOnly, changeLoggedAdminPassword, getTransactions, approveTransaction, rejectTransaction } from '../utils/store';
 import { db } from '../lib/firebase';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 
@@ -15,26 +15,23 @@ interface AdminPortalProps {
   thaiLotteryResults: ThaiLotteryResult[];
   currentUser: User | null;
   onCancelBookingByAdmin: (bookingId: string) => Promise<{ success: boolean; error?: string }>;
-  onRecharge: (email: string, amount: number) => Promise<{ success: boolean; error?: string }>;
-  onDeductWallet: (
-    email: string,
-    amount: number,
-    reason?: string
-  ) => Promise<boolean>;
-  onSetLimit: (category: 'pakistan_bond' | 'thailand_lottery', number: string, maxAmount: number) => Promise<any>;
+  onRecharge: (email: string, amount: number) => Promise<boolean>;
+  onSetLimit: (category: DrawCategory, number: string, maxAmount: number) => Promise<any>;
   onDeleteLimit: (id: string) => Promise<any>;
   onApproveDemand: (id: string) => Promise<{ success: boolean; error?: string }>;
   onRejectDemand: (id: string) => Promise<{ success: boolean; error?: string }>;
   onSetDeadline: (
-    category: 'pakistan_bond' | 'thailand_lottery',
+    category: DrawCategory,
     deadlineIso: string,
     titleUrdu: string,
-    status: 'open' | 'closed',
+    status: 'open' | 'closed' | 'result_announced',
     nextPrizeBondValue?: string,
     nextDrawCity?: string,
     nextDrawNumber?: string,
-    nextDrawDate?: string
+    nextDrawDate?: string,
+    drawId?: string
   ) => void;
+  onDeleteDeadline?: (id: string) => Promise<any>;
   onAddResult: (result: AllResultType) => Promise<{ success: boolean; error?: string }>;
   onEditResult: (result: AllResultType) => Promise<{ success: boolean; error?: string }>;
   onDeleteResult: (id: string, category: 'pakistan_bond' | 'thailand_lottery') => Promise<{ success: boolean; error?: string }>;
@@ -117,12 +114,12 @@ export default function AdminPortal({
   currentUser,
   onCancelBookingByAdmin,
   onRecharge,
-  onDeductWallet,
   onSetLimit,
   onDeleteLimit,
   onApproveDemand,
   onRejectDemand,
   onSetDeadline,
+  onDeleteDeadline,
   onAddResult,
   onEditResult,
   onDeleteResult
@@ -143,13 +140,7 @@ export default function AdminPortal({
   // Recharge States
   const [rechargeEmail, setRechargeEmail] = useState('');
   const [rechargeAmount, setRechargeAmount] = useState('');
-
-  // Wallet Deduction States
-  const [deductEmail, setDeductEmail] = useState('');
-  const [deductAmount, setDeductAmount] = useState('');
-  const [deductReason, setDeductReason] = useState('');
-  const [deductError, setDeductError] = useState('');
-  const [deductSuccess, setDeductSuccess] = useState('');
+  const [rechargeReason, setRechargeReason] = useState('');
   const [rechargeError, setRechargeError] = useState('');
   const [rechargeSuccess, setRechargeSuccess] = useState('');
 
@@ -161,10 +152,11 @@ export default function AdminPortal({
   const [limitSuccess, setLimitSuccess] = useState('');
 
   // Deadline configuration states
+  const [editingDrawId, setEditingDrawId] = useState<string>('');
   const [deadlineCategory, setDeadlineCategory] = useState<'pakistan_bond' | 'thailand_lottery'>('pakistan_bond');
   const [deadlineTitle, setDeadlineTitle] = useState('بکنگ فائنل کھل گئی ہے');
   const [deadlineDateTime, setDeadlineDateTime] = useState('');
-  const [deadlineStatus, setDeadlineStatus] = useState<'open' | 'closed'>('open');
+  const [deadlineStatus, setDeadlineStatus] = useState<'open' | 'closed' | 'result_announced'>('open');
   const [deadlineError, setDeadlineError] = useState('');
   const [deadlineSuccess, setDeadlineSuccess] = useState('');
 
@@ -173,24 +165,37 @@ export default function AdminPortal({
   const [nextDrawNumber, setNextDrawNumber] = useState('');
   const [nextDrawDate, setNextDrawDate] = useState('');
 
-  // Pre-populate deadline inputs when category or deadlines change
+  const resetDeadlineForm = () => {
+    setEditingDrawId('');
+    setDeadlineTitle('بکنگ فائنل کھل گئی ہے');
+    setDeadlineDateTime('');
+    setDeadlineStatus('open');
+    setNextPrizeBondValue('');
+    setNextDrawCity('');
+    setNextDrawNumber('');
+    setNextDrawDate('');
+  };
+
+  // Pre-populate deadline inputs when category or deadlines change if not editing specific draw
   useEffect(() => {
-    const existing = deadlines.find(d => d.category === deadlineCategory);
-    if (existing) {
-      setDeadlineTitle(existing.titleUrdu);
-      setDeadlineDateTime(existing.deadlineIso);
-      setDeadlineStatus(existing.status || 'open');
-      setNextPrizeBondValue(existing.nextPrizeBondValue || '');
-      setNextDrawCity(existing.nextDrawCity || '');
-      setNextDrawNumber(existing.nextDrawNumber || '');
-      setNextDrawDate(existing.nextDrawDate || '');
-    } else {
-      setNextPrizeBondValue('');
-      setNextDrawCity('');
-      setNextDrawNumber('');
-      setNextDrawDate('');
+    if (!editingDrawId) {
+      const existing = deadlines.find(d => d.category === deadlineCategory);
+      if (existing) {
+        setDeadlineTitle(existing.titleUrdu);
+        setDeadlineDateTime(existing.deadlineIso);
+        setDeadlineStatus(existing.status || 'open');
+        setNextPrizeBondValue(existing.nextPrizeBondValue || '');
+        setNextDrawCity(existing.nextDrawCity || '');
+        setNextDrawNumber(existing.nextDrawNumber || '');
+        setNextDrawDate(existing.nextDrawDate || '');
+      } else {
+        setNextPrizeBondValue('');
+        setNextDrawCity('');
+        setNextDrawNumber('');
+        setNextDrawDate('');
+      }
     }
-  }, [deadlineCategory, deadlines]);
+  }, [deadlineCategory, deadlines, editingDrawId]);
 
   // Demand management state
   const [demandError, setDemandError] = useState('');
@@ -669,8 +674,7 @@ export default function AdminPortal({
     }
   };
 
-  const handleRechargeSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleWalletAction = async (actionType: 'recharge' | 'deduct') => {
     setRechargeError('');
     setRechargeSuccess('');
 
@@ -685,11 +689,17 @@ export default function AdminPortal({
       return;
     }
 
-    const ok = await onRecharge(rechargeEmail, amountNum);
+    const targetAmount = actionType === 'recharge' ? amountNum : -amountNum;
+    const ok = await onRecharge(rechargeEmail, targetAmount);
     if (ok) {
       const updatedUser = users.find(u => (u.email || '').toLowerCase() === (rechargeEmail || '').toLowerCase());
-      setRechargeSuccess(` Rs. ${amountNum.toLocaleString()} والٹ میں کامیابی سے جمع کر دیئے گئے۔ کسٹمر کا نیا والٹ بیلنس: Rs. ${(updatedUser?.balance ?? 0).toLocaleString()}`);
+      if (actionType === 'recharge') {
+        setRechargeSuccess(`Rs. ${amountNum.toLocaleString()} والٹ میں کامیابی سے جمع کر دیئے گئے۔ کسٹمر کا نیا والٹ بیلنس: Rs. ${(updatedUser?.balance ?? 0).toLocaleString()}`);
+      } else {
+        setRechargeSuccess(`Rs. ${amountNum.toLocaleString()} والٹ سے کامیابی سے کاٹ لیے گئے۔ کسٹمر کا نیا والٹ بیلنس: Rs. ${(updatedUser?.balance ?? 0).toLocaleString()}`);
+      }
       setRechargeAmount('');
+      setRechargeReason('');
     } else {
       setRechargeError('اس ایمیل کا کوئی کسٹمر نہیں ملا۔ براہ کرم درست ایمیل لکھیں۔');
     }
@@ -727,6 +737,12 @@ export default function AdminPortal({
       return;
     }
 
+    const drawIdToSave = editingDrawId || (
+      deadlineCategory === 'pakistan_bond'
+        ? `pk-bond-${nextPrizeBondValue ? nextPrizeBondValue.replace(/\D/g, '') : Date.now()}`
+        : deadlineCategory
+    );
+
     onSetDeadline(
       deadlineCategory,
       deadlineDateTime,
@@ -735,9 +751,11 @@ export default function AdminPortal({
       nextPrizeBondValue,
       nextDrawCity,
       nextDrawNumber,
-      nextDrawDate
+      nextDrawDate,
+      drawIdToSave
     );
-    setDeadlineSuccess(`کامیاب: ${deadlineCategory === 'pakistan_bond' ? 'پاکستان بانڈ' : 'تھائی لینڈ لاٹری'} کی سیٹنگز کامیابی سے محفوظ ہو گئی ہیں!`);
+    setDeadlineSuccess(`کامیاب: ${deadlineCategory === 'pakistan_bond' ? 'پاکستان بانڈ ڈرا' : 'تھائی لینڈ لاٹری'} کی سیٹنگز کامیابی سے محفوظ ہو گئی ہیں!`);
+    resetDeadlineForm();
   };
 
 
@@ -1074,7 +1092,14 @@ export default function AdminPortal({
 
                         {/* Category Type */}
                         <td className="py-3 px-3 text-slate-600 text-xs font-semibold">
-                          {b.category === 'pakistan_bond' ? 'پاکستان بانڈ' : 'تھائی لاٹری'}
+                          <div>{b.category === 'pakistan_bond' ? 'پاکستان بانڈ' : 'تھائی لاٹری'}</div>
+                          {b.category === 'pakistan_bond' && (b.bondValue || b.drawNumber || b.drawDate) && (
+                            <div className="text-[10px] text-amber-700 font-mono mt-0.5">
+                              {b.bondValue && <span>{b.bondValue} </span>}
+                              {b.drawNumber && <span>| ڈرا #{b.drawNumber} </span>}
+                              {b.drawDate && <span>| {b.drawDate}</span>}
+                            </div>
+                          )}
                         </td>
 
                         {/* Customer Details info */}
@@ -1097,10 +1122,10 @@ export default function AdminPortal({
       {activeAdminTab === 'users_finance' && isSuper && (
         <div className="space-y-8">
 
-        {/* Module 1: Wallet Recharge (کسٹمر والٹ ریچارج کریں) */}
+        {/* Module 1: Customer Wallet Management (کسٹمر والٹ مینجمنٹ) */}
         <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md">
           <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 mb-5 flex items-center justify-end gap-2">
-            <span>کسٹمر والٹ ریچارج پورٹل</span>
+            <span>Customer Wallet Management (کسٹمر والٹ مینجمنٹ)</span>
             <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></span>
           </h4>
 
@@ -1115,10 +1140,10 @@ export default function AdminPortal({
             </div>
           )}
 
-          <form onSubmit={handleRechargeSubmit} className="space-y-4">
+          <div className="space-y-4">
             <div>
               <label className="block text-slate-600 text-xs font-semibold mb-1.5">
-                کسٹمر رجسٹرڈ ایمیل آئی دی (Customer Email) *
+                کسٹمر ای میل (Customer Email) *
               </label>
               <input
                 type="email"
@@ -1127,14 +1152,11 @@ export default function AdminPortal({
                 onChange={(e) => setRechargeEmail(e.target.value)}
                 className="w-full text-left bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
               />
-              <p className="text-[10px] text-slate-400 mt-1">
-                لاگ ان کسٹمر اپنی بکنگ شیٹ کے اوپر اور پروفائل پر ایمیل دیکھ سکتا ہے۔
-              </p>
             </div>
 
             <div>
               <label className="block text-slate-600 text-xs font-semibold mb-1.5">
-                ریچارج رقم درج کریں (Amount in Rs.) *
+                رقم (Amount in Rs.) *
               </label>
               <input
                 type="number"
@@ -1145,13 +1167,36 @@ export default function AdminPortal({
               />
             </div>
 
-            <button
-              type="submit"
-              className="w-full bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold py-3 px-4 rounded-2xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <span>والٹ رقم جمع کریں (Recharge)</span>
-            </button>
-          </form>
+            <div>
+              <label className="block text-slate-600 text-xs font-semibold mb-1.5">
+                وجہ / نوٹ (Reason - Optional)
+              </label>
+              <input
+                type="text"
+                placeholder="مثال: کیش وصولی یا والٹ ایڈجسٹمنٹ"
+                value={rechargeReason}
+                onChange={(e) => setRechargeReason(e.target.value)}
+                className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => handleWalletAction('recharge')}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-2xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+              >
+                <span>والٹ ریچارج کریں (Recharge Wallet)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleWalletAction('deduct')}
+                className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-2xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+              >
+                <span>والٹ سے رقم کاٹیں (Deduct Wallet)</span>
+              </button>
+            </div>
+          </div>
 
           {/* Quick list of registered customers to quickly recharge */}
           <div className="mt-6 pt-5 border-t border-slate-100">
@@ -1175,80 +1220,8 @@ export default function AdminPortal({
         </div>
       </div>
     )}
-        {/* Wallet Deduction Module */}
-        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md">
 
-          <h4 className="text-base font-bold text-slate-800 pb-3 border-b mb-5">
-            کسٹمر والٹ سے رقم واپس کاٹیں
-          </h4>
-
-          {deductError && (
-            <div className="p-3 bg-red-50 text-red-700 rounded-xl mb-3">
-              ⚠️ {deductError}
-            </div>
-          )}
-
-          {deductSuccess && (
-            <div className="p-3 bg-green-50 text-green-700 rounded-xl mb-3">
-              ✓ {deductSuccess}
-            </div>
-          )}
-
-          <input
-            type="email"
-            placeholder="Customer Email"
-            value={deductEmail}
-            onChange={(e)=>setDeductEmail(e.target.value)}
-            className="w-full border rounded-xl p-3 mb-3"
-          />
-
-          <input
-            type="number"
-            placeholder="Amount"
-            value={deductAmount}
-            onChange={(e)=>setDeductAmount(e.target.value)}
-            className="w-full border rounded-xl p-3 mb-3"
-          />
-
-          <input
-            type="text"
-            placeholder="Reason"
-            value={deductReason}
-            onChange={(e)=>setDeductReason(e.target.value)}
-            className="w-full border rounded-xl p-3 mb-3"
-          />
-
-          <button
-            onClick={async()=>{
-
-              const result = await onDeductWallet(
-                deductEmail,
-                Number(deductAmount),
-                deductReason || "Admin adjustment"
-              );
-
-              if(result.success){
-                setDeductSuccess("رقم کامیابی سے واپس کاٹ دی گئی");
-                setDeductError("");
-                setDeductAmount('');
-                setDeductReason('');
-              }else{
-                setDeductSuccess("");
-                setDeductError(result.error || "رقم کاٹنے میں مسئلہ آیا");
-              }
-
-            }}
-            className="w-full bg-red-600 text-white font-bold py-3 rounded-xl"
-          >
-            رقم واپس کاٹیں
-          </button>
-
-        </div>
-
-
-      
-
-{activeAdminTab === 'limits_deadlines' && isSuper && (
+      {activeAdminTab === 'limits_deadlines' && isSuper && (
         <div className="space-y-8">
           {/* Module 2: Number Booking Limit Configuration (نمبر لمٹ مقرر کریں) */}
         <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md flex flex-col justify-between">
@@ -1336,15 +1309,83 @@ export default function AdminPortal({
                 <span>خصوصی بکنگ لمٹ لگائیں</span>
               </button>
             </form>
+
+            {/* List of active set limits */}
+            <div className="mt-6 pt-5 border-t border-slate-100">
+              <h5 className="text-xs font-bold text-slate-700 mb-3 text-right">موجودہ سیٹ شدہ نمبر لمٹس کی لسٹ ({limits.length})</h5>
+              {limits.length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-3 bg-slate-50 rounded-2xl">کوئی فعال نمبر لمٹ نہیں ہے۔</p>
+              ) : (
+                <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
+                  {limits.map((limit) => {
+                    const categoryMap: Record<DrawCategory, string> = {
+                      pakistan_bond: 'پاکستان پرائز بانڈ',
+                      thailand_lottery: 'تھائی لینڈ لاٹری',
+                      dubai_draw: 'دبئی ڈرا',
+                      zee_music_draw: 'زی میوزک ڈرا'
+                    };
+                    return (
+                      <div key={limit.id} className="flex justify-between items-center bg-slate-50 hover:bg-slate-100 p-3 rounded-2xl text-xs transition-all border border-slate-200">
+                        <button
+                          onClick={async () => {
+                            if (window.confirm(`کیا آپ واقعی نمبر #${limit.number} کی لمٹ ختم کرنا چاہتے ہیں؟`)) {
+                              await onDeleteLimit(limit.id);
+                            }
+                          }}
+                          className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl transition-all cursor-pointer"
+                          title="حذف کریں"
+                        >
+                          <Trash className="w-4 h-4" />
+                        </button>
+                        <div className="text-right">
+                          <div className="font-bold text-slate-800 flex items-center justify-end gap-2">
+                            <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-lg font-mono font-bold">#{limit.number}</span>
+                            <span>{categoryMap[limit.category] || limit.category}</span>
+                          </div>
+                          <span className="text-[11px] text-slate-500 font-mono block mt-1">زیادہ سے زیادہ فرسٹ/سیکنڈ لمٹ: Rs. {limit.maxAmount.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Module 3: Booking Deadline Settings (بکنگ آخری وقت اور تاریخ) */}
         <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md md:col-span-2 space-y-4">
-          <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 flex items-center justify-end gap-2">
-            <span>ڈرا کی بکنگ کا آخری وقت اور تاریخ (Booking Deadlines)</span>
-            <Clock className="w-5 h-5 text-red-500" />
-          </h4>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-3 border-b border-slate-100">
+            {editingDrawId ? (
+              <button
+                type="button"
+                onClick={resetDeadlineForm}
+                className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-4 py-2 rounded-2xl text-xs flex items-center gap-1.5 cursor-pointer transition-all"
+              >
+                <X className="w-4 h-4" />
+                <span>فارم ریسیٹ کریں / نیا ڈرا بنائیں (Reset Form / Create New Draw)</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={resetDeadlineForm}
+                className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded-2xl text-xs flex items-center gap-1.5 cursor-pointer transition-all shadow-sm"
+              >
+                <Plus className="w-4 h-4" />
+                <span>نیا ڈرا شامل کریں (Add New Draw)</span>
+              </button>
+            )}
+
+            <div className="text-right">
+              <h4 className="text-base font-bold text-slate-800 flex items-center justify-end gap-2">
+                <span>ڈرا کی بکنگ کا آخری وقت اور تاریخ (Booking Deadlines)</span>
+                <Clock className="w-5 h-5 text-red-500" />
+              </h4>
+              {editingDrawId && (
+                <span className="text-xs text-amber-600 font-semibold">ایڈٹ موڈ: ڈرا ID {editingDrawId}</span>
+              )}
+            </div>
+          </div>
 
           {deadlineError && (
             <div className="p-3 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs">
@@ -1358,26 +1399,26 @@ export default function AdminPortal({
           )}
 
           <form onSubmit={handleDeadlineSubmit} className="space-y-4">
-            {/* Booking Status Selector (Open / Closed manual switch) */}
+            {/* Booking Status Selector (Open / Closed / Result Announced manual switch) */}
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2">
               <label className="block text-slate-700 text-xs font-bold text-right">
                 بکنگ اسٹیٹس (دستی کنٹرول) *
               </label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => {
                     setDeadlineStatus('open');
                     setDeadlineTitle('بکنگ فائنل کھل گئی ہے');
                   }}
-                  className={`py-3 px-4 rounded-2xl border text-center transition-all text-xs font-bold flex items-center justify-center gap-2 ${
+                  className={`py-2.5 px-3 rounded-2xl border text-center transition-all text-xs font-bold flex items-center justify-center gap-1.5 ${
                     deadlineStatus === 'open'
                       ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm shadow-emerald-600/10'
                       : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                   }`}
                 >
                   <span className={`w-2 h-2 rounded-full ${deadlineStatus === 'open' ? 'bg-white animate-ping' : 'bg-slate-400'}`}></span>
-                  <span>بکنگ کھول گئے (Booking Open)</span>
+                  <span>اوپن (Open)</span>
                 </button>
                 <button
                   type="button"
@@ -1385,14 +1426,29 @@ export default function AdminPortal({
                     setDeadlineStatus('closed');
                     setDeadlineTitle('بکنگ فائنل بند ہے');
                   }}
-                  className={`py-3 px-4 rounded-2xl border text-center transition-all text-xs font-bold flex items-center justify-center gap-2 ${
+                  className={`py-2.5 px-3 rounded-2xl border text-center transition-all text-xs font-bold flex items-center justify-center gap-1.5 ${
                     deadlineStatus === 'closed'
                       ? 'bg-red-600 text-white border-red-600 shadow-sm shadow-red-600/10'
                       : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                   }`}
                 >
                   <span className="w-2 h-2 rounded-full bg-current"></span>
-                  <span>بکنگ بند ہے (Booking Closed)</span>
+                  <span>بند (Closed)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeadlineStatus('result_announced');
+                    setDeadlineTitle('قرعہ اندازی کا نتیجہ جاری ہو گیا ہے');
+                  }}
+                  className={`py-2.5 px-3 rounded-2xl border text-center transition-all text-xs font-bold flex items-center justify-center gap-1.5 ${
+                    deadlineStatus === 'result_announced'
+                      ? 'bg-amber-600 text-white border-amber-600 shadow-sm shadow-amber-600/10'
+                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-current"></span>
+                  <span>نتیجہ (Result)</span>
                 </button>
               </div>
             </div>
@@ -1451,11 +1507,11 @@ export default function AdminPortal({
                 <>
                   <div>
                     <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                      اگلی انعامی بانڈ مالیت (Next Prize Bond Value)
+                      انعامی بانڈ مالیت (Prize Bond Value) *
                     </label>
                     <input
                       type="text"
-                      placeholder="مثال: 750"
+                      placeholder="مثال: Rs. 200 یا Rs. 750"
                       value={nextPrizeBondValue}
                       onChange={(e) => setNextPrizeBondValue(e.target.value)}
                       className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
@@ -1464,7 +1520,7 @@ export default function AdminPortal({
 
                   <div>
                     <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                      اگلا ڈرا شہر (Next Draw City)
+                      ڈرا شہر (Draw City)
                     </label>
                     <input
                       type="text"
@@ -1477,7 +1533,7 @@ export default function AdminPortal({
 
                   <div>
                     <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                      اگلا ڈرا نمبر (Next Draw Number)
+                      ڈرا نمبر (Draw Number)
                     </label>
                     <input
                       type="text"
@@ -1492,7 +1548,7 @@ export default function AdminPortal({
 
               <div>
                 <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                  اگلی ڈرا تاریخ (Next Draw Date)
+                  ڈرا تاریخ (Draw Date)
                 </label>
                 <input
                   type="text"
@@ -1509,114 +1565,182 @@ export default function AdminPortal({
               type="submit"
               className="w-full bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold py-3 px-4 rounded-2xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
             >
-              <span>ڈیڈلائن اور اسٹیٹس محفوظ کریں (Save Draw Settings)</span>
+              <span>{editingDrawId ? 'ڈرا سیٹنگز تبدیل کریں (Update Draw Settings)' : 'نیا ڈرا محفوظ کریں (Save New Draw)'}</span>
             </button>
           </form>
 
           {/* Display active deadlines */}
           <div className="pt-4 border-t border-slate-100">
-            <h5 className="text-xs font-bold text-slate-700 mb-3">موجودہ فعال بکنگ ڈیڈلائنز کی حیثیت</h5>
+            <h5 className="text-xs font-bold text-slate-700 mb-3">موجودہ فعال بکنگ ڈیڈلائنز کی حیثیت ({deadlines.length})</h5>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {deadlines.map((d) => {
                 const isOver = d.status === 'closed' || safeGetTime(d.deadlineIso) <= Date.now();
+                const drawKey = d.id || `${d.category}-${d.nextPrizeBondValue || ''}`;
                 return (
-                  <div key={d.category} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-2 flex flex-col justify-between">
+                  <div key={drawKey} className="p-4 bg-slate-50 rounded-2xl border border-slate-150 space-y-2 flex flex-col justify-between shadow-sm">
                     <div>
                       <div className="flex justify-between items-center mb-1">
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          isOver ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                          d.status === 'result_announced'
+                            ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                            : d.status === 'closed' || safeGetTime(d.deadlineIso) <= Date.now()
+                            ? 'bg-red-50 text-red-600 border border-red-100'
+                            : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
                         }`}>
-                          {isOver ? 'بند ہے (Closed)' : 'اوپن ہے (Open)'}
+                          {d.status === 'result_announced' ? 'نتیجہ جاری (Result)' : d.status === 'closed' || safeGetTime(d.deadlineIso) <= Date.now() ? 'بند ہے (Closed)' : 'اوپن ہے (Open)'}
                         </span>
                         <span className="font-bold text-xs text-slate-800">
-                          {d.category === 'pakistan_bond' ? 'پاکستان بانڈ' : 'تھائی لینڈ لاٹری'}
+                          {d.category === 'pakistan_bond' ? `پاکستان بانڈ ${d.nextPrizeBondValue ? '- ' + d.nextPrizeBondValue : ''}` : 'تھائی لینڈ لاٹری'}
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-600">
-                        مینوئل کنٹرول: <strong className={d.status === 'closed' ? 'text-red-600' : 'text-emerald-600'}>{d.status === 'closed' ? 'بند (Closed)' : 'اوپن (Open)'}</strong>
+                        اسٹیٹس: <strong className={d.status === 'result_announced' ? 'text-amber-600' : d.status === 'closed' ? 'text-red-600' : 'text-emerald-600'}>{d.status === 'result_announced' ? 'نتیجہ جاری (Result Announced)' : d.status === 'closed' ? 'بند (Closed)' : 'اوپن (Open)'}</strong>
                       </p>
                       <p className="text-[11px] text-slate-600">
                         عنوان: <strong className="text-slate-800">{d.titleUrdu}</strong>
                       </p>
                       <p className="text-[11px] text-slate-500 font-mono">
-                        تاریخ: {safeFormatDate(d.deadlineIso, 'en-US')}
+                        آخری وقت: {safeFormatDate(d.deadlineIso, 'en-US')}
                       </p>
                       {d.category === 'pakistan_bond' ? (
                         <div className="mt-1 pt-1 border-t border-slate-200/50 space-y-0.5 text-[10px] text-slate-500">
                           {d.nextPrizeBondValue && (
-                            <div>اگلی مالیت: <strong className="text-slate-700">{d.nextPrizeBondValue}</strong></div>
+                            <div>مالیت: <strong className="text-slate-700">{d.nextPrizeBondValue}</strong></div>
                           )}
                           {d.nextDrawCity && (
-                            <div>اگلا شہر: <strong className="text-slate-700">{d.nextDrawCity}</strong></div>
+                            <div>شہر: <strong className="text-slate-700">{d.nextDrawCity}</strong></div>
                           )}
                           {d.nextDrawNumber && (
-                            <div>اگلا نمبر: <strong className="text-slate-700">{d.nextDrawNumber}</strong></div>
+                            <div>ڈرا نمبر: <strong className="text-slate-700">{d.nextDrawNumber}</strong></div>
                           )}
                           {d.nextDrawDate && (
-                            <div>اگلی ڈرا تاریخ: <strong className="text-slate-700">{d.nextDrawDate}</strong></div>
+                            <div>ڈرا تاریخ: <strong className="text-slate-700">{d.nextDrawDate}</strong></div>
                           )}
                         </div>
                       ) : (
                         d.nextDrawDate && (
                           <div className="mt-1 pt-1 border-t border-slate-200/50 text-[10px] text-slate-500">
-                            اگلی ڈرا تاریخ: <strong className="text-slate-700">{d.nextDrawDate}</strong>
+                            ڈرا تاریخ: <strong className="text-slate-700">{d.nextDrawDate}</strong>
                           </div>
                         )
                       )}
                     </div>
 
-                    {/* Quick action buttons to instantly toggle booking status */}
-                    <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-200/60">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-                          const isoStr = futureDate.toISOString().slice(0, 16);
-                          onSetDeadline(
-                            d.category,
-                            isoStr,
-                            'بکنگ فائنل کھل گئی ہے',
-                            'open',
-                            d.nextPrizeBondValue,
-                            d.nextDrawCity,
-                            d.nextDrawNumber,
-                            d.nextDrawDate
-                          );
-                        }}
-                        className={`py-1.5 px-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer text-center flex items-center justify-center gap-1 border ${
-                          !isOver 
-                            ? 'bg-emerald-600 text-white border-emerald-600' 
-                            : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'
-                        }`}
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse"></span>
-                        <span>بکنگ کھولیں (Open)</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
-                          const isoStr = pastDate.toISOString().slice(0, 16);
-                          onSetDeadline(
-                            d.category,
-                            isoStr,
-                            'بکنگ فائنل بند ہے',
-                            'closed',
-                            d.nextPrizeBondValue,
-                            d.nextDrawCity,
-                            d.nextDrawNumber,
-                            d.nextDrawDate
-                          );
-                        }}
-                        className={`py-1.5 px-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer text-center flex items-center justify-center gap-1 border ${
-                          isOver 
-                            ? 'bg-red-600 text-white border-red-600' 
-                            : 'bg-white text-red-600 border-red-200 hover:bg-red-50'
-                        }`}
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-                        <span>بکنگ بند کریں (Close)</span>
-                      </button>
+                    {/* Action buttons: Edit, Delete, Toggle Open/Close */}
+                    <div className="space-y-2 mt-2 pt-2 border-t border-slate-200/60">
+                      <div className="flex gap-2 justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingDrawId(d.id || d.category);
+                            setDeadlineCategory(d.category);
+                            setDeadlineTitle(d.titleUrdu);
+                            setDeadlineDateTime(d.deadlineIso);
+                            setDeadlineStatus(d.status || 'open');
+                            setNextPrizeBondValue(d.nextPrizeBondValue || '');
+                            setNextDrawCity(d.nextDrawCity || '');
+                            setNextDrawNumber(d.nextDrawNumber || '');
+                            setNextDrawDate(d.nextDrawDate || '');
+                          }}
+                          className="py-1 px-3 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 cursor-pointer transition-all"
+                        >
+                          ایڈٹ (Edit)
+                        </button>
+                        {onDeleteDeadline && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (window.confirm('کیا آپ واقعی یہ ڈرا ڈیڈ لائن حذف کرنا چاہتے ہیں؟')) {
+                                await onDeleteDeadline(d.id || d.category);
+                              }
+                            }}
+                            className="py-1 px-3 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 cursor-pointer transition-all"
+                          >
+                            حذف (Delete)
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                            const isoStr = futureDate.toISOString().slice(0, 16);
+                            onSetDeadline(
+                              d.category,
+                              isoStr,
+                              'بکنگ فائنل کھل گئی ہے',
+                              'open',
+                              d.nextPrizeBondValue,
+                              d.nextDrawCity,
+                              d.nextDrawNumber,
+                              d.nextDrawDate,
+                              d.id || d.category
+                            );
+                          }}
+                          className={`py-1.5 px-1 rounded-xl text-[10px] font-bold transition-all cursor-pointer text-center flex items-center justify-center gap-1 border ${
+                            d.status === 'open' 
+                              ? 'bg-emerald-600 text-white border-emerald-600' 
+                              : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'
+                          }`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse"></span>
+                          <span>کھولیں</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+                            const isoStr = pastDate.toISOString().slice(0, 16);
+                            onSetDeadline(
+                              d.category,
+                              isoStr,
+                              'بکنگ فائنل بند ہے',
+                              'closed',
+                              d.nextPrizeBondValue,
+                              d.nextDrawCity,
+                              d.nextDrawNumber,
+                              d.nextDrawDate,
+                              d.id || d.category
+                            );
+                          }}
+                          className={`py-1.5 px-1 rounded-xl text-[10px] font-bold transition-all cursor-pointer text-center flex items-center justify-center gap-1 border ${
+                            d.status === 'closed' 
+                              ? 'bg-red-600 text-white border-red-600' 
+                              : 'bg-white text-red-600 border-red-200 hover:bg-red-50'
+                          }`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+                          <span>بند کریں</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+                            const isoStr = pastDate.toISOString().slice(0, 16);
+                            onSetDeadline(
+                              d.category,
+                              isoStr,
+                              'قرعہ اندازی کا نتیجہ جاری ہو گیا ہے',
+                              'result_announced',
+                              d.nextPrizeBondValue,
+                              d.nextDrawCity,
+                              d.nextDrawNumber,
+                              d.nextDrawDate,
+                              d.id || d.category
+                            );
+                          }}
+                          className={`py-1.5 px-1 rounded-xl text-[10px] font-bold transition-all cursor-pointer text-center flex items-center justify-center gap-1 border ${
+                            d.status === 'result_announced' 
+                              ? 'bg-amber-600 text-white border-amber-600' 
+                              : 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50'
+                          }`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+                          <span>نتیجہ</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );

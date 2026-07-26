@@ -26,7 +26,7 @@ service cloud.firestore {
       return data.keys().hasAll(['id', 'userEmail', 'category', 'number', 'firstAmount', 'secondAmount', 'timestamp'])
         && data.id is string
         && data.userEmail is string
-        && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery')
+        && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery' || data.category == 'dubai_draw' || data.category == 'zee_music_draw')
         && data.number is string
         && data.firstAmount is number
         && data.secondAmount is number
@@ -37,7 +37,7 @@ service cloud.firestore {
     function isValidLimit(data) {
       return data.keys().hasAll(['id', 'category', 'number', 'maxAmount'])
         && data.id is string
-        && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery')
+        && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery' || data.category == 'dubai_draw' || data.category == 'zee_music_draw')
         && data.number is string
         && data.maxAmount is number;
     }
@@ -47,7 +47,7 @@ service cloud.firestore {
       return data.keys().hasAll(['id', 'userEmail', 'category', 'number', 'firstAmount', 'secondAmount', 'timestamp', 'status'])
         && data.id is string
         && data.userEmail is string
-        && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery')
+        && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery' || data.category == 'dubai_draw' || data.category == 'zee_music_draw')
         && data.number is string
         && data.firstAmount is number
         && data.secondAmount is number
@@ -58,7 +58,7 @@ service cloud.firestore {
     // Helper to validate DrawDeadline
     function isValidDeadline(data) {
       return data.keys().hasAll(['category', 'titleUrdu', 'deadlineIso', 'status'])
-        && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery')
+        && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery' || data.category == 'dubai_draw' || data.category == 'zee_music_draw')
         && data.titleUrdu is string
         && data.deadlineIso is string
         && (data.status == 'open' || data.status == 'closed');
@@ -69,6 +69,16 @@ service cloud.firestore {
       return data.keys().hasAll(['adminEmail', 'whatsappNumber'])
         && data.adminEmail is string
         && data.whatsappNumber is string;
+    }
+
+    // Helper to validate Transaction
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['id', 'userId', 'userEmail', 'userName', 'type', 'amount', 'date', 'status'])
+        && data.id is string
+        && data.userId is string
+        && data.userEmail is string
+        && data.amount is number
+        && data.status is string;
     }
 
     // Helper functions to identify roles
@@ -96,14 +106,16 @@ service cloud.firestore {
     match /users/{uid} {
       // Fully migrated to Firebase Auth UID architecture
       allow read: if isSuperAdmin() || isDataEntryAdmin() || (request.auth != null && request.auth.uid == uid);
-      allow create: if isValidId(uid) && isValidUser(request.resource.data);
+      allow create: if isValidId(uid) && (
+        isSuperAdmin() || (request.auth != null && request.auth.uid == uid)
+      ) && isValidUser(request.resource.data);
       allow update: if isValidId(uid) && (
         isSuperAdmin() || (
           request.auth != null && 
           request.auth.uid == uid &&
-          request.resource.data.balance == resource.data.balance &&
-          request.resource.data.isAdmin == resource.data.isAdmin &&
-          request.resource.data.role == resource.data.role
+          (!('balance' in resource.data) || request.resource.data.balance == resource.data.balance) &&
+          (!('isAdmin' in resource.data) || request.resource.data.isAdmin == resource.data.isAdmin) &&
+          (!('role' in resource.data) || request.resource.data.role == resource.data.role)
         )
       );
       allow delete: if isSuperAdmin();
@@ -151,6 +163,23 @@ service cloud.firestore {
     match /deadlines/{category} {
       allow read: if true;
       allow write: if isValidId(category) && isValidDeadline(request.resource.data) && isSuperAdmin();
+    }
+
+    match /transactions/{txId} {
+      allow read: if isSuperAdmin() || (request.auth != null && (
+        resource.data.userEmail.lower() == request.auth.token.email.lower() ||
+        resource.data.userId == request.auth.uid
+      ));
+      allow create: if isValidId(txId) && isValidTransaction(request.resource.data) && (
+        isSuperAdmin() || (
+          request.auth != null && (
+            request.resource.data.userEmail.lower() == request.auth.token.email.lower() ||
+            request.resource.data.userId == request.auth.uid
+          )
+        )
+      );
+      allow update: if isValidId(txId) && isSuperAdmin();
+      allow delete: if isSuperAdmin();
     }
 
     match /settings/{configId} {

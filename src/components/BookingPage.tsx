@@ -1,5 +1,5 @@
 import React, { useState, useEffect, FormEvent } from 'react';
-import { User, Booking, NumberLimit, Demand, DrawDeadline } from '../types';
+import { User, Booking, NumberLimit, Demand, DrawDeadline, DrawCategory } from '../types';
 import { generateBookingPDF } from '../utils/pdfGenerator';
 import { Trash2, Plus, Download, ShieldAlert, Sparkles, AlertCircle, Clock } from 'lucide-react';
 
@@ -7,12 +7,12 @@ interface BookingPageProps {
   user: User;
   bookings: Booking[];
   limits: NumberLimit[];
-  demands: Demand[];
+  demands?: Demand[];
   deadlines?: DrawDeadline[];
-  category: 'pakistan_bond' | 'thailand_lottery';
-  onAddBooking: (number: string, firstAmt: number, secondAmt: number) => Promise<{ success: boolean; error?: string }>;
+  category: DrawCategory;
+  onAddBooking: (number: string, firstAmt: number, secondAmt: number, bondValue?: string, drawNumber?: string, drawDate?: string, drawCity?: string, drawId?: string) => Promise<{ success: boolean; error?: string }>;
   onCancelBooking: (id: string) => Promise<{ success: boolean; error?: string }>;
-  onAddDemand: (number: string, firstAmt: number, secondAmt: number) => Promise<{ success: boolean; error?: string }>;
+  onAddDemand: (number: string, firstAmt: number, secondAmt: number, bondValue?: string, drawNumber?: string, drawDate?: string, drawCity?: string, drawId?: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 export default function BookingPage({
@@ -38,6 +38,16 @@ export default function BookingPage({
   // Ticker for cancellation live updates
   const [timeTicker, setTimeTicker] = useState(Date.now());
 
+  // Pakistan bond draw selection
+  const pakDraws = category === 'pakistan_bond' ? deadlines.filter(d => d.category === 'pakistan_bond') : [];
+  const [selectedDrawId, setSelectedDrawId] = useState<string>('');
+
+  useEffect(() => {
+    if (category === 'pakistan_bond' && pakDraws.length > 0 && !selectedDrawId) {
+      setSelectedDrawId(pakDraws[0].id || pakDraws[0].category);
+    }
+  }, [category, pakDraws]);
+
   useEffect(() => {
     const timer = setInterval(() => {
       setTimeTicker(Date.now());
@@ -45,13 +55,16 @@ export default function BookingPage({
     return () => clearInterval(timer);
   }, []);
 
-  // Deadline evaluation
-  const categoryDeadline = deadlines.find(d => d.category === category);
-  const deadlineTime = categoryDeadline ? new Date(categoryDeadline.deadlineIso).getTime() : 0;
-  const isTimeUp = (categoryDeadline?.status === 'closed') || (deadlineTime > 0 && timeTicker >= deadlineTime);
+  // Selected draw deadline evaluation
+  const activeDraw = category === 'pakistan_bond' 
+    ? (pakDraws.find(d => d.id === selectedDrawId) || pakDraws[0] || deadlines.find(d => d.category === category))
+    : deadlines.find(d => d.category === category);
+
+  const deadlineTime = activeDraw ? new Date(activeDraw.deadlineIso).getTime() : 0;
+  const isTimeUp = (activeDraw?.status === 'closed') || (deadlineTime > 0 && timeTicker >= deadlineTime);
 
   const getRemainingTimeString = () => {
-    if (categoryDeadline?.status === 'closed') return 'بکنگ بند ہے (Closed)';
+    if (activeDraw?.status === 'closed') return 'بکنگ بند ہے (Closed)';
     if (!deadlineTime) return '';
     const diff = deadlineTime - timeTicker;
     if (diff <= 0) return 'وقت ختم ہو چکا ہے (Closed)';
@@ -68,22 +81,22 @@ export default function BookingPage({
     return str;
   };
 
-  const getFormattedDeadline = () => {
-    if (!categoryDeadline) return 'مقرر نہیں ہے';
+  const getFormattedDeadline = (drawObj = activeDraw) => {
+    if (!drawObj) return 'مقرر نہیں ہے';
     try {
-      const d = new Date(categoryDeadline.deadlineIso);
-      const dateStr = d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      const d = new Date(drawObj.deadlineIso);
+      const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
       const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
       return `${dateStr} بوقت ${timeStr}`;
     } catch (e) {
-      return categoryDeadline.deadlineIso;
+      return drawObj.deadlineIso;
     }
   };
 
-  const getFormattedClosedOn = () => {
-    if (!categoryDeadline) return '';
+  const getFormattedClosedOn = (drawObj = activeDraw) => {
+    if (!drawObj) return '';
     try {
-      const d = new Date(categoryDeadline.deadlineIso);
+      const d = new Date(drawObj.deadlineIso);
       const day = String(d.getDate()).padStart(2, '0');
       const month = String(d.getMonth() + 1).padStart(2, '0');
       const year = d.getFullYear();
@@ -91,12 +104,24 @@ export default function BookingPage({
       const minutes = String(d.getMinutes()).padStart(2, '0');
       return `${day}/${month}/${year} ${hours}:${minutes}`;
     } catch (e) {
-      return categoryDeadline.deadlineIso;
+      return drawObj.deadlineIso;
     }
   };
 
-  const pageTitleUrdu = category === 'pakistan_bond' ? 'پاکستان بانڈ بکنگ پورٹل' : 'تھائی لینڈ لاٹری بکنگ پورٹل';
-  const pageTitleEnglish = category === 'pakistan_bond' ? 'PAKISTAN BOND DRAW' : 'THAILAND LOTTERY DRAW';
+  const pageTitleUrduMap: Record<DrawCategory, string> = {
+    pakistan_bond: 'پاکستان پرائز بانڈ بکنگ پورٹل',
+    thailand_lottery: 'تھائی لینڈ ڈرا بکنگ پورٹل',
+    dubai_draw: 'دبئی ڈرا بکنگ پورٹل',
+    zee_music_draw: 'زی میوزک ڈرا بکنگ پورٹل'
+  };
+  const pageTitleEnglishMap: Record<DrawCategory, string> = {
+    pakistan_bond: 'PAKISTAN BOND DRAW',
+    thailand_lottery: 'THAILAND LOTTERY DRAW',
+    dubai_draw: 'DUBAI DRAW PORTAL',
+    zee_music_draw: 'ZEE MUSIC DRAW PORTAL'
+  };
+  const pageTitleUrdu = pageTitleUrduMap[category] || 'پرائز بانڈ بکنگ پورٹل';
+  const pageTitleEnglish = pageTitleEnglishMap[category] || 'PRIZE BOND DRAW';
 
   const filterBookings = bookings.filter(b => b.category === category && b.userEmail === user.email);
   const filterDemands = demands.filter(d => d.category === category && d.userEmail === user.email);
@@ -140,7 +165,16 @@ export default function BookingPage({
       return;
     }
 
-    const res = await onAddDemand(numInput, firstAmt, secondAmt);
+    const res = await onAddDemand(
+      numInput, 
+      firstAmt, 
+      secondAmt, 
+      activeDraw?.nextPrizeBondValue, 
+      activeDraw?.nextDrawNumber, 
+      activeDraw?.nextDrawDate,
+      activeDraw?.nextDrawCity,
+      activeDraw?.id || activeDraw?.category
+    );
     if (res.success) {
       setSuccessStatus(`کامیاب: نمبر ${numInput} کے لئے Rs. ${totalCost.toLocaleString()} کی ڈیمانڈ ایڈمن کو بھیج دی گئی ہے!`);
       setNumInput('');
@@ -180,7 +214,16 @@ export default function BookingPage({
       return;
     }
 
-    const res = await onAddBooking(numInput, firstAmt, secondAmt);
+    const res = await onAddBooking(
+      numInput, 
+      firstAmt, 
+      secondAmt, 
+      activeDraw?.nextPrizeBondValue, 
+      activeDraw?.nextDrawNumber, 
+      activeDraw?.nextDrawDate,
+      activeDraw?.nextDrawCity,
+      activeDraw?.id || activeDraw?.category
+    );
     if (res.success) {
       setSuccessStatus(`کامیاب: نمبر ${numInput} کی بکنگ رجسٹر ہو گئی ہے!`);
       setNumInput('');
@@ -264,7 +307,7 @@ export default function BookingPage({
           <div className="text-center md:text-right space-y-1 w-full md:w-auto">
             <div className="flex items-center justify-center md:justify-end gap-2 text-slate-900 font-bold">
               <span className={isTimeUp ? 'text-red-700' : 'text-slate-800'}>
-                {categoryDeadline?.titleUrdu || 'بکنگ فائنل کھل گئی ہے'}
+                {activeDraw?.titleUrdu || 'بکنگ فائنل کھل گئی ہے'}
               </span>
               <Sparkles className={`w-4 h-4 ${isTimeUp ? 'text-red-500' : 'text-amber-500'}`} />
             </div>
@@ -284,36 +327,104 @@ export default function BookingPage({
           </div>
         </div>
 
-        {/* Next Draw Information Section */}
+        {/* Draw Selection & Info Section */}
         <div className="mt-4 pt-4 border-t border-dashed border-slate-300/60">
-          <h4 className="text-xs font-bold text-slate-700 mb-2.5 flex items-center justify-end gap-1.5">
-            <span>اگلے ڈرا کی معلومات (Next Draw Info)</span>
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+          <h4 className="text-xs font-bold text-slate-700 mb-2.5 flex items-center justify-between">
+            <span className="text-[11px] text-slate-500 font-normal">
+              {category === 'pakistan_bond' && pakDraws.length > 1 ? 'دستیاب ڈرا منتخب کریں (Select Draw)' : ''}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span>ڈرا معلومات (Draw Info)</span>
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+            </span>
           </h4>
+
           {category === 'pakistan_bond' ? (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-right">
-              <div className="p-3 bg-white/80 rounded-2xl border border-slate-100 shadow-xs">
-                <span className="block text-[10px] text-slate-500 font-medium mb-0.5">اگلی بانڈ مالیت</span>
-                <span className="text-xs font-bold text-slate-800 font-mono">{categoryDeadline?.nextPrizeBondValue || '---'}</span>
+            pakDraws.length > 0 ? (
+              <div className="space-y-3">
+                {pakDraws.length > 1 && (
+                  <p className="text-[11px] text-amber-700 font-semibold">
+                    نوٹ: اس تاریخ / کیٹیگری کے لئے {pakDraws.length} ڈراز دستیاب ہیں۔ بکنگ سے پہلے مطلوبہ ڈرا منتخب کریں:
+                  </p>
+                )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {pakDraws.map((d, idx) => {
+                    const drawId = d.id || d.category;
+                    const isSelected = selectedDrawId === drawId;
+                    const dTime = new Date(d.deadlineIso).getTime();
+                    const dClosed = d.status === 'closed' || (dTime > 0 && timeTicker >= dTime);
+
+                    return (
+                      <button
+                        key={drawId || idx}
+                        type="button"
+                        onClick={() => setSelectedDrawId(drawId)}
+                        className={`p-3.5 rounded-2xl border text-right transition-all cursor-pointer relative flex flex-col justify-between ${
+                          isSelected
+                            ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/30 shadow-xs'
+                            : 'bg-white/90 border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between border-b border-slate-200/60 pb-2 mb-2">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            dClosed ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-800'
+                          }`}>
+                            {dClosed ? 'بند (Closed)' : 'کھلا (Open)'}
+                          </span>
+                          <span className="text-xs font-extrabold text-slate-900 font-mono">
+                            {d.nextPrizeBondValue ? `Rs. ${d.nextPrizeBondValue}` : 'Pakistan Bond'}
+                          </span>
+                        </div>
+
+                        <div className="space-y-1 text-xs">
+                          <div className="flex justify-between text-slate-700">
+                            <span className="font-bold">{d.nextDrawNumber ? `Draw #${d.nextDrawNumber}` : '---'}</span>
+                            <span className="text-slate-500 text-[11px]">ڈرا نمبر:</span>
+                          </div>
+                          <div className="flex justify-between text-slate-700">
+                            <span className="font-semibold">{d.nextDrawDate || '---'}</span>
+                            <span className="text-slate-500 text-[11px]">ڈرا تاریخ:</span>
+                          </div>
+                          <div className="flex justify-between text-slate-700">
+                            <span className="font-medium text-slate-600">{d.nextDrawCity || '---'}</span>
+                            <span className="text-slate-500 text-[11px]">شہر:</span>
+                          </div>
+                        </div>
+
+                        <div className="mt-2.5 pt-2 border-t border-slate-200/50 text-[10px] text-slate-500 flex justify-between items-center">
+                          <span className="font-mono text-slate-700 font-semibold">{getFormattedDeadline(d)}</span>
+                          <span>آخری وقت:</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="p-3 bg-white/80 rounded-2xl border border-slate-100 shadow-xs">
-                <span className="block text-[10px] text-slate-500 font-medium mb-0.5">اگلا ڈرا شہر</span>
-                <span className="text-xs font-bold text-slate-800">{categoryDeadline?.nextDrawCity || '---'}</span>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-right">
+                <div className="p-3 bg-white/80 rounded-2xl border border-slate-100 shadow-xs">
+                  <span className="block text-[10px] text-slate-500 font-medium mb-0.5">اگلی بانڈ مالیت</span>
+                  <span className="text-xs font-bold text-slate-800 font-mono">{activeDraw?.nextPrizeBondValue || '---'}</span>
+                </div>
+                <div className="p-3 bg-white/80 rounded-2xl border border-slate-100 shadow-xs">
+                  <span className="block text-[10px] text-slate-500 font-medium mb-0.5">اگلا ڈرا شہر</span>
+                  <span className="text-xs font-bold text-slate-800">{activeDraw?.nextDrawCity || '---'}</span>
+                </div>
+                <div className="p-3 bg-white/80 rounded-2xl border border-slate-100 shadow-xs">
+                  <span className="block text-[10px] text-slate-500 font-medium mb-0.5">اگلا ڈرا نمبر</span>
+                  <span className="text-xs font-bold text-slate-800 font-mono">{activeDraw?.nextDrawNumber || '---'}</span>
+                </div>
+                <div className="p-3 bg-white/80 rounded-2xl border border-slate-100 shadow-xs">
+                  <span className="block text-[10px] text-slate-500 font-medium mb-0.5">اگلی ڈرا تاریخ</span>
+                  <span className="text-xs font-bold text-slate-800 font-mono">{activeDraw?.nextDrawDate || '---'}</span>
+                </div>
               </div>
-              <div className="p-3 bg-white/80 rounded-2xl border border-slate-100 shadow-xs">
-                <span className="block text-[10px] text-slate-500 font-medium mb-0.5">اگلا ڈرا نمبر</span>
-                <span className="text-xs font-bold text-slate-800 font-mono">{categoryDeadline?.nextDrawNumber || '---'}</span>
-              </div>
-              <div className="p-3 bg-white/80 rounded-2xl border border-slate-100 shadow-xs">
-                <span className="block text-[10px] text-slate-500 font-medium mb-0.5">اگلی ڈرا تاریخ</span>
-                <span className="text-xs font-bold text-slate-800 font-mono">{categoryDeadline?.nextDrawDate || '---'}</span>
-              </div>
-            </div>
+            )
           ) : (
             <div className="grid grid-cols-1 gap-3 text-right">
               <div className="p-3 bg-white/80 rounded-2xl border border-slate-100 shadow-xs flex justify-between items-center">
                 <span className="text-[10px] text-slate-500 font-medium">اگلی ڈرا تاریخ (Next Draw Date)</span>
-                <span className="text-xs font-bold text-slate-800 font-mono">{categoryDeadline?.nextDrawDate || '---'}</span>
+                <span className="text-xs font-bold text-slate-800 font-mono">{activeDraw?.nextDrawDate || '---'}</span>
               </div>
             </div>
           )}
@@ -502,6 +613,9 @@ export default function BookingPage({
                 <tr className="bg-slate-100/70 border-b border-slate-200">
                   <th className="py-3 px-4 font-semibold text-slate-600 text-left">منسوخی (Action)</th>
                   <th className="py-3 px-4 font-semibold text-slate-600 font-mono text-[11px]">بکنگ کا وقت (Time)</th>
+                  {category === 'pakistan_bond' && (
+                    <th className="py-3 px-4 font-semibold text-slate-600 text-right">بانڈ / ڈرا معلومات</th>
+                  )}
                   <th className="py-3 px-4 font-semibold text-slate-600">میزان رقم</th>
                   <th className="py-3 px-4 font-semibold text-slate-600">سیکنڈ (Second)</th>
                   <th className="py-3 px-4 font-semibold text-slate-600">فرسٹ (First)</th>
@@ -515,6 +629,13 @@ export default function BookingPage({
                   const remainingMs = Math.max(0, (2 * 60 * 1000) - diffMs);
                   const canCancel = remainingMs > 0;
                   const secondsLeft = Math.floor(remainingMs / 1000);
+
+                  const drawText = [
+                    b.bondValue ? (b.bondValue.startsWith('Rs') ? b.bondValue : `Rs. ${b.bondValue}`) : '',
+                    b.drawNumber ? (b.drawNumber.includes('Draw') ? b.drawNumber : `Draw #${b.drawNumber}`) : '',
+                    b.drawCity || '',
+                    b.drawDate || ''
+                  ].filter(Boolean).join(' | ');
 
                   return (
                     <tr key={b.id} className="hover:bg-slate-50/50 transition-colors">
@@ -542,6 +663,12 @@ export default function BookingPage({
                       <td className="py-3 px-4 text-slate-400 font-mono text-left">
                         {new Date(b.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </td>
+
+                      {category === 'pakistan_bond' && (
+                        <td className="py-3 px-4 font-mono text-xs text-slate-700 font-semibold text-right">
+                          {drawText || '---'}
+                        </td>
+                      )}
 
                       <td className="py-3 px-4 font-mono font-semibold text-slate-700">
                         Rs. {(b.firstAmount + b.secondAmount).toLocaleString()}

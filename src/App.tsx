@@ -6,8 +6,7 @@ import {
   getBookings, 
   getNumberLimits, 
   registerUser, 
-  rechargeWallet,
-  deductWallet, 
+  rechargeWallet, 
   addBooking, 
   cancelBooking, 
   cancelBookingByAdmin, 
@@ -22,6 +21,7 @@ import {
   rejectDemand,
   getDrawDeadlines,
   setDrawDeadline,
+  deleteDrawDeadline,
   getAdminConfiguredEmail,
   setAdminConfiguredEmail,
   getSupportWhatsAppNumber,
@@ -30,9 +30,11 @@ import {
   getThaiLotteryResults,
   addResult,
   editResult,
-  deleteResult
+  deleteResult,
+  signInWithGoogle,
+  updateUserProfile
 } from './utils/store';
-import { User, Booking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult } from './types';
+import { User, Booking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult, DrawCategory } from './types';
 import { db, auth } from './lib/firebase';
 import { doc, getDocFromServer, collection, query, where, getDocsFromServer, setDoc, deleteDoc } from 'firebase/firestore';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
@@ -44,7 +46,8 @@ import UserProfilePage from './components/UserProfilePage';
 import AdminPortal from './components/AdminPortal';
 import PwaInstaller from './components/PwaInstaller';
 import AIAnalysisPortal from './components/AIAnalysisPortal';
-import { LayoutDashboard, Award, ScrollText, CalendarRange, Shield, HelpCircle, Sparkles } from 'lucide-react';
+import ProfileSetupModal from './components/ProfileSetupModal';
+import { LayoutDashboard, Award, ScrollText, CalendarRange, Shield, HelpCircle, Sparkles, Globe, Music, FileText } from 'lucide-react';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -59,6 +62,7 @@ export default function App() {
   const [adminConfiguredEmail, setAdminConfiguredEmailState] = useState<string>('mastermaindqureshi110@gmail.com');
   const [pakistanBondResults, setPakistanBondResults] = useState<PakistanBondResult[]>([]);
   const [thaiLotteryResults, setThaiLotteryResults] = useState<ThaiLotteryResult[]>([]);
+  const [isMandatorySetupOpen, setIsMandatorySetupOpen] = useState<boolean>(false);
 
   // Network and Wallet Protection states
   const [isOfflineModalOpen, setIsOfflineModalOpen] = useState(false);
@@ -112,31 +116,14 @@ export default function App() {
       syncWithStore();
     });
 
-    // [FIX] Removed the fixed 500ms timeout that used to run here. It was a
-    // guess at how long the Firestore profile fetch takes, tuned for
-    // browser/Wi-Fi conditions. On a slower Android connection (or a cold
-    // WebView start) the real fetch can easily take longer, so the app was
-    // moving on with whatever placeholder data existed at the 500ms mark.
-    // The actual profile resolution now happens in ensureUserProfile()
-    // inside store.ts's own onAuthStateChanged listener, and every time it
-    // finishes it calls notifyListeners() -> the subscribeToStore callback
-    // above -> syncWithStore(), which updates currentUser with real data
-    // whenever it becomes available, however long that takes.
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      console.log("Firebase Auth State:", user?.email || "No User");
+    const unsubscribeAuth = onAuthStateChanged(auth, () => {
       syncWithStore();
       setAuthLoading(false);
     });
 
-    // Safety timeout: only as a last resort if Firebase never responds at all
-    const safetyTimeout = setTimeout(() => {
-      setAuthLoading(false);
-    }, 8000);
-
     return () => {
       unsubscribe();
       unsubscribeAuth();
-      clearTimeout(safetyTimeout);
     };
   }, []);
 
@@ -187,14 +174,15 @@ export default function App() {
   };
 
   const handleSetDeadline = async (
-    category: 'pakistan_bond' | 'thailand_lottery',
+    category: DrawCategory,
     deadlineIso: string,
     titleUrdu: string,
     status: 'open' | 'closed',
     nextPrizeBondValue?: string,
     nextDrawCity?: string,
     nextDrawNumber?: string,
-    nextDrawDate?: string
+    nextDrawDate?: string,
+    drawId?: string
   ) => {
     const action = async () => {
       await setDrawDeadline(
@@ -205,8 +193,18 @@ export default function App() {
         nextPrizeBondValue,
         nextDrawCity,
         nextDrawNumber,
-        nextDrawDate
+        nextDrawDate,
+        drawId
       );
+      syncWithStore();
+      return true;
+    };
+    return await verifyNetworkAndExecute(action);
+  };
+
+  const handleDeleteDeadline = async (id: string) => {
+    const action = async () => {
+      await deleteDrawDeadline(id);
       syncWithStore();
       return true;
     };
@@ -240,6 +238,39 @@ export default function App() {
       return res as { success: boolean; error?: string };
     }
     return { success: false, error: 'نیٹ ورک کا مسئلہ ہے۔' };
+  };
+
+  const handleGoogleLogin = async () => {
+    const action = async () => {
+      const res = await signInWithGoogle();
+      if (res.success && res.user) {
+        setLoggedInUser(res.user.email);
+        syncWithStore();
+        if (res.isNewOrIncomplete) {
+          setIsMandatorySetupOpen(true);
+        }
+        setActiveTab('dashboard');
+        return { success: true };
+      }
+      return { success: false, error: res.error || 'گوگل سائن ان ناکام رہا۔' };
+    };
+    const res = await verifyNetworkAndExecute(action);
+    if (res && 'success' in res) {
+      return res as { success: boolean; error?: string };
+    }
+    return { success: false, error: 'نیٹ ورک کنکشن چیک کریں۔' };
+  };
+
+  const handleUpdateProfile = async (name: string, phone: string, city: string) => {
+    if (!currentUser || !currentUser.uid) {
+      return { success: false, message: 'صارف کی معلومات دستیاب نہیں ہیں۔' };
+    }
+    const res = await updateUserProfile(currentUser.uid, { name, phone, city });
+    if (res.success) {
+      syncWithStore();
+      setIsMandatorySetupOpen(false);
+    }
+    return res;
   };
 
   const handleLoginWithCredentials = async (identifier: string, passwordInput: string): Promise<{ success: boolean; error?: string }> => {
@@ -294,10 +325,7 @@ export default function App() {
         const userDocRef = doc(db, 'users', uid);
         const userDoc = await getDocFromServer(userDocRef);
         if (userDoc.exists()) {
-          matchedUser = {
-            ...(userDoc.data() as User),
-            uid
-          };
+          matchedUser = userDoc.data() as User;
           console.log(`[UID-Migration] Found existing modern UID-based user record for: ${emailToAuth}`);
         } else {
           // [UID-Migration] Step 2: Fallback to the legacy users/{email} document
@@ -315,9 +343,19 @@ export default function App() {
             await deleteDoc(legacyDocRef);
             console.log(`[UID-Migration] Successfully migrated legacy user profile for ${emailToAuth} to users/{uid}`);
           } else {
-            // [UID-Migration] Step 5: Profile not found - stop instead of creating dummy profile
-            console.error("[UID-Migration] User profile not found in users/{uid} or users/{email}");
-            return { success: false, error: 'صارف کی پروفائل نہیں ملی۔' };
+            // [UID-Migration] Step 5: Profile not found in either location, provision a brand new profile
+            matchedUser = {
+              uid,
+              email: emailToAuth.toLowerCase().trim(),
+              name: 'صارف',
+              phone: identifier,
+              city: 'لاہور',
+              balance: 100,
+              isAdmin: false,
+              role: 'customer'
+            };
+            await setDoc(userDocRef, matchedUser);
+            console.log(`[UID-Migration] Created a new profile under users/{uid} for signed up/migrated user: ${emailToAuth}`);
           }
         }
       } catch (err) {
@@ -358,7 +396,6 @@ export default function App() {
         }
       }
 
-      console.log("[LOGIN PROFILE]", matchedUser);
       setLoggedInUser(matchedUser.email || matchedUser.uid);
       syncWithStore();
       if (matchedUser.isAdmin) {
@@ -382,44 +419,19 @@ export default function App() {
     setActiveTab('dashboard');
   };
 
-
-  const handleDeductWallet = async (
-    email: string,
-    amount: number,
-    reason: string = "Admin adjustment"
-  ): Promise<{ success: boolean; error?: string }> => {
-
-    const result = await deductWallet(
-      email,
-      amount,
-      reason
-    );
-
-    if (result.success) {
-      syncWithStore();
-    }
-
-    return result;
-  };
-
-
   const handleRecharge = async (email: string, amount: number): Promise<boolean> => {
     const action = async () => {
-      const result = await rechargeWallet(email, amount);
-
-      if (result.success) {
+      const success = await rechargeWallet(email, amount);
+      if (success) {
         syncWithStore();
-      } else {
-        console.error("Recharge failed:", result.error);
       }
-
-      return result.success;
+      return success;
     };
     const res = await verifyNetworkAndExecute(action);
     return typeof res === 'boolean' ? res : false;
   };
 
-  const handleSetLimit = async (category: 'pakistan_bond' | 'thailand_lottery', number: string, maxAmount: number) => {
+  const handleSetLimit = async (category: DrawCategory, number: string, maxAmount: number) => {
     const action = async () => {
       await setOrUpdateLimit(category, number, maxAmount);
       syncWithStore();
@@ -437,14 +449,30 @@ export default function App() {
     return await verifyNetworkAndExecute(action);
   };
 
-  const handleAddBooking = async (category: 'pakistan_bond' | 'thailand_lottery', number: string, firstAmt: number, secondAmt: number) => {
+  const handleAddBooking = async (
+    category: DrawCategory, 
+    number: string, 
+    firstAmt: number, 
+    secondAmt: number, 
+    bondValue?: string, 
+    drawNumber?: string, 
+    drawDate?: string,
+    drawCity?: string,
+    drawId?: string
+  ) => {
     if (!currentUser) return { success: false, error: 'براہ کرم پہلے لاگ ان کریں۔' };
     
     // Secure deadline check
     const deadlinesList = getDrawDeadlines();
-    const catDeadline = deadlinesList.find(d => d.category === category);
+    let catDeadline = drawId 
+      ? deadlinesList.find(d => (d.id || d.category) === drawId)
+      : deadlinesList.find(d => d.category === category && (!bondValue || d.nextPrizeBondValue === bondValue));
+
+    if (!catDeadline) {
+      catDeadline = deadlinesList.find(d => d.category === category);
+    }
     if (catDeadline) {
-      if (catDeadline.status === 'closed') {
+      if (catDeadline.status === 'closed' || catDeadline.status === 'result_announced') {
         return { success: false, error: 'معذرت! اس ڈرا کی بکنگ بند ہو چکی ہے۔' };
       }
       const deadlineTime = new Date(catDeadline.deadlineIso).getTime();
@@ -454,7 +482,7 @@ export default function App() {
     }
 
     const action = async () => {
-      const res = await addBooking(currentUser.email, category, number, firstAmt, secondAmt);
+      const res = await addBooking(currentUser.email, category, number, firstAmt, secondAmt, bondValue, drawNumber, drawDate, drawCity, drawId);
       if (res.success) {
         syncWithStore();
       }
@@ -486,14 +514,30 @@ export default function App() {
     return await verifyNetworkAndExecute(action);
   };
 
-  const handleAddDemand = async (category: 'pakistan_bond' | 'thailand_lottery', number: string, firstAmt: number, secondAmt: number) => {
+  const handleAddDemand = async (
+    category: DrawCategory, 
+    number: string, 
+    firstAmt: number, 
+    secondAmt: number, 
+    bondValue?: string, 
+    drawNumber?: string, 
+    drawDate?: string,
+    drawCity?: string,
+    drawId?: string
+  ) => {
     if (!currentUser) return { success: false, error: 'براہ کرم پہلے لاگ ان کریں۔' };
 
     // Secure deadline check
     const deadlinesList = getDrawDeadlines();
-    const catDeadline = deadlinesList.find(d => d.category === category);
+    let catDeadline = drawId 
+      ? deadlinesList.find(d => (d.id || d.category) === drawId)
+      : deadlinesList.find(d => d.category === category && (!bondValue || d.nextPrizeBondValue === bondValue));
+
+    if (!catDeadline) {
+      catDeadline = deadlinesList.find(d => d.category === category);
+    }
     if (catDeadline) {
-      if (catDeadline.status === 'closed') {
+      if (catDeadline.status === 'closed' || catDeadline.status === 'result_announced') {
         return { success: false, error: 'معذرت! اس ڈرا کی بکنگ بند ہو چکی ہے۔' };
       }
       const deadlineTime = new Date(catDeadline.deadlineIso).getTime();
@@ -503,7 +547,7 @@ export default function App() {
     }
 
     const action = async () => {
-      const res = await addDemand(currentUser.email, category, number, firstAmt, secondAmt);
+      const res = await addDemand(currentUser.email, category, number, firstAmt, secondAmt, bondValue, drawNumber, drawDate, drawCity, drawId);
       if (res.success) {
         syncWithStore();
       }
@@ -546,14 +590,17 @@ export default function App() {
   // If user is not authenticated, override and show Registration/Login component
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-slate-900">
-            ماسٹر مائنڈ قریشی انٹرپرائز
-          </h1>
-
-          <p className="mt-4 text-slate-600">
-            سسٹم شروع ہو رہا ہے...
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-4 max-w-sm text-center">
+          <div className="relative w-16 h-16">
+            <div className="absolute inset-0 rounded-full border-4 border-slate-800"></div>
+            <div className="absolute inset-0 rounded-full border-4 border-t-amber-400 animate-spin"></div>
+          </div>
+          <h2 className="text-xl font-bold text-slate-100 font-sans tracking-wide mt-2">
+            لوڈ ہو رہا ہے... (Loading...)
+          </h2>
+          <p className="text-xs text-slate-400 font-sans">
+            براہ کرم انتظار کریں، سیکیورٹی سسٹم اور ڈیٹا بیس کو مربوط کیا جا رہا ہے۔
           </p>
         </div>
       </div>
@@ -566,6 +613,7 @@ export default function App() {
         <RegistrationForm 
           onRegister={handleRegister} 
           onLoginWithCredentials={handleLoginWithCredentials} 
+          onGoogleLogin={handleGoogleLogin}
         />
       </>
     );
@@ -653,6 +701,32 @@ export default function App() {
               <span>تھائی لینڈ لاٹری</span>
             </button>
 
+            <button
+              id="subnav-dubai"
+              onClick={() => setActiveTab('dubai_draw')}
+              className={`flex items-center gap-1 text-xs py-2 px-3 rounded-xl transition-all border whitespace-nowrap cursor-pointer ${
+                activeTab === 'dubai_draw'
+                  ? 'bg-amber-500 text-slate-950 font-bold border-amber-500 shadow-md shadow-amber-500/10'
+                  : 'bg-slate-900 text-amber-400 font-semibold border-slate-950 hover:bg-slate-800'
+              }`}
+            >
+              <Globe className={`w-3.5 h-3.5 ${activeTab === 'dubai_draw' ? 'text-slate-950' : 'text-amber-400'}`} />
+              <span>دبئی ڈرا</span>
+            </button>
+
+            <button
+              id="subnav-zeemusic"
+              onClick={() => setActiveTab('zee_music_draw')}
+              className={`flex items-center gap-1 text-xs py-2 px-3 rounded-xl transition-all border whitespace-nowrap cursor-pointer ${
+                activeTab === 'zee_music_draw'
+                  ? 'bg-amber-500 text-slate-950 font-bold border-amber-500 shadow-md shadow-amber-500/10'
+                  : 'bg-slate-900 text-amber-400 font-semibold border-slate-950 hover:bg-slate-800'
+              }`}
+            >
+              <Music className={`w-3.5 h-3.5 ${activeTab === 'zee_music_draw' ? 'text-slate-950' : 'text-amber-400'}`} />
+              <span>زی میوزک ڈرا</span>
+            </button>
+
             {/* Admin toggle visual link in sub-nav */}
             {adminMode && (
               <button
@@ -680,10 +754,11 @@ export default function App() {
               bookings={bookings}
               onTabChange={setActiveTab}
               adminMode={adminMode}
+              onUpdateProfile={handleUpdateProfile}
             />
           )}
 
-          {activeTab === 'profile' && (
+          {(activeTab === 'profile' || activeTab === 'my_bookings') && (
             <UserProfilePage
               user={currentUser}
               totalBookingsCount={bookings.filter(b => b.userEmail === currentUser.email).length}
@@ -698,9 +773,9 @@ export default function App() {
               demands={demands}
               deadlines={deadlines}
               category="pakistan_bond"
-              onAddBooking={(num, first, second) => handleAddBooking('pakistan_bond', num, first, second)}
+              onAddBooking={(num, first, second, bv, dn, dd) => handleAddBooking('pakistan_bond', num, first, second, bv, dn, dd)}
               onCancelBooking={handleCancelBooking}
-              onAddDemand={(num, first, second) => handleAddDemand('pakistan_bond', num, first, second)}
+              onAddDemand={(num, first, second, bv, dn, dd) => handleAddDemand('pakistan_bond', num, first, second, bv, dn, dd)}
             />
           )}
 
@@ -712,9 +787,37 @@ export default function App() {
               demands={demands}
               deadlines={deadlines}
               category="thailand_lottery"
-              onAddBooking={(num, first, second) => handleAddBooking('thailand_lottery', num, first, second)}
+              onAddBooking={(num, first, second, bv, dn, dd) => handleAddBooking('thailand_lottery', num, first, second, bv, dn, dd)}
               onCancelBooking={handleCancelBooking}
-              onAddDemand={(num, first, second) => handleAddDemand('thailand_lottery', num, first, second)}
+              onAddDemand={(num, first, second, bv, dn, dd) => handleAddDemand('thailand_lottery', num, first, second, bv, dn, dd)}
+            />
+          )}
+
+          {activeTab === 'dubai_draw' && (
+            <BookingPage
+              user={currentUser}
+              bookings={bookings}
+              limits={limits}
+              demands={demands}
+              deadlines={deadlines}
+              category="dubai_draw"
+              onAddBooking={(num, first, second, bv, dn, dd) => handleAddBooking('dubai_draw', num, first, second, bv, dn, dd)}
+              onCancelBooking={handleCancelBooking}
+              onAddDemand={(num, first, second, bv, dn, dd) => handleAddDemand('dubai_draw', num, first, second, bv, dn, dd)}
+            />
+          )}
+
+          {activeTab === 'zee_music_draw' && (
+            <BookingPage
+              user={currentUser}
+              bookings={bookings}
+              limits={limits}
+              demands={demands}
+              deadlines={deadlines}
+              category="zee_music_draw"
+              onAddBooking={(num, first, second, bv, dn, dd) => handleAddBooking('zee_music_draw', num, first, second, bv, dn, dd)}
+              onCancelBooking={handleCancelBooking}
+              onAddDemand={(num, first, second, bv, dn, dd) => handleAddDemand('zee_music_draw', num, first, second, bv, dn, dd)}
             />
           )}
 
@@ -730,12 +833,12 @@ export default function App() {
               currentUser={currentUser}
               onCancelBookingByAdmin={handleCancelBookingByAdmin}
               onRecharge={handleRecharge}
-              onDeductWallet={handleDeductWallet}
               onSetLimit={handleSetLimit}
               onDeleteLimit={handleDeleteLimit}
               onApproveDemand={handleApproveDemand}
               onRejectDemand={handleRejectDemand}
               onSetDeadline={handleSetDeadline}
+              onDeleteDeadline={handleDeleteDeadline}
               onAddResult={addResult}
               onEditResult={editResult}
               onDeleteResult={deleteResult}
@@ -779,6 +882,16 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Mandatory Profile Setup Modal for Google Login / New Users */}
+      {currentUser && (isMandatorySetupOpen || !currentUser.phone || !currentUser.city) && (
+        <ProfileSetupModal
+          user={currentUser}
+          isOpen={true}
+          onClose={() => setIsMandatorySetupOpen(false)}
+          onSave={handleUpdateProfile}
+        />
+      )}
 
       {/* Beautiful Offline / No Internet modal overlay */}
       {isOfflineModalOpen && (

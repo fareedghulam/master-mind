@@ -34,12 +34,13 @@ export default function UserProfilePage({ user, totalBookingsCount }: ProfilePro
   const [loading, setLoading] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  // Sync profile fields when user data refreshes
   useEffect(() => {
-    setName(user.name || '');
-    setPhone(user.phone || '');
-    setCity(user.city || '');
-  }, [user]);
+    if (!isEditing) {
+      setName(user.name || '');
+      setPhone(user.phone || '');
+      setCity(user.city || '');
+    }
+  }, [user, isEditing]);
 
   const handleStartEditing = () => {
     setName(user.name || '');
@@ -96,30 +97,20 @@ export default function UserProfilePage({ user, totalBookingsCount }: ProfilePro
     }
 
     setLoading(true);
-    try {
-      const result = await updateUserProfile(user.uid, {
-        name: trimmedName,
-        phone: trimmedPhone,
-        city: trimmedCity
-      });
+    const result = await updateUserProfile(user.uid, {
+      name: trimmedName,
+      phone: trimmedPhone,
+      city: trimmedCity
+    });
+    setLoading(false);
 
-      if (result.success) {
+    if (result.success) {
       setStatusMessage({ text: result.message, type: 'success' });
       setTimeout(() => {
         setIsEditing(false);
       }, 1200);
-      } else {
-        setStatusMessage({ text: result.message, type: 'error' });
-      }
-
-    } catch (error) {
-      console.error("Profile save error:", error);
-      setStatusMessage({
-        text: 'پروفائل محفوظ کرنے میں خرابی پیش آئی۔',
-        type: 'error'
-      });
-    } finally {
-      setLoading(false);
+    } else {
+      setStatusMessage({ text: result.message, type: 'error' });
     }
   };
 

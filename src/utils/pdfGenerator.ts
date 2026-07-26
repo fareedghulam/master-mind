@@ -1,20 +1,33 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Booking } from '../types';
-import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Booking, DrawCategory } from '../types';
 
-export async function generateBookingPDF(
+export function generateBookingPDF(
   customerName: string,
   customerEmail: string,
   customerPhone: string,
   customerCity: string,
   bookings: Booking[],
-  category: 'pakistan_bond' | 'thailand_lottery'
+  category: DrawCategory
 ) {
   const doc = new jsPDF() as any; // Cast as any to bypass internal plugin issues if TypeScript complains
 
-  const titleEnglish = category === 'pakistan_bond' ? 'PAKISTAN BOND BOOKING SHEET' : 'THAILAND LOTTERY BOOKING SHEET';
-  const titleUrdu = category === 'pakistan_bond' ? 'پاکستان بانڈ بکنگ شیٹ' : 'تھائی لینڈ لاٹری بکنگ شیٹ';
+  const titleEnglishMap: Record<DrawCategory, string> = {
+    pakistan_bond: 'PAKISTAN BOND BOOKING SHEET',
+    thailand_lottery: 'THAILAND LOTTERY BOOKING SHEET',
+    dubai_draw: 'DUBAI DRAW BOOKING SHEET',
+    zee_music_draw: 'ZEE MUSIC DRAW BOOKING SHEET'
+  };
+
+  const titleUrduMap: Record<DrawCategory, string> = {
+    pakistan_bond: 'پاکستان بانڈ بکنگ شیٹ',
+    thailand_lottery: 'تھائی لینڈ لاٹری بکنگ شیٹ',
+    dubai_draw: 'دبئی ڈرا بکنگ شیٹ',
+    zee_music_draw: 'زی میوزک ڈرا بکنگ شیٹ'
+  };
+
+  const titleEnglish = titleEnglishMap[category] || 'PRIZE BOND BOOKING SHEET';
+  const titleUrdu = titleUrduMap[category] || 'پرائز بانڈ بکنگ شیٹ';
 
   // Header banner
   doc.setFillColor(15, 23, 42); // Primary Dark grey State Blue
@@ -49,40 +62,81 @@ export async function generateBookingPDF(
   doc.text(`Date of Issue: ${new Date().toLocaleString()}`, 110, 61);
   doc.text(`Total Bookings: ${bookings.length}`, 110, 67);
 
+  const isPak = category === 'pakistan_bond';
+  
   // Table header
-  const tableRows = bookings.map((b, index) => [
-    index + 1,
-    b.number,
-    `Rs. ${b.firstAmount.toLocaleString()}`,
-    `Rs. ${b.secondAmount.toLocaleString()}`,
-    `Rs. ${(b.firstAmount + b.secondAmount).toLocaleString()}`,
-    new Date(b.timestamp).toLocaleTimeString()
-  ]);
+  const tableHeaders = isPak
+    ? [['Sr #', 'Bond / Draw Details', 'Number', 'First Prize', 'Second Prize', 'Sub Total', 'Time']]
+    : [['Sr #', 'Number (نمبر)', 'First Prize (فرسٹ)', 'Second Prize (سیکنڈ)', 'Sub Total (کل رقم)', 'Time (وقت)']];
+
+  const tableRows = bookings.map((b, index) => {
+    const drawInfo = [
+      b.bondValue ? (b.bondValue.startsWith('Rs') ? b.bondValue : `Rs. ${b.bondValue}`) : '',
+      b.drawNumber ? (b.drawNumber.includes('Draw') ? b.drawNumber : `Draw #${b.drawNumber}`) : '',
+      b.drawCity || '',
+      b.drawDate || ''
+    ].filter(Boolean).join(' | ') || 'Pakistan Prize Bond';
+
+    return isPak
+      ? [
+          index + 1,
+          drawInfo,
+          b.number,
+          `Rs. ${b.firstAmount.toLocaleString()}`,
+          `Rs. ${b.secondAmount.toLocaleString()}`,
+          `Rs. ${(b.firstAmount + b.secondAmount).toLocaleString()}`,
+          new Date(b.timestamp).toLocaleTimeString()
+        ]
+      : [
+          index + 1,
+          b.number,
+          `Rs. ${b.firstAmount.toLocaleString()}`,
+          `Rs. ${b.secondAmount.toLocaleString()}`,
+          `Rs. ${(b.firstAmount + b.secondAmount).toLocaleString()}`,
+          new Date(b.timestamp).toLocaleTimeString()
+        ];
+  });
 
   const totalFirst = bookings.reduce((sum, b) => sum + b.firstAmount, 0);
   const totalSecond = bookings.reduce((sum, b) => sum + b.secondAmount, 0);
   const grandTotal = totalFirst + totalSecond;
 
   // Append total row
-  tableRows.push([
-    'Total',
-    '--',
-    `Rs. ${totalFirst.toLocaleString()}`,
-    `Rs. ${totalSecond.toLocaleString()}`,
-    `Rs. ${grandTotal.toLocaleString()}`,
-    '--'
-  ]);
+  if (isPak) {
+    tableRows.push([
+      'Total',
+      '--',
+      '--',
+      `Rs. ${totalFirst.toLocaleString()}`,
+      `Rs. ${totalSecond.toLocaleString()}`,
+      `Rs. ${grandTotal.toLocaleString()}`,
+      '--'
+    ]);
+  } else {
+    tableRows.push([
+      'Total',
+      '--',
+      `Rs. ${totalFirst.toLocaleString()}`,
+      `Rs. ${totalSecond.toLocaleString()}`,
+      `Rs. ${grandTotal.toLocaleString()}`,
+      '--'
+    ]);
+  }
 
   // Construct table using jspdf-autotable
   autoTable(doc, {
     startY: 80,
-    head: [['Sr #', 'Number (نمبر)', 'First Prize (فرسٹ)', 'Second Prize (سیکنڈ)', 'Sub Total (کل رقم)', 'Time (وقت)']],
+    head: tableHeaders,
     body: tableRows,
     theme: 'striped',
     headStyles: { fillColor: [15, 23, 42], fontStyle: 'bold' },
     footStyles: { fillColor: [241, 196, 15] },
-    styles: { fontSize: 9, cellPadding: 3, font: 'helvetica' },
-    columnStyles: {
+    styles: { fontSize: 8.5, cellPadding: 3, font: 'helvetica' },
+    columnStyles: isPak ? {
+      0: { cellWidth: 12 },
+      1: { fontStyle: 'bold', textColor: [15, 23, 42], cellWidth: 50 },
+      2: { fontStyle: 'bold', textColor: [220, 38, 38] },
+    } : {
       0: { cellWidth: 15 },
       1: { fontStyle: 'bold', textColor: [220, 38, 38] }, // highlight the secret booking numbers in red!
     },
@@ -91,7 +145,8 @@ export async function generateBookingPDF(
       if (data.row.index === bookings.length) {
         data.cell.styles.fontStyle = 'bold';
         data.cell.styles.textColor = [15, 23, 42];
-        if (data.column.index === 4) {
+        const totalColIndex = isPak ? 5 : 4;
+        if (data.column.index === totalColIndex) {
           data.cell.styles.fillColor = [252, 211, 77]; // beautiful gold background for total amount
         }
       }
@@ -105,18 +160,9 @@ export async function generateBookingPDF(
   doc.text('This is an official receipt of bookings with MasterMind Qureshi Enterprise.', 105, finalY + 15, { align: 'center' });
   doc.text('Please verify your profile email in final logs.', 105, finalY + 20, { align: 'center' });
 
-  // Save the PDF (Android Capacitor)
+  // Save the PDF
   const filename = `${category}_${customerName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
-
-  const pdfBase64 = doc.output('datauristring').split(',')[1];
-
-  await Filesystem.writeFile({
-    path: filename,
-    data: pdfBase64,
-    directory: Directory.Documents
-  });
-
-  alert('✓ PDF فائل Documents فولڈر میں محفوظ ہو گئی ہے!');
+  doc.save(filename);
 }
 
 const urduToEnglishCity: Record<string, string> = {
@@ -149,7 +195,7 @@ function translateDrawNo(drawNo: string): string {
   return drawNo.replace(/ڈرا نمبر/g, 'Draw No.');
 }
 
-export async function generateDrawHistoryPDF(
+export function generateDrawHistoryPDF(
   draws: any[],
   category: 'all' | 'pakistan_bond' | 'thailand_lottery'
 ) {
@@ -229,13 +275,5 @@ export async function generateDrawHistoryPDF(
 
   // Save the PDF
   const filename = `${category}_history_record_${new Date().toISOString().split('T')[0]}.pdf`;
-  const pdfBase64 = doc.output('datauristring').split(',')[1];
-
-  await Filesystem.writeFile({
-    path: filename,
-    data: pdfBase64,
-    directory: Directory.Documents
-  });
-
-  alert('✓ رزلٹ PDF فائل Documents فولڈر میں محفوظ ہو گئی ہے!');
+  doc.save(filename);
 }
