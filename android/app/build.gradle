@@ -1,6 +1,16 @@
 apply plugin: 'com.android.application'
 
 android {
+
+    signingConfigs {
+        release {
+            storeFile file("mastermind-release-key.jks")
+            storePassword "Dilpak"
+            keyAlias "mastermind"
+            keyPassword "Dilpak"
+        }
+    }
+
     namespace = "com.mastermindqureshi.enterprise"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
@@ -18,6 +28,7 @@ android {
     }
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

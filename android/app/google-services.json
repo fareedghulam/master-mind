@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "343587675373",
+    "project_id": "master-mind-qureshi-enterprise",
+    "storage_bucket": "master-mind-qureshi-enterprise.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:343587675373:android:6de5a3e31e3d63ba4e40e4",
+        "android_client_info": {
+          "package_name": "com.mastermindqureshi.enterprise"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD_et4-TN9B6tFYuDN5RicqH3UtQfw9jXk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

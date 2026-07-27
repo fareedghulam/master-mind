@@ -1,8 +1,28 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Booking, DrawCategory } from '../types';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 
-export function generateBookingPDF(
+async function savePdfToDownloads(doc: any, filename: string) {
+  const data = doc.output('datauristring').split(',')[1];
+
+  await Filesystem.writeFile({
+    path: filename,
+    data,
+    directory: Directory.Documents,
+    recursive: true
+  });
+
+  alert(`✅ PDF کامیابی سے محفوظ ہوگئی۔
+
+${filename}
+
+Documents فولڈر چیک کریں۔`);
+}
+
+
+
+export async function generateBookingPDF(
   customerName: string,
   customerEmail: string,
   customerPhone: string,
@@ -158,7 +178,7 @@ export function generateBookingPDF(
 
   // Save the PDF
   const filename = `${category}_${customerName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
-  doc.save(filename);
+  await savePdfToDownloads(doc, filename);
 }
 
 const urduToEnglishCity: Record<string, string> = {
@@ -191,7 +211,7 @@ function translateDrawNo(drawNo: string): string {
   return drawNo.replace(/ڈرا نمبر/g, 'Draw No.');
 }
 
-export function generateDrawHistoryPDF(
+export async function generateDrawHistoryPDF(
   draws: any[],
   category: 'all' | 'pakistan_bond' | 'thailand_lottery'
 ) {
@@ -271,5 +291,5 @@ export function generateDrawHistoryPDF(
 
   // Save the PDF
   const filename = `${category}_history_record_${new Date().toISOString().split('T')[0]}.pdf`;
-  doc.save(filename);
+  await savePdfToDownloads(doc, filename);
 }

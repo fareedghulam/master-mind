@@ -242,12 +242,12 @@ export default function BookingPage({
     }
   };
 
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
     if (filterBookings.length === 0) {
       setErrorStatus('پی ڈی ایف ڈاؤن لوڈ کرنے کے لئے لسٹ میں نمبر ہونا لازمی ہے۔');
       return;
     }
-    generateBookingPDF(
+    await generateBookingPDF(
       user.name,
       user.email,
       user.phone,
@@ -255,7 +255,7 @@ export default function BookingPage({
       filterBookings,
       category
     );
-    setSuccessStatus('پی ڈی ایف فائل ڈاؤن لوڈ شروع ہو گئی ہے!');
+    setSuccessStatus('پی ڈی ایف فائل محفوظ ہو گئی ہے!');
   };
 
   return (

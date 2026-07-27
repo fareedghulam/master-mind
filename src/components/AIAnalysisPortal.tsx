@@ -1563,7 +1563,7 @@ export default function AIAnalysisPortal({ user, bookings, pakistanBondResults, 
                 {/* Download Button */}
                 <button
                   id="download-history-pdf-btn"
-                  onClick={() => generateDrawHistoryPDF(filteredHistory, historyCategory)}
+                  onClick={async () => await generateDrawHistoryPDF(filteredHistory, historyCategory)}
                   className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-sm shadow-amber-500/10 transition-all text-xs"
                 >
                   <Download className="w-3.5 h-3.5" />
