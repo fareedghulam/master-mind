@@ -1,4 +1,4 @@
-export type DrawCategory = 'pakistan_bond' | 'thailand_lottery' | 'dubai_draw' | 'zee_music_draw';
+export type DrawCategory = 'pakistan_bond' | 'thailand_lottery';
 
 export interface User {
   uid?: string;
@@ -58,7 +58,7 @@ export interface DrawDeadline {
   category: DrawCategory;
   titleUrdu: string;
   deadlineIso: string;
-  status: 'open' | 'closed' | 'result_announced';
+  status: 'open' | 'closed' | 'result_announced' | 'hidden';
   nextPrizeBondValue?: string;
   nextDrawCity?: string;
   nextDrawNumber?: string;

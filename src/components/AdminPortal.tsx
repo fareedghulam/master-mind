@@ -24,7 +24,7 @@ interface AdminPortalProps {
     category: DrawCategory,
     deadlineIso: string,
     titleUrdu: string,
-    status: 'open' | 'closed' | 'result_announced',
+    status: 'open' | 'closed' | 'result_announced' | 'hidden',
     nextPrizeBondValue?: string,
     nextDrawCity?: string,
     nextDrawNumber?: string,
@@ -156,7 +156,7 @@ export default function AdminPortal({
   const [deadlineCategory, setDeadlineCategory] = useState<'pakistan_bond' | 'thailand_lottery'>('pakistan_bond');
   const [deadlineTitle, setDeadlineTitle] = useState('بکنگ فائنل کھل گئی ہے');
   const [deadlineDateTime, setDeadlineDateTime] = useState('');
-  const [deadlineStatus, setDeadlineStatus] = useState<'open' | 'closed' | 'result_announced'>('open');
+  const [deadlineStatus, setDeadlineStatus] = useState<'open' | 'closed' | 'result_announced' | 'hidden'>('open');
   const [deadlineError, setDeadlineError] = useState('');
   const [deadlineSuccess, setDeadlineSuccess] = useState('');
 
@@ -1321,8 +1321,6 @@ export default function AdminPortal({
                     const categoryMap: Record<DrawCategory, string> = {
                       pakistan_bond: 'پاکستان پرائز بانڈ',
                       thailand_lottery: 'تھائی لینڈ لاٹری',
-                      dubai_draw: 'دبئی ڈرا',
-                      zee_music_draw: 'زی میوزک ڈرا'
                     };
                     return (
                       <div key={limit.id} className="flex justify-between items-center bg-slate-50 hover:bg-slate-100 p-3 rounded-2xl text-xs transition-all border border-slate-200">
@@ -1650,13 +1648,23 @@ export default function AdminPortal({
                           <button
                             type="button"
                             onClick={async () => {
-                              if (window.confirm('کیا آپ واقعی یہ ڈرا ڈیڈ لائن حذف کرنا چاہتے ہیں؟')) {
-                                await onDeleteDeadline(d.id || d.category);
+                              if (window.confirm('کیا آپ واقعی یہ ڈرا چھپانا چاہتے ہیں؟')) {
+                                await onSetDeadline(
+                                  d.category,
+                                  d.deadlineIso,
+                                  d.titleUrdu,
+                                  'hidden',
+                                  d.nextPrizeBondValue,
+                                  d.nextDrawCity,
+                                  d.nextDrawNumber,
+                                  d.nextDrawDate,
+                                  d.id || d.category
+                                );
                               }
                             }}
                             className="py-1 px-3 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 cursor-pointer transition-all"
                           >
-                            حذف (Delete)
+                            چھپائیں (Hide)
                           </button>
                         )}
                       </div>

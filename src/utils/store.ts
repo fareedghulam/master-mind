@@ -111,18 +111,6 @@ const DEFAULT_DEADLINES: DrawDeadline[] = [
     titleUrdu: 'تھائی لینڈ ڈرا بکنگ کھل گئی ہے',
     deadlineIso: '2026-09-02T12:00',
     status: 'open'
-  },
-  {
-    category: 'dubai_draw',
-    titleUrdu: 'دبئی ڈرا بکنگ کھل گئی ہے',
-    deadlineIso: '2026-09-05T20:00',
-    status: 'open'
-  },
-  {
-    category: 'zee_music_draw',
-    titleUrdu: 'زی میوزک ڈرا بکنگ کھل گئی ہے',
-    deadlineIso: '2026-09-10T15:00',
-    status: 'open'
   }
 ];
 
@@ -550,7 +538,9 @@ export function initializeStore() {
         });
       }
     } else {
-      cachedDeadlines = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as DrawDeadline) }));
+      cachedDeadlines = snapshot.docs
+        .map(doc => ({ id: doc.id, ...(doc.data() as DrawDeadline) }))
+        .filter(d => d.status !== 'hidden');
       notifyListeners();
     }
   });
@@ -1292,17 +1282,33 @@ export async function rechargeWallet(email: string, amount: number): Promise<boo
   const normalizedEmail = email.toLowerCase().trim();
   let cached = cachedUsers.find(u => (u.email || '').toLowerCase() === normalizedEmail);
 
-  if (!cached || !cached.uid) {
-    if (auth.currentUser && (auth.currentUser.email || '').toLowerCase() === normalizedEmail) {
-      cached = cachedUsers.find(u => u.uid === auth.currentUser?.uid);
+  // Fallback: اگر cache میں صارف نہ ملے تو Firebase users collection سے تلاش کریں
+  if (!cached) {
+    try {
+      const usersSnap = await getDocs(collection(db, 'users'));
+      const found = usersSnap.docs.find(d => 
+        (
+            d.id.toLowerCase() === normalizedEmail ||
+            (d.data().email || '').toLowerCase().trim() === normalizedEmail
+          )
+      );
+
+      if (found) {
+        cached = { uid: found.id, ...(found.data() as User) } as User;
+        cachedUsers.push(cached);
+      }
+    } catch (err) {
+      console.error("Firebase user lookup failed:", err);
     }
   }
 
-  if (!cached || !cached.uid) {
-    console.error(`[UID-Migration] Recharge failed: Customer ${normalizedEmail} has no valid firebase UID loaded.`);
-    return false;
-  }
+
   
+    if (!cached || !cached.uid) {
+      console.error(`[UID-Migration] Recharge failed: Customer ${normalizedEmail} not found.`);
+      return false;
+    }
+
   const uid = cached.uid;
   const userRef = doc(db, 'users', uid);
   const txId = 'tx-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
@@ -1416,8 +1422,6 @@ export async function addBooking(
       const categoryLabelMap: Record<DrawCategory, string> = {
         pakistan_bond: 'پاکستان پرائز بانڈ',
         thailand_lottery: 'تھائی لینڈ لاٹری',
-        dubai_draw: 'دبئی ڈرا',
-        zee_music_draw: 'زی میوزک ڈرا'
       };
 
       const tx: Transaction = {
@@ -1733,7 +1737,7 @@ export async function setDrawDeadline(
   category: DrawCategory,
   deadlineIso: string,
   titleUrdu: string,
-  status: 'open' | 'closed' | 'result_announced',
+  status: 'open' | 'closed' | 'result_announced' | 'hidden',
   nextPrizeBondValue?: string,
   nextDrawCity?: string,
   nextDrawNumber?: string,

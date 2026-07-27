@@ -1,3 +1,17 @@
+import React from 'react';
+
+class ErrorBoundary extends React.Component<any, any> {
+  constructor(props:any){super(props);this.state={error:null};}
+  static getDerivedStateFromError(error:any){return {error};}
+  componentDidCatch(error:any){console.error(error);}
+  render(){
+    if(this.state.error){
+      return <pre style={{padding:20,whiteSpace:'pre-wrap',color:'red'}}>{String(this.state.error?.stack||this.state.error)}</pre>
+    }
+    return this.props.children;
+  }
+}
+
 import { useState, useEffect } from 'react';
 import { 
   getLoggedInUser, 
@@ -701,47 +715,20 @@ export default function App() {
               <span>تھائی لینڈ لاٹری</span>
             </button>
 
-            <button
-              id="subnav-dubai"
-              onClick={() => setActiveTab('dubai_draw')}
-              className={`flex items-center gap-1 text-xs py-2 px-3 rounded-xl transition-all border whitespace-nowrap cursor-pointer ${
-                activeTab === 'dubai_draw'
-                  ? 'bg-amber-500 text-slate-950 font-bold border-amber-500 shadow-md shadow-amber-500/10'
-                  : 'bg-slate-900 text-amber-400 font-semibold border-slate-950 hover:bg-slate-800'
-              }`}
-            >
-              <Globe className={`w-3.5 h-3.5 ${activeTab === 'dubai_draw' ? 'text-slate-950' : 'text-amber-400'}`} />
-              <span>دبئی ڈرا</span>
-            </button>
-
-            <button
-              id="subnav-zeemusic"
-              onClick={() => setActiveTab('zee_music_draw')}
-              className={`flex items-center gap-1 text-xs py-2 px-3 rounded-xl transition-all border whitespace-nowrap cursor-pointer ${
-                activeTab === 'zee_music_draw'
-                  ? 'bg-amber-500 text-slate-950 font-bold border-amber-500 shadow-md shadow-amber-500/10'
-                  : 'bg-slate-900 text-amber-400 font-semibold border-slate-950 hover:bg-slate-800'
-              }`}
-            >
-              <Music className={`w-3.5 h-3.5 ${activeTab === 'zee_music_draw' ? 'text-slate-950' : 'text-amber-400'}`} />
-              <span>زی میوزک ڈرا</span>
-            </button>
-
-            {/* Admin toggle visual link in sub-nav */}
-            {adminMode && (
-              <button
-                id="subnav-admin"
-                onClick={() => setActiveTab('admin')}
-                className={`flex items-center gap-1 text-xs py-2 px-3 rounded-xl transition-all border whitespace-nowrap cursor-pointer ${
-                  activeTab === 'admin'
-                    ? 'bg-amber-500 text-slate-950 font-bold border-amber-500 shadow-md shadow-amber-500/10'
-                    : 'bg-slate-900 text-amber-400 font-semibold border-slate-950 hover:bg-slate-800'
-                }`}
-              >
-                <Shield className={`w-3.5 h-3.5 ${activeTab === 'admin' ? 'text-slate-950' : 'text-amber-400'}`} />
-                <span>ایڈمن پینل</span>
-              </button>
-            )}
+              {adminMode && (
+                <button
+                  id="subnav-admin"
+                  onClick={() => setActiveTab('admin')}
+                  className={`flex items-center gap-1 text-xs py-2 px-3 rounded-xl transition-all border whitespace-nowrap cursor-pointer ${
+                    activeTab === 'admin'
+                      ? 'bg-amber-500 text-slate-950 font-bold border-amber-500 shadow-md shadow-amber-500/10'
+                      : 'bg-slate-900 text-amber-400 font-semibold border-slate-950 hover:bg-slate-800'
+                  }`}
+                >
+                  <Shield className={`w-3.5 h-3.5 ${activeTab === 'admin' ? 'text-slate-950' : 'text-amber-400'}`} />
+                  <span>ایڈمن پینل</span>
+                </button>
+              )}
 
           </div>
         </nav>
@@ -793,33 +780,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'dubai_draw' && (
-            <BookingPage
-              user={currentUser}
-              bookings={bookings}
-              limits={limits}
-              demands={demands}
-              deadlines={deadlines}
-              category="dubai_draw"
-              onAddBooking={(num, first, second, bv, dn, dd) => handleAddBooking('dubai_draw', num, first, second, bv, dn, dd)}
-              onCancelBooking={handleCancelBooking}
-              onAddDemand={(num, first, second, bv, dn, dd) => handleAddDemand('dubai_draw', num, first, second, bv, dn, dd)}
-            />
-          )}
 
-          {activeTab === 'zee_music_draw' && (
-            <BookingPage
-              user={currentUser}
-              bookings={bookings}
-              limits={limits}
-              demands={demands}
-              deadlines={deadlines}
-              category="zee_music_draw"
-              onAddBooking={(num, first, second, bv, dn, dd) => handleAddBooking('zee_music_draw', num, first, second, bv, dn, dd)}
-              onCancelBooking={handleCancelBooking}
-              onAddDemand={(num, first, second, bv, dn, dd) => handleAddDemand('zee_music_draw', num, first, second, bv, dn, dd)}
-            />
-          )}
 
           {activeTab === 'admin' && adminMode && (
             <AdminPortal

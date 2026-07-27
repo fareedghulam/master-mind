@@ -15,15 +15,11 @@ export function generateBookingPDF(
   const titleEnglishMap: Record<DrawCategory, string> = {
     pakistan_bond: 'PAKISTAN BOND BOOKING SHEET',
     thailand_lottery: 'THAILAND LOTTERY BOOKING SHEET',
-    dubai_draw: 'DUBAI DRAW BOOKING SHEET',
-    zee_music_draw: 'ZEE MUSIC DRAW BOOKING SHEET'
   };
 
   const titleUrduMap: Record<DrawCategory, string> = {
     pakistan_bond: 'پاکستان بانڈ بکنگ شیٹ',
     thailand_lottery: 'تھائی لینڈ لاٹری بکنگ شیٹ',
-    dubai_draw: 'دبئی ڈرا بکنگ شیٹ',
-    zee_music_draw: 'زی میوزک ڈرا بکنگ شیٹ'
   };
 
   const titleEnglish = titleEnglishMap[category] || 'PRIZE BOND BOOKING SHEET';
