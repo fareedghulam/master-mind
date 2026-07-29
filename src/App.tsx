@@ -830,7 +830,7 @@ export default function App() {
       </footer>
 
       {/* Mandatory Profile Setup Modal for Google Login / New Users */}
-      {currentUser && (isMandatorySetupOpen || !currentUser.phone || !currentUser.city) && (
+      {currentUser && (!currentUser.profileCompleted) && (
         <ProfileSetupModal
           user={currentUser}
           isOpen={true}

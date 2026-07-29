@@ -495,7 +495,7 @@ export function initializeStore() {
       }
     } else {
       const list = snapshot.docs.map(doc => doc.data() as Booking);
-      cachedBookings = list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      cachedBookings = list.filter(b => b.id && b.userEmail).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       notifyListeners();
     }
   });
@@ -752,7 +752,7 @@ export function getLoggedInUser(): User | null {
   return {
     uid: firebaseUser.uid,
     email: emailLower,
-    name: isDefaultSuper ? 'ایڈمن قریشی صاحب ڈاٹ' : (isDefaultDataEntry ? 'غلام فرید' : 'لوڈ ہو رہا ہے...'),
+    name: firebaseUser.displayName || emailLower.split('@')[0],
     phone: '',
     city: '',
     balance: isDefaultSuper ? 500000 : (isDefaultDataEntry ? 15000 : 0),
@@ -1231,6 +1231,7 @@ export async function updateUserProfile(
       name,
       phone,
       city,
+      profileCompleted: true,
       balance: existingUser?.balance ?? 0
     };
     if (photoURL) {
@@ -1244,6 +1245,7 @@ export async function updateUserProfile(
       existingUser.name = name;
       existingUser.phone = phone;
       existingUser.city = city;
+      existingUser.profileCompleted = true;
       if (photoURL) existingUser.photoURL = photoURL;
     } else {
       cachedUsers.push({

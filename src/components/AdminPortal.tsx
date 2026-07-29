@@ -1,4 +1,6 @@
 import React, { useState, useEffect, FormEvent } from 'react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { User, NumberLimit, Demand, DrawDeadline, Booking, PakistanBondResult, ThaiLotteryResult, AllResultType, DrawCategory, Transaction } from '../types';
 import { Shield, Plus, Trash, Check, X, UserCheck, AlertTriangle, ShieldCheck, HelpCircle, Sparkles, Clock, MessageCircle, Search, History, Wallet } from 'lucide-react';
 import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, updateUserPassword, getAdminConfiguredEmail, updateCustomerPassword, registerInAuthOnly, changeLoggedAdminPassword, getTransactions, approveTransaction, rejectTransaction } from '../utils/store';
@@ -35,6 +37,52 @@ interface AdminPortalProps {
   onAddResult: (result: AllResultType) => Promise<{ success: boolean; error?: string }>;
   onEditResult: (result: AllResultType) => Promise<{ success: boolean; error?: string }>;
   onDeleteResult: (id: string, category: 'pakistan_bond' | 'thailand_lottery') => Promise<{ success: boolean; error?: string }>;
+}
+
+
+function exportBookingsPDF(bookings: Booking[]) {
+  console.log('PDF Export bookings count:', bookings?.length, bookings);
+  if (!bookings || bookings.length === 0) {
+    alert("کوئی بکنگ ریکارڈ موجود نہیں ہے۔");
+    return;
+  }
+
+  const doc = new jsPDF();
+
+  doc.setFontSize(16);
+  doc.text("Master Mind Qureshi Enterprise - All Bookings", 14, 15);
+
+  const rows = bookings.map((b, index) => [
+    index + 1,
+    b.userEmail || "",
+    b.category === "pakistan_bond" ? "Pakistan Bond" : "Thai Lottery",
+    b.number,
+    `Rs. ${((b.firstAmount || 0) + (b.secondAmount || 0)).toLocaleString()}`,
+    (
+          b.timestamp?.toDate
+            ? b.timestamp.toDate().toLocaleString()
+            : new Date(b.timestamp || Date.now()).toLocaleString()
+        )
+  ]);
+
+  autoTable(doc, {
+    startY: 25,
+    head: [
+      [
+        "No",
+        "Customer Email",
+        "Category",
+        "Number",
+        "Amount",
+        "Date"
+      ]
+    ],
+    body: rows
+  });
+
+  const pdfName = "Master-Mind-All-Bookings.pdf";
+
+  doc.save(pdfName);
 }
 
 function safeGetTime(value: any): number {
@@ -984,6 +1032,13 @@ export default function AdminPortal({
           </div>
 
           <h4 className="text-base font-bold text-slate-800 flex items-center justify-end gap-2">
+            <button
+              onClick={() => exportBookingsPDF(bookings)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-bold cursor-pointer"
+            >
+              📄 تمام بکنگز PDF
+            </button>
+
             <span>تمام کسٹمرز کی بکنگز کا پینل (Master Booking Control)</span>
             <Clock className="w-5 h-5 text-amber-500" />
           </h4>
