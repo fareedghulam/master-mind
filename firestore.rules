@@ -113,7 +113,7 @@ service cloud.firestore {
         isSuperAdmin() || (
           request.auth != null && 
           request.auth.uid == uid &&
-          (!('balance' in resource.data) || request.resource.data.balance <= resource.data.balance) &&
+          (!('balance' in resource.data) || request.resource.data.balance == resource.data.balance) &&
           (!('isAdmin' in resource.data) || request.resource.data.isAdmin == resource.data.isAdmin) &&
           (!('role' in resource.data) || request.resource.data.role == resource.data.role)
         )

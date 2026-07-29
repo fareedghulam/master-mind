@@ -58,7 +58,7 @@ export interface DrawDeadline {
   category: DrawCategory;
   titleUrdu: string;
   deadlineIso: string;
-  status: 'open' | 'closed' | 'result_announced' | 'hidden';
+  status: 'open' | 'closed' | 'result_announced';
   nextPrizeBondValue?: string;
   nextDrawCity?: string;
   nextDrawNumber?: string;

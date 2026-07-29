@@ -538,9 +538,7 @@ export function initializeStore() {
         });
       }
     } else {
-      cachedDeadlines = snapshot.docs
-        .map(doc => ({ id: doc.id, ...(doc.data() as DrawDeadline) }))
-        .filter(d => d.status !== 'hidden');
+      cachedDeadlines = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as DrawDeadline) }));
       notifyListeners();
     }
   });
@@ -1282,33 +1280,17 @@ export async function rechargeWallet(email: string, amount: number): Promise<boo
   const normalizedEmail = email.toLowerCase().trim();
   let cached = cachedUsers.find(u => (u.email || '').toLowerCase() === normalizedEmail);
 
-  // Fallback: اگر cache میں صارف نہ ملے تو Firebase users collection سے تلاش کریں
-  if (!cached) {
-    try {
-      const usersSnap = await getDocs(collection(db, 'users'));
-      const found = usersSnap.docs.find(d => 
-        (
-            d.id.toLowerCase() === normalizedEmail ||
-            (d.data().email || '').toLowerCase().trim() === normalizedEmail
-          )
-      );
-
-      if (found) {
-        cached = { uid: found.id, ...(found.data() as User) } as User;
-        cachedUsers.push(cached);
-      }
-    } catch (err) {
-      console.error("Firebase user lookup failed:", err);
+  if (!cached || !cached.uid) {
+    if (auth.currentUser && (auth.currentUser.email || '').toLowerCase() === normalizedEmail) {
+      cached = cachedUsers.find(u => u.uid === auth.currentUser?.uid);
     }
   }
 
-
+  if (!cached || !cached.uid) {
+    console.error(`[UID-Migration] Recharge failed: Customer ${normalizedEmail} has no valid firebase UID loaded.`);
+    return false;
+  }
   
-    if (!cached || !cached.uid) {
-      console.error(`[UID-Migration] Recharge failed: Customer ${normalizedEmail} not found.`);
-      return false;
-    }
-
   const uid = cached.uid;
   const userRef = doc(db, 'users', uid);
   const txId = 'tx-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
@@ -1421,7 +1403,7 @@ export async function addBooking(
 
       const categoryLabelMap: Record<DrawCategory, string> = {
         pakistan_bond: 'پاکستان پرائز بانڈ',
-        thailand_lottery: 'تھائی لینڈ لاٹری',
+        thailand_lottery: 'تھائی لینڈ لاٹری'
       };
 
       const tx: Transaction = {
@@ -1737,7 +1719,7 @@ export async function setDrawDeadline(
   category: DrawCategory,
   deadlineIso: string,
   titleUrdu: string,
-  status: 'open' | 'closed' | 'result_announced' | 'hidden',
+  status: 'open' | 'closed' | 'result_announced',
   nextPrizeBondValue?: string,
   nextDrawCity?: string,
   nextDrawNumber?: string,

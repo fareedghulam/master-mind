@@ -57,10 +57,15 @@ export default function BookingPage({
 
   // Selected draw deadline evaluation
   const activeDraw = category === 'pakistan_bond' 
-    ? (pakDraws.find(d => d.id === selectedDrawId) || pakDraws[0] || deadlines.find(d => d.category === category))
-    : deadlines.find(d => d.category === category);
+    ? (pakDraws.find(d => d.id === selectedDrawId) || pakDraws[0] || (deadlines || []).find(d => d.category === category))
+    : (deadlines || []).find(d => d.category === category);
 
-  const deadlineTime = activeDraw ? new Date(activeDraw.deadlineIso).getTime() : 0;
+  const rawDeadlineTime = activeDraw && activeDraw.deadlineIso 
+    ? (typeof activeDraw.deadlineIso === 'object' && (activeDraw.deadlineIso as any).seconds 
+        ? (activeDraw.deadlineIso as any).seconds * 1000 
+        : new Date(activeDraw.deadlineIso).getTime()) 
+    : 0;
+  const deadlineTime = isNaN(rawDeadlineTime) ? 0 : rawDeadlineTime;
   const isTimeUp = (activeDraw?.status === 'closed') || (deadlineTime > 0 && timeTicker >= deadlineTime);
 
   const getRemainingTimeString = () => {
@@ -82,21 +87,27 @@ export default function BookingPage({
   };
 
   const getFormattedDeadline = (drawObj = activeDraw) => {
-    if (!drawObj) return 'مقرر نہیں ہے';
+    if (!drawObj || !drawObj.deadlineIso) return 'مقرر نہیں ہے';
     try {
-      const d = new Date(drawObj.deadlineIso);
+      const d = typeof drawObj.deadlineIso === 'object' && (drawObj.deadlineIso as any).seconds 
+        ? new Date((drawObj.deadlineIso as any).seconds * 1000) 
+        : new Date(drawObj.deadlineIso);
+      if (isNaN(d.getTime())) return String(drawObj.deadlineIso || 'مقرر نہیں ہے');
       const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
       const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
       return `${dateStr} بوقت ${timeStr}`;
     } catch (e) {
-      return drawObj.deadlineIso;
+      return String(drawObj.deadlineIso || 'مقرر نہیں ہے');
     }
   };
 
   const getFormattedClosedOn = (drawObj = activeDraw) => {
-    if (!drawObj) return '';
+    if (!drawObj || !drawObj.deadlineIso) return '';
     try {
-      const d = new Date(drawObj.deadlineIso);
+      const d = typeof drawObj.deadlineIso === 'object' && (drawObj.deadlineIso as any).seconds 
+        ? new Date((drawObj.deadlineIso as any).seconds * 1000) 
+        : new Date(drawObj.deadlineIso);
+      if (isNaN(d.getTime())) return String(drawObj.deadlineIso || '');
       const day = String(d.getDate()).padStart(2, '0');
       const month = String(d.getMonth() + 1).padStart(2, '0');
       const year = d.getFullYear();
@@ -104,24 +115,25 @@ export default function BookingPage({
       const minutes = String(d.getMinutes()).padStart(2, '0');
       return `${day}/${month}/${year} ${hours}:${minutes}`;
     } catch (e) {
-      return drawObj.deadlineIso;
+      return String(drawObj.deadlineIso || '');
     }
   };
 
   const pageTitleUrduMap: Record<DrawCategory, string> = {
     pakistan_bond: 'پاکستان پرائز بانڈ بکنگ پورٹل',
-    thailand_lottery: 'تھائی لینڈ ڈرا بکنگ پورٹل',
+    thailand_lottery: 'تھائی لینڈ ڈرا بکنگ پورٹل'
   };
   const pageTitleEnglishMap: Record<DrawCategory, string> = {
     pakistan_bond: 'PAKISTAN BOND DRAW',
-    thailand_lottery: 'THAILAND LOTTERY DRAW',
+    thailand_lottery: 'THAILAND LOTTERY DRAW'
   };
   const pageTitleUrdu = pageTitleUrduMap[category] || 'پرائز بانڈ بکنگ پورٹل';
   const pageTitleEnglish = pageTitleEnglishMap[category] || 'PRIZE BOND DRAW';
 
-  const filterBookings = bookings.filter(b => b.category === category && b.userEmail === user.email);
-  const filterDemands = demands.filter(d => d.category === category && d.userEmail === user.email);
-  const relevantLimits = limits.filter(l => l.category === category);
+  const userEmailLower = (user?.email || '').toLowerCase();
+  const filterBookings = (bookings || []).filter(b => b && b.category === category && (b.userEmail || '').toLowerCase() === userEmailLower);
+  const filterDemands = (demands || []).filter(d => d && d.category === category && (d.userEmail || '').toLowerCase() === userEmailLower);
+  const relevantLimits = (limits || []).filter(l => l && l.category === category);
 
   const currentFirstAmt = parseInt(firstAmtInput || '0', 10);
   const currentSecondAmt = parseInt(secondAmtInput || '0', 10);
@@ -156,7 +168,7 @@ export default function BookingPage({
       return;
     }
 
-    if (user.balance < totalCost) {
+    if ((user?.balance ?? 0) < totalCost) {
       setErrorStatus('آپ کے والٹ میں کافی رقم موجود نہیں ہے! ڈیمانڈ منظور ہونے پر رقم درکار ہوگی۔');
       return;
     }
@@ -169,7 +181,7 @@ export default function BookingPage({
       activeDraw?.nextDrawNumber, 
       activeDraw?.nextDrawDate,
       activeDraw?.nextDrawCity,
-      selectedDrawId || activeDraw?.id || activeDraw?.category
+      activeDraw?.id || activeDraw?.category
     );
     if (res.success) {
       setSuccessStatus(`کامیاب: نمبر ${numInput} کے لئے Rs. ${totalCost.toLocaleString()} کی ڈیمانڈ ایڈمن کو بھیج دی گئی ہے!`);
@@ -205,7 +217,7 @@ export default function BookingPage({
     }
 
     const totalCost = firstAmt + secondAmt;
-    if (user.balance < totalCost) {
+    if ((user?.balance ?? 0) < totalCost) {
       setErrorStatus('آپ کے والٹ میں کافی رقم موجود نہیں ہے! کسٹمر سپورٹ یا ایڈمن سے رابطہ کریں۔');
       return;
     }
@@ -218,7 +230,7 @@ export default function BookingPage({
       activeDraw?.nextDrawNumber, 
       activeDraw?.nextDrawDate,
       activeDraw?.nextDrawCity,
-      selectedDrawId || activeDraw?.id || activeDraw?.category
+      activeDraw?.id || activeDraw?.category
     );
     if (res.success) {
       setSuccessStatus(`کامیاب: نمبر ${numInput} کی بکنگ رجسٹر ہو گئی ہے!`);
@@ -242,12 +254,12 @@ export default function BookingPage({
     }
   };
 
-  const handleDownloadPDF = async () => {
+  const handleDownloadPDF = () => {
     if (filterBookings.length === 0) {
       setErrorStatus('پی ڈی ایف ڈاؤن لوڈ کرنے کے لئے لسٹ میں نمبر ہونا لازمی ہے۔');
       return;
     }
-    await generateBookingPDF(
+    generateBookingPDF(
       user.name,
       user.email,
       user.phone,
@@ -255,7 +267,7 @@ export default function BookingPage({
       filterBookings,
       category
     );
-    setSuccessStatus('پی ڈی ایف فائل محفوظ ہو گئی ہے!');
+    setSuccessStatus('پی ڈی ایف فائل ڈاؤن لوڈ شروع ہو گئی ہے!');
   };
 
   return (
@@ -347,7 +359,12 @@ export default function BookingPage({
                   {pakDraws.map((d, idx) => {
                     const drawId = d.id || d.category;
                     const isSelected = selectedDrawId === drawId;
-                    const dTime = new Date(d.deadlineIso).getTime();
+                    const rawDTime = d && d.deadlineIso 
+                      ? (typeof d.deadlineIso === 'object' && (d.deadlineIso as any).seconds 
+                          ? (d.deadlineIso as any).seconds * 1000 
+                          : new Date(d.deadlineIso).getTime()) 
+                      : 0;
+                    const dTime = isNaN(rawDTime) ? 0 : rawDTime;
                     const dClosed = d.status === 'closed' || (dTime > 0 && timeTicker >= dTime);
 
                     return (
@@ -621,7 +638,19 @@ export default function BookingPage({
               <tbody className="divide-y divide-slate-100">
                 {filterBookings.map((b) => {
                   // Compute how long ago built
-                  const diffMs = timeTicker - new Date(b.timestamp).getTime();
+                  const bTime = (() => {
+                    if (!b.timestamp) return Date.now();
+                    try {
+                      const dateObj = typeof b.timestamp === 'object' && (b.timestamp as any).seconds 
+                        ? new Date((b.timestamp as any).seconds * 1000) 
+                        : new Date(b.timestamp);
+                      const t = dateObj.getTime();
+                      return isNaN(t) ? Date.now() : t;
+                    } catch {
+                      return Date.now();
+                    }
+                  })();
+                  const diffMs = timeTicker - bTime;
                   const remainingMs = Math.max(0, (2 * 60 * 1000) - diffMs);
                   const canCancel = remainingMs > 0;
                   const secondsLeft = Math.floor(remainingMs / 1000);
@@ -633,8 +662,25 @@ export default function BookingPage({
                     b.drawDate || ''
                   ].filter(Boolean).join(' | ');
 
+                  const formattedTime = (() => {
+                    if (!b.timestamp) return '---';
+                    try {
+                      const dateObj = typeof b.timestamp === 'object' && (b.timestamp as any).seconds 
+                        ? new Date((b.timestamp as any).seconds * 1000) 
+                        : new Date(b.timestamp);
+                      if (isNaN(dateObj.getTime())) return '---';
+                      return dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    } catch {
+                      return '---';
+                    }
+                  })();
+
+                  const firstAmt = typeof b.firstAmount === 'number' && !isNaN(b.firstAmount) ? b.firstAmount : 0;
+                  const secondAmt = typeof b.secondAmount === 'number' && !isNaN(b.secondAmount) ? b.secondAmount : 0;
+                  const totalAmt = firstAmt + secondAmt;
+
                   return (
-                    <tr key={b.id} className="hover:bg-slate-50/50 transition-colors">
+                    <tr key={b.id || Math.random()} className="hover:bg-slate-50/50 transition-colors">
                       {/* Cancellation Column with Live Timer */}
                       <td className="py-3 px-4 text-left">
                         {canCancel ? (
@@ -657,7 +703,7 @@ export default function BookingPage({
                       </td>
 
                       <td className="py-3 px-4 text-slate-400 font-mono text-left">
-                        {new Date(b.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {formattedTime}
                       </td>
 
                       {category === 'pakistan_bond' && (
@@ -667,20 +713,20 @@ export default function BookingPage({
                       )}
 
                       <td className="py-3 px-4 font-mono font-semibold text-slate-700">
-                        Rs. {(b.firstAmount + b.secondAmount).toLocaleString()}
+                        Rs. {totalAmt.toLocaleString()}
                       </td>
 
                       <td className="py-3 px-4 font-mono text-slate-550">
-                        Rs. {b.secondAmount.toLocaleString()}
+                        Rs. {secondAmt.toLocaleString()}
                       </td>
 
                       <td className="py-3 px-4 font-mono text-slate-550">
-                        Rs. {b.firstAmount.toLocaleString()}
+                        Rs. {firstAmt.toLocaleString()}
                       </td>
 
                       {/* Number Display Highlighted */}
                       <td className="py-3 px-4 font-mono font-bold text-red-650 text-base">
-                        {b.number}
+                        {b.number || '---'}
                       </td>
                     </tr>
                   );
@@ -719,51 +765,70 @@ export default function BookingPage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filterDemands.map((d) => (
-                  <tr key={d.id} className="hover:bg-slate-50/50 transition-colors">
-                     <td className="py-3 px-4 text-left">
-                       {d.status === 'pending' && (
-                         <span className="font-semibold text-[10px] text-amber-600 bg-amber-50 px-2 py-1 rounded-full border border-amber-200 inline-block">
-                           انتظار ⏳ (Pending)
-                         </span>
-                       )}
-                       {d.status === 'approved' && (
-                         <span className="font-semibold text-[10px] text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-200 inline-block">
-                           منظور شدہ ✓ (Approved)
-                         </span>
-                       )}
-                       {d.status === 'rejected' && (
-                         <span className="font-semibold text-[10px] text-red-600 bg-red-50 px-2 py-1 rounded-full border border-red-200 inline-block">
-                           مسترد شدہ ✗ (Rejected)
-                         </span>
-                       )}
-                     </td>
+                {filterDemands.map((d) => {
+                  const formattedTime = (() => {
+                    if (!d.timestamp) return '---';
+                    try {
+                      const dateObj = typeof d.timestamp === 'object' && (d.timestamp as any).seconds 
+                        ? new Date((d.timestamp as any).seconds * 1000) 
+                        : new Date(d.timestamp);
+                      if (isNaN(dateObj.getTime())) return '---';
+                      return dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    } catch {
+                      return '---';
+                    }
+                  })();
 
-                     <td className="py-3 px-4 text-slate-400 font-mono text-left">
-                       {new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                     </td>
+                  const firstAmt = typeof d.firstAmount === 'number' && !isNaN(d.firstAmount) ? d.firstAmount : 0;
+                  const secondAmt = typeof d.secondAmount === 'number' && !isNaN(d.secondAmount) ? d.secondAmount : 0;
+                  const totalAmt = firstAmt + secondAmt;
 
-                     <td className="py-3 px-4 font-mono font-semibold text-slate-700">
-                       Rs. {(d.firstAmount + d.secondAmount).toLocaleString()}
-                     </td>
+                  return (
+                    <tr key={d.id || Math.random()} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-3 px-4 text-left">
+                        {d.status === 'pending' && (
+                          <span className="font-semibold text-[10px] text-amber-600 bg-amber-50 px-2 py-1 rounded-full border border-amber-200 inline-block">
+                            انتظار ⏳ (Pending)
+                          </span>
+                        )}
+                        {d.status === 'approved' && (
+                          <span className="font-semibold text-[10px] text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-200 inline-block">
+                            منظور شدہ ✓ (Approved)
+                          </span>
+                        )}
+                        {d.status === 'rejected' && (
+                          <span className="font-semibold text-[10px] text-red-600 bg-red-50 px-2 py-1 rounded-full border border-red-200 inline-block">
+                            مسترد شدہ ✗ (Rejected)
+                          </span>
+                        )}
+                      </td>
 
-                     <td className="py-3 px-4 font-mono text-slate-550">
-                       Rs. {d.secondAmount.toLocaleString()}
-                     </td>
+                      <td className="py-3 px-4 text-slate-400 font-mono text-left">
+                        {formattedTime}
+                      </td>
 
-                     <td className="py-3 px-4 font-mono text-slate-550">
-                       Rs. {d.firstAmount.toLocaleString()}
-                     </td>
+                      <td className="py-3 px-4 font-mono font-semibold text-slate-700">
+                        Rs. {totalAmt.toLocaleString()}
+                      </td>
 
-                     <td className="py-3 px-4 font-mono font-bold text-slate-800 text-base">
-                       {d.number}
-                     </td>
-                   </tr>
-                 ))}
-               </tbody>
-             </table>
-           </div>
-         )}
+                      <td className="py-3 px-4 font-mono text-slate-550">
+                        Rs. {secondAmt.toLocaleString()}
+                      </td>
+
+                      <td className="py-3 px-4 font-mono text-slate-550">
+                        Rs. {firstAmt.toLocaleString()}
+                      </td>
+
+                      <td className="py-3 px-4 font-mono font-bold text-slate-800 text-base">
+                        {d.number || '---'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
        </div>
 
     </div>

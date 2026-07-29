@@ -1,17 +1,3 @@
-import React from 'react';
-
-class ErrorBoundary extends React.Component<any, any> {
-  constructor(props:any){super(props);this.state={error:null};}
-  static getDerivedStateFromError(error:any){return {error};}
-  componentDidCatch(error:any){console.error(error);}
-  render(){
-    if(this.state.error){
-      return <pre style={{padding:20,whiteSpace:'pre-wrap',color:'red'}}>{String(this.state.error?.stack||this.state.error)}</pre>
-    }
-    return this.props.children;
-  }
-}
-
 import { useState, useEffect } from 'react';
 import { 
   getLoggedInUser, 
@@ -715,20 +701,21 @@ export default function App() {
               <span>تھائی لینڈ لاٹری</span>
             </button>
 
-              {adminMode && (
-                <button
-                  id="subnav-admin"
-                  onClick={() => setActiveTab('admin')}
-                  className={`flex items-center gap-1 text-xs py-2 px-3 rounded-xl transition-all border whitespace-nowrap cursor-pointer ${
-                    activeTab === 'admin'
-                      ? 'bg-amber-500 text-slate-950 font-bold border-amber-500 shadow-md shadow-amber-500/10'
-                      : 'bg-slate-900 text-amber-400 font-semibold border-slate-950 hover:bg-slate-800'
-                  }`}
-                >
-                  <Shield className={`w-3.5 h-3.5 ${activeTab === 'admin' ? 'text-slate-950' : 'text-amber-400'}`} />
-                  <span>ایڈمن پینل</span>
-                </button>
-              )}
+            {/* Admin toggle visual link in sub-nav */}
+            {adminMode && (
+              <button
+                id="subnav-admin"
+                onClick={() => setActiveTab('admin')}
+                className={`flex items-center gap-1 text-xs py-2 px-3 rounded-xl transition-all border whitespace-nowrap cursor-pointer ${
+                  activeTab === 'admin'
+                    ? 'bg-amber-500 text-slate-950 font-bold border-amber-500 shadow-md shadow-amber-500/10'
+                    : 'bg-slate-900 text-amber-400 font-semibold border-slate-950 hover:bg-slate-800'
+                }`}
+              >
+                <Shield className={`w-3.5 h-3.5 ${activeTab === 'admin' ? 'text-slate-950' : 'text-amber-400'}`} />
+                <span>ایڈمن پینل</span>
+              </button>
+            )}
 
           </div>
         </nav>
@@ -779,8 +766,6 @@ export default function App() {
               onAddDemand={(num, first, second, bv, dn, dd) => handleAddDemand('thailand_lottery', num, first, second, bv, dn, dd)}
             />
           )}
-
-
 
           {activeTab === 'admin' && adminMode && (
             <AdminPortal

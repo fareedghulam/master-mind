@@ -6,11 +6,3 @@ coverage/
 *.log
 .env*
 !.env.example
-
-# Android signing
-*.jks
-key.properties
-
-# Backup files
-*.backup
-*.before-*
