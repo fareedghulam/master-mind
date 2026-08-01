@@ -40,50 +40,7 @@ interface AdminPortalProps {
 }
 
 
-function exportBookingsPDF(bookings: Booking[]) {
-  console.log('PDF Export bookings count:', bookings?.length, bookings);
-  if (!bookings || bookings.length === 0) {
-    alert("کوئی بکنگ ریکارڈ موجود نہیں ہے۔");
-    return;
-  }
 
-  const doc = new jsPDF();
-
-  doc.setFontSize(16);
-  doc.text("Master Mind Qureshi Enterprise - All Bookings", 14, 15);
-
-  const rows = bookings.map((b, index) => [
-    index + 1,
-    b.userEmail || "",
-    b.category === "pakistan_bond" ? "Pakistan Bond" : "Thai Lottery",
-    b.number,
-    `Rs. ${((b.firstAmount || 0) + (b.secondAmount || 0)).toLocaleString()}`,
-    (
-          b.timestamp?.toDate
-            ? b.timestamp.toDate().toLocaleString()
-            : new Date(b.timestamp || Date.now()).toLocaleString()
-        )
-  ]);
-
-  autoTable(doc, {
-    startY: 25,
-    head: [
-      [
-        "No",
-        "Customer Email",
-        "Category",
-        "Number",
-        "Amount",
-        "Date"
-      ]
-    ],
-    body: rows
-  });
-
-  const pdfName = "Master-Mind-All-Bookings.pdf";
-
-  doc.save(pdfName);
-}
 
 function safeGetTime(value: any): number {
   if (!value) return 0;
@@ -1033,7 +990,7 @@ export default function AdminPortal({
 
           <h4 className="text-base font-bold text-slate-800 flex items-center justify-end gap-2">
             <button
-              onClick={() => exportBookingsPDF(bookings)}
+              onClick={() => generateAdminBookingsPDF(bookings)}
               className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-bold cursor-pointer"
             >
               📄 تمام بکنگز PDF

@@ -66,10 +66,17 @@ export default function BookingPage({
         : new Date(activeDraw.deadlineIso).getTime()) 
     : 0;
   const deadlineTime = isNaN(rawDeadlineTime) ? 0 : rawDeadlineTime;
-  const isTimeUp = (activeDraw?.status === 'closed') || (deadlineTime > 0 && timeTicker >= deadlineTime);
+  const isTimeUp =
+  (activeDraw?.status === 'closed' ||
+   activeDraw?.status === 'result_announced') ||
+  (deadlineTime > 0 && timeTicker >= deadlineTime);
 
   const getRemainingTimeString = () => {
-    if (activeDraw?.status === 'closed') return 'بکنگ بند ہے (Closed)';
+    if (activeDraw?.status === 'closed')
+      return 'بکنگ بند ہے (Closed)';
+
+    if (activeDraw?.status === 'result_announced')
+      return 'نتیجہ جاری ہو چکا ہے (Result Announced)';
     if (!deadlineTime) return '';
     const diff = deadlineTime - timeTicker;
     if (diff <= 0) return 'وقت ختم ہو چکا ہے (Closed)';
