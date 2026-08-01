@@ -518,9 +518,14 @@ export default function BookingPage({
                 <input
                   id="field-number"
                   type="text"
-                  placeholder={isTimeUp ? "بکنگ بند ہے" : "نمبر لکھیں"}
+                  placeholder={isTimeUp ? "بکنگ بند ہے" : "مثال: 22++ یا 2+22"}
                   value={numInput}
-                  onChange={(e) => setNumInput(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (/^[0-9+]{0,4}$/.test(value)) {
+                      setNumInput(value);
+                    }
+                  }}
                   disabled={isTimeUp}
                   className={`w-full text-left border rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono ${
                     isTimeUp ? 'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-slate-50 border-slate-200 text-slate-800'
