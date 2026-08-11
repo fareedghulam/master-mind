@@ -66,17 +66,10 @@ export default function BookingPage({
         : new Date(activeDraw.deadlineIso).getTime()) 
     : 0;
   const deadlineTime = isNaN(rawDeadlineTime) ? 0 : rawDeadlineTime;
-  const isTimeUp =
-  (activeDraw?.status === 'closed' ||
-   activeDraw?.status === 'result_announced') ||
-  (deadlineTime > 0 && timeTicker >= deadlineTime);
+  const isTimeUp = (activeDraw?.status === 'closed') || (deadlineTime > 0 && timeTicker >= deadlineTime);
 
   const getRemainingTimeString = () => {
-    if (activeDraw?.status === 'closed')
-      return 'بکنگ بند ہے (Closed)';
-
-    if (activeDraw?.status === 'result_announced')
-      return 'نتیجہ جاری ہو چکا ہے (Result Announced)';
+    if (activeDraw?.status === 'closed') return 'بکنگ بند ہے (Closed)';
     if (!deadlineTime) return '';
     const diff = deadlineTime - timeTicker;
     if (diff <= 0) return 'وقت ختم ہو چکا ہے (Closed)';
@@ -518,14 +511,9 @@ export default function BookingPage({
                 <input
                   id="field-number"
                   type="text"
-                  placeholder={isTimeUp ? "بکنگ بند ہے" : "مثال: 22++ یا 2+22"}
+                  placeholder={isTimeUp ? "بکنگ بند ہے" : "نمبر لکھیں"}
                   value={numInput}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (/^[0-9+]{0,4}$/.test(value)) {
-                      setNumInput(value);
-                    }
-                  }}
+                  onChange={(e) => setNumInput(e.target.value)}
                   disabled={isTimeUp}
                   className={`w-full text-left border rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono ${
                     isTimeUp ? 'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-slate-50 border-slate-200 text-slate-800'

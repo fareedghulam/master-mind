@@ -31,7 +31,7 @@ export default function DashboardHeader({
           >
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
               <img 
-                src="./mastermind_logo.jpg" 
+                src="/mastermind_logo.jpg" 
                 alt="MQE Logo" 
                 className="w-10 h-10 rounded-full border border-blue-500/30 object-cover shadow-sm"
                 referrerPolicy="no-referrer"

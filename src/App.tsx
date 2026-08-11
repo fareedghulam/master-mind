@@ -596,11 +596,8 @@ export default function App() {
             <div className="absolute inset-0 rounded-full border-4 border-slate-800"></div>
             <div className="absolute inset-0 rounded-full border-4 border-t-amber-400 animate-spin"></div>
           </div>
-          <h1 className="text-2xl font-bold text-amber-400 font-sans tracking-wide mt-2">
-            Master Mind Qureshi Enterprise
-          </h1>
           <h2 className="text-xl font-bold text-slate-100 font-sans tracking-wide mt-2">
-            Please wait...
+            لوڈ ہو رہا ہے... (Loading...)
           </h2>
           <p className="text-xs text-slate-400 font-sans">
             براہ کرم انتظار کریں، سیکیورٹی سسٹم اور ڈیٹا بیس کو مربوط کیا جا رہا ہے۔
@@ -833,7 +830,7 @@ export default function App() {
       </footer>
 
       {/* Mandatory Profile Setup Modal for Google Login / New Users */}
-      {currentUser && (!currentUser.profileCompleted) && (
+      {currentUser && (isMandatorySetupOpen || !currentUser.phone || !currentUser.city) && (
         <ProfileSetupModal
           user={currentUser}
           isOpen={true}

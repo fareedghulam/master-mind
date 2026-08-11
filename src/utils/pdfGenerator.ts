@@ -191,61 +191,6 @@ function translateDrawNo(drawNo: string): string {
   return drawNo.replace(/ڈرا نمبر/g, 'Draw No.');
 }
 
-
-
-export function generateAdminBookingsPDF(bookings: Booking[]) {
-  const doc = new jsPDF() as any;
-
-  doc.setFillColor(15,23,42);
-  doc.rect(0,0,210,30,"F");
-
-  doc.setTextColor(255,255,255);
-  doc.setFontSize(18);
-  doc.text("MASTERMIND QURESHI ENTERPRISE",105,13,{align:"center"});
-  doc.setFontSize(11);
-  doc.text("ALL CUSTOMER BOOKINGS REPORT",105,22,{align:"center"});
-
-  const rows = bookings.map((b,index)=>[
-    index+1,
-    b.userEmail || "--",
-    b.category==="pakistan_bond" ? "Pakistan Bond" : "Thailand Lottery",
-    b.bondValue || "--",
-    b.drawNumber || "--",
-    b.drawCity || "--",
-    b.drawDate || "--",
-    b.number,
-    `Rs. ${b.firstAmount}`,
-    `Rs. ${b.secondAmount}`,
-    `Rs. ${b.firstAmount+b.secondAmount}`,
-    new Date(b.timestamp).toLocaleString()
-  ]);
-
-  autoTable(doc,{
-    startY:38,
-    head:[[
-      "No",
-      "Customer",
-      "Category",
-      "Bond",
-      "Draw",
-      "City",
-      "Date",
-      "Number",
-      "First",
-      "Second",
-      "Total",
-      "Time"
-    ]],
-    body:rows,
-    theme:"striped",
-    headStyles:{fillColor:[15,23,42]},
-    styles:{fontSize:7}
-  });
-
-  doc.save("Master-Mind-All-Bookings.pdf");
-}
-
-
 export function generateDrawHistoryPDF(
   draws: any[],
   category: 'all' | 'pakistan_bond' | 'thailand_lottery'

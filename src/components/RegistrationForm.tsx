@@ -157,7 +157,7 @@ export default function RegistrationForm({ onRegister, onLoginWithCredentials, o
           </div>
           <div className="relative mx-auto mb-4 w-24 h-24 rounded-full border-2 border-amber-500/30 overflow-hidden shadow-lg shadow-black/50">
             <img 
-              src="./mastermind_logo.jpg" 
+              src="/mastermind_logo.jpg" 
               alt="MasterMind Qureshi Logo" 
               className="w-full h-full object-cover"
               referrerPolicy="no-referrer"

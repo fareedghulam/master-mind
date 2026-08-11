@@ -153,9 +153,47 @@ const DEFAULT_USERS: User[] = [
   }
 ];
 
-const DEFAULT_LIMITS: NumberLimit[] = [];
+const DEFAULT_LIMITS: NumberLimit[] = [
+  {
+    id: 'limit-1',
+    category: 'pakistan_bond',
+    number: '786',
+    maxAmount: 25
+  },
+  {
+    id: 'limit-2',
+    category: 'pakistan_bond',
+    number: '007',
+    maxAmount: 50
+  },
+  {
+    id: 'limit-3',
+    category: 'thailand_lottery',
+    number: '143',
+    maxAmount: 100
+  }
+];
 
-const DEFAULT_BOOKINGS: Booking[] = [];
+const DEFAULT_BOOKINGS: Booking[] = [
+  {
+    id: 'booking-mock-1',
+    userEmail: 'fareed.ghulam@gmail.com',
+    category: 'pakistan_bond',
+    number: '456',
+    firstAmount: 100,
+    secondAmount: 50,
+    timestamp: new Date(Date.now() - 45000).toISOString()
+  },
+  {
+    id: 'booking-mock-2',
+    userEmail: 'fareed.ghulam@gmail.com',
+    category: 'thailand_lottery',
+    number: '999',
+    firstAmount: 300,
+    secondAmount: 300,
+    timestamp: new Date(Date.now() - 300000).toISOString()
+  }
+];
 
 // Memory caches
 let cachedUsers: User[] = [];
@@ -457,7 +495,7 @@ export function initializeStore() {
       }
     } else {
       const list = snapshot.docs.map(doc => doc.data() as Booking);
-      cachedBookings = list.filter(b => b.id && b.userEmail).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      cachedBookings = list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       notifyListeners();
     }
   });
@@ -714,7 +752,7 @@ export function getLoggedInUser(): User | null {
   return {
     uid: firebaseUser.uid,
     email: emailLower,
-    name: firebaseUser.displayName || emailLower.split('@')[0],
+    name: isDefaultSuper ? 'ایڈمن قریشی صاحب ڈاٹ' : (isDefaultDataEntry ? 'غلام فرید' : 'لوڈ ہو رہا ہے...'),
     phone: '',
     city: '',
     balance: isDefaultSuper ? 500000 : (isDefaultDataEntry ? 15000 : 0),
@@ -1193,7 +1231,6 @@ export async function updateUserProfile(
       name,
       phone,
       city,
-      profileCompleted: true,
       balance: existingUser?.balance ?? 0
     };
     if (photoURL) {
@@ -1207,7 +1244,6 @@ export async function updateUserProfile(
       existingUser.name = name;
       existingUser.phone = phone;
       existingUser.city = city;
-      existingUser.profileCompleted = true;
       if (photoURL) existingUser.photoURL = photoURL;
     } else {
       cachedUsers.push({

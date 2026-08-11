@@ -1,6 +1,4 @@
 import React, { useState, useEffect, FormEvent } from 'react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { User, NumberLimit, Demand, DrawDeadline, Booking, PakistanBondResult, ThaiLotteryResult, AllResultType, DrawCategory, Transaction } from '../types';
 import { Shield, Plus, Trash, Check, X, UserCheck, AlertTriangle, ShieldCheck, HelpCircle, Sparkles, Clock, MessageCircle, Search, History, Wallet } from 'lucide-react';
 import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, updateUserPassword, getAdminConfiguredEmail, updateCustomerPassword, registerInAuthOnly, changeLoggedAdminPassword, getTransactions, approveTransaction, rejectTransaction } from '../utils/store';
@@ -38,9 +36,6 @@ interface AdminPortalProps {
   onEditResult: (result: AllResultType) => Promise<{ success: boolean; error?: string }>;
   onDeleteResult: (id: string, category: 'pakistan_bond' | 'thailand_lottery') => Promise<{ success: boolean; error?: string }>;
 }
-
-
-
 
 function safeGetTime(value: any): number {
   if (!value) return 0;
@@ -989,13 +984,6 @@ export default function AdminPortal({
           </div>
 
           <h4 className="text-base font-bold text-slate-800 flex items-center justify-end gap-2">
-            <button
-              onClick={() => generateAdminBookingsPDF(bookings)}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-bold cursor-pointer"
-            >
-              📄 تمام بکنگز PDF
-            </button>
-
             <span>تمام کسٹمرز کی بکنگز کا پینل (Master Booking Control)</span>
             <Clock className="w-5 h-5 text-amber-500" />
           </h4>
