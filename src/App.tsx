@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   getLoggedInUser, 
-  setLoggedInUser, 
+  setLoggedInUser, syncLoggedInUser, 
   getUsers, 
   getBookings, 
   getNumberLimits, 
@@ -59,7 +59,7 @@ export default function App() {
   const [demands, setDemands] = useState<Demand[]>([]);
   const [deadlines, setDeadlines] = useState<DrawDeadline[]>([]);
   const [adminMode, setAdminMode] = useState<boolean>(false);
-  const [adminConfiguredEmail, setAdminConfiguredEmailState] = useState<string>('mastermaindqureshi110@gmail.com');
+  const [adminConfiguredEmail, setAdminConfiguredEmailState] = useState<string>('');
   const [pakistanBondResults, setPakistanBondResults] = useState<PakistanBondResult[]>([]);
   const [thaiLotteryResults, setThaiLotteryResults] = useState<ThaiLotteryResult[]>([]);
   const [isMandatorySetupOpen, setIsMandatorySetupOpen] = useState<boolean>(false);
@@ -285,7 +285,7 @@ export default function App() {
 
       if (idLower.includes('@')) {
         emailToAuth = idLower;
-        if (emailToAuth === 'mastermaindqureshi110@gmail.com') {
+        if (emailToAuth === '') {
           emailToAuth = 'mastermaind.qureshi110@gmail.com';
         }
       } else {
@@ -363,22 +363,38 @@ export default function App() {
         return { success: false, error: 'پروفائل لوڈ کرنے میں ناکامی۔' };
       }
 
-      const isSuper = (
-        matchedUser.role === 'superAdmin' ||
-        matchedUser.role === 'admin'
-      );
-      const isDataEntry = (
-        matchedUser.role === 'dataEntryAdmin'
-      );
+    // Authoritative admin-role synchronization by verified login email.
+    const normalizedLoginEmail = emailToAuth.toLowerCase().trim();
 
-      if (isSuper) {
-        matchedUser.role = 'superAdmin';
-        matchedUser.isAdmin = true;
-      } else if (isDataEntry) {
-        matchedUser.role = 'dataEntryAdmin';
-        matchedUser.isAdmin = true;
-      }
+    if (normalizedLoginEmail === 'mastermaind.qureshi110@gmail.com') {
+      matchedUser.role = 'superAdmin';
+      matchedUser.isAdmin = true;
 
+      await setDoc(doc(db, 'users', uid), {
+        ...matchedUser,
+        email: normalizedLoginEmail,
+        role: 'superAdmin',
+        isAdmin: true
+      }, { merge: true });
+
+    } else if (normalizedLoginEmail === 'fareed.ghulam@gmail.com') {
+      matchedUser.role = 'dataEntryAdmin';
+      matchedUser.isAdmin = true;
+
+      await setDoc(doc(db, 'users', uid), {
+        ...matchedUser,
+        email: normalizedLoginEmail,
+        role: 'dataEntryAdmin',
+        isAdmin: true
+      }, { merge: true });
+
+    } else {
+      matchedUser.role = 'customer';
+      matchedUser.isAdmin = false;
+    }
+
+    const isSuper = matchedUser.role === 'superAdmin';
+    const isDataEntry = matchedUser.role === 'dataEntryAdmin';
       if (matchedUser.isAdmin && matchedUser.active === false) {
         await signOut(auth);
         return { success: false, error: 'آپ کا ایڈمن اکاؤنٹ غیر فعال کر دیا گیا ہے۔ برائے مہربانی سپر ایڈمن سے رابطہ کریں۔ (Your admin account is deactivated. Please contact Super Admin.)' };
@@ -396,13 +412,15 @@ export default function App() {
         }
       }
 
-      setLoggedInUser(matchedUser.email || matchedUser.uid);
-      syncWithStore();
-      if (matchedUser.isAdmin) {
-        setActiveTab('admin');
-      } else {
-        setActiveTab('dashboard');
-      }
+      syncLoggedInUser(matchedUser);
+    setCurrentUser(matchedUser);
+    setAdminMode(!!matchedUser.isAdmin);
+
+    if (matchedUser.isAdmin) {
+      setActiveTab('admin');
+    } else {
+      setActiveTab('dashboard');
+    }
       return { success: true };
     };
 

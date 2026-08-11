@@ -22,5 +22,13 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "exclude": [
+    "src/utils/store.backup.ts",
+    "src/utils/store.professional.backup.ts",
+    "src_backup_before_images_fix",
+    "**/*.backup.ts",
+    "**/*.bak.ts",
+    "**/*.before-*"
+  ]
 }
