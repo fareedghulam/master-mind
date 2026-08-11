@@ -1,5 +1,7 @@
 export type DrawCategory = 'pakistan_bond' | 'thailand_lottery';
 
+export type AdminRole = 'superAdmin' | 'dataEntryAdmin' | 'admin' | 'customer';
+
 export interface User {
   uid?: string;
   email: string;

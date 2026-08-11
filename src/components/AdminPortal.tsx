@@ -1,9 +1,15 @@
 import React, { useState, useEffect, FormEvent } from 'react';
-import { User, NumberLimit, Demand, DrawDeadline, Booking, PakistanBondResult, ThaiLotteryResult, AllResultType, DrawCategory, Transaction } from '../types';
-import { Shield, Plus, Trash, Check, X, UserCheck, AlertTriangle, ShieldCheck, HelpCircle, Sparkles, Clock, MessageCircle, Search, History, Wallet } from 'lucide-react';
-import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, updateUserPassword, getAdminConfiguredEmail, updateCustomerPassword, registerInAuthOnly, changeLoggedAdminPassword, getTransactions, approveTransaction, rejectTransaction } from '../utils/store';
+import { User, NumberLimit, Demand, DrawDeadline, Booking, PakistanBondResult, ThaiLotteryResult, AllResultType, DrawCategory } from '../types';
+import { ShieldCheck, UserCheck, Sparkles, Clock, History } from 'lucide-react';
+import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, getAdminConfiguredEmail, updateCustomerPassword, registerInAuthOnly, changeLoggedAdminPassword } from '../utils/store';
 import { db } from '../lib/firebase';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
+
+import { AdminDemandsBookingsTab } from './admin/AdminDemandsBookingsTab';
+import { AdminUsersFinanceTab } from './admin/AdminUsersFinanceTab';
+import { AdminLimitsDeadlinesTab } from './admin/AdminLimitsDeadlinesTab';
+import { AdminResultsTab } from './admin/AdminResultsTab';
+import { AdminManagementTab } from './admin/AdminManagementTab';
 
 interface AdminPortalProps {
   users: User[];
@@ -202,8 +208,6 @@ export default function AdminPortal({
   const [demandSuccess, setDemandSuccess] = useState('');
 
   // Master Bookings states
-  const [bookingSearchQuery, setBookingSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'pakistan_bond' | 'thailand_lottery'>('all');
   const [cancelSuccess, setCancelSuccess] = useState('');
   const [cancelError, setCancelError] = useState('');
 
@@ -508,14 +512,12 @@ export default function AdminPortal({
     const emailClean = newAdminEmail.toLowerCase().trim();
 
     try {
-      // 1. Register/Sync in Firebase Authentication first so they can log in
       const uid = await registerInAuthOnly(emailClean, newAdminPassword);
 
       if (!uid) {
         throw new Error('ایڈمن لاگ ان بنانے میں ناکامی (Failed to create auth user)');
       }
 
-      // 2. Create user document in Firestore users collection (profile data only, no password!)
       const newAdminDoc = {
         uid,
         email: emailClean,
@@ -529,7 +531,6 @@ export default function AdminPortal({
         lastLogin: null
       };
 
-      // [UID-Migration] Save the admin profile document in Firestore under users/{uid}
       await setDoc(doc(db, 'users', uid), newAdminDoc);
 
       setAdminManageSuccess(`کامیاب: نیا ایڈمن ${newAdminName} کامیابی سے بنا دیا گیا ہے اور لاگ ان کے لیے تیار ہے۔`);
@@ -563,7 +564,6 @@ export default function AdminPortal({
       if (!cached || !cached.uid) {
         throw new Error('ایڈمن کا UID نہیں ملا۔ (Admin UID not found.)');
       }
-      // [UID-Migration] Delete the admin record strictly using their secure UID
       await deleteDoc(doc(db, 'users', cached.uid));
       setAdminManageSuccess(`کامیاب: ایڈمن (${email}) کا ریکارڈ کامیابی سے حذف کر دیا گیا ہے۔`);
     } catch (err: any) {
@@ -641,67 +641,29 @@ export default function AdminPortal({
     setWhatsappSuccess(`کامیاب: واٹس ایپ سپورٹ نمبر تبدیل کر کے +${updated} کر دیا گیا ہے۔ تمام کسٹمرز کے رابطہ لنکس اپ ڈیٹ ہو چکے ہیں۔`);
   };
 
-  const handleApprove = async (id: string, num: string) => {
-    setDemandError('');
-    setDemandSuccess('');
-    const res = await onApproveDemand(id);
-    if (res.success) {
-      setDemandSuccess(`کامیاب: نمبر ${num} کے لئے ڈیمانڈ کامیابی سے منظور کر کے بکنگ شیٹ میں شامل کر دی گئی ہے۔`);
-    } else {
-      setDemandError(res.error || 'ڈیمانڈ منظور کرنے میں غلطی پیش آئی۔');
-    }
-  };
-
-  const handleReject = async (id: string, num: string) => {
-    setDemandError('');
-    setDemandSuccess('');
-    const res = await onRejectDemand(id);
-    if (res.success) {
-      setDemandSuccess(`کامیاب: نمبر ${num} کے لئے بھیجی گئی ڈیمانڈ کو مسترد کر دیا گیا ہے۔`);
-    } else {
-      setDemandError(res.error || 'ڈیمانڈ مسترد کرنے میں غلطی پیش آئی۔');
-    }
-  };
-
-  const handleCancelBookingClick = async (bookingId: string, number: string) => {
-    setCancelSuccess('');
-    setCancelError('');
-    const res = await onCancelBookingByAdmin(bookingId);
-    if (res.success) {
-      setCancelSuccess(`کامیاب: نمبر (${number}) کی بکنگ کامیابی سے منسوخ کر دی گئی ہے اور رقم کسٹمر کے والٹ میں واپس جمع ہو گئی ہے!`);
-    } else {
-      setCancelError(res.error || 'بکنگ منسوخ کرنے میں کوئی خامی پیش آئی۔');
-    }
-  };
-
-  const handleWalletAction = async (actionType: 'recharge' | 'deduct') => {
+  const handleWalletAction = async (action: 'recharge' | 'deduct') => {
     setRechargeError('');
     setRechargeSuccess('');
 
-    if (!rechargeEmail || !rechargeAmount) {
-      setRechargeError('براہ کرم کسٹمر ایمیل اور رقم دونوں لکھیں۔');
+    if (!rechargeEmail.trim() || !rechargeAmount.trim()) {
+      setRechargeError('ای میل اور رقم درج کرنا ضروری ہے۔');
       return;
     }
 
-    const amountNum = parseInt(rechargeAmount, 10);
-    if (isNaN(amountNum) || amountNum <= 0) {
-      setRechargeError('براہ کرم درست رقم درج کریں۔ (نمبر صفر سے زیادہ ہونا چاہیے)');
+    const amt = parseInt(rechargeAmount, 10);
+    if (isNaN(amt) || amt <= 0) {
+      setRechargeError('برائے مہربانی ایک درست مثبت رقم درج کریں۔');
       return;
     }
 
-    const targetAmount = actionType === 'recharge' ? amountNum : -amountNum;
-    const ok = await onRecharge(rechargeEmail, targetAmount);
+    const finalAmount = action === 'deduct' ? -amt : amt;
+    const ok = await onRecharge(rechargeEmail.trim(), finalAmount);
     if (ok) {
-      const updatedUser = users.find(u => (u.email || '').toLowerCase() === (rechargeEmail || '').toLowerCase());
-      if (actionType === 'recharge') {
-        setRechargeSuccess(`Rs. ${amountNum.toLocaleString()} والٹ میں کامیابی سے جمع کر دیئے گئے۔ کسٹمر کا نیا والٹ بیلنس: Rs. ${(updatedUser?.balance ?? 0).toLocaleString()}`);
-      } else {
-        setRechargeSuccess(`Rs. ${amountNum.toLocaleString()} والٹ سے کامیابی سے کاٹ لیے گئے۔ کسٹمر کا نیا والٹ بیلنس: Rs. ${(updatedUser?.balance ?? 0).toLocaleString()}`);
-      }
+      setRechargeSuccess(action === 'deduct' ? `کامیاب: Rs. ${amt.toLocaleString()} اکاؤنٹ سے منہا کر دیے گئے ہیں۔` : `کامیاب: Rs. ${amt.toLocaleString()} اکاؤنٹ میں شامل کر دیے گئے ہیں۔`);
       setRechargeAmount('');
       setRechargeReason('');
     } else {
-      setRechargeError('اس ایمیل کا کوئی کسٹمر نہیں ملا۔ براہ کرم درست ایمیل لکھیں۔');
+      setRechargeError('والٹ ٹرانزیکشن میں خرابی پیش آئی۔');
     }
   };
 
@@ -848,1840 +810,172 @@ export default function AdminPortal({
       </div>
 
       {activeAdminTab === 'demands_bookings' && isSuper && (
-        <>
-          {/* Incoming Demands Control Panel Module */}
-          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md space-y-6">
-        <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 flex items-center justify-end gap-2">
-          <span>موصولہ ڈیمانڈز کا پینل (Incoming Demands Approval)</span>
-          <Sparkles className="w-5 h-5 text-amber-500" />
-        </h4>
-
-        {demandError && (
-          <div className="p-3 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs text-right">
-            ⚠️ {demandError}
-          </div>
-        )}
-        {demandSuccess && (
-          <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs text-right">
-            ✓ {demandSuccess}
-          </div>
-        )}
-
-        {demands.length === 0 ? (
-          <p className="text-slate-400 text-xs text-center py-6">کوئی ڈیمانڈ موصول نہیں ہوئی۔</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-right border-collapse text-xs sm:text-sm">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-100">
-                  <th className="py-2.5 px-3 font-semibold text-slate-600 text-left">اقدام (Action)</th>
-                  <th className="py-2.5 px-3 font-semibold text-slate-600">حیثیت</th>
-                  <th className="py-2.5 px-3 font-semibold text-slate-600">میزان رقم</th>
-                  <th className="py-2.5 px-3 font-semibold text-slate-600">فرسٹ/سیکنڈ</th>
-                  <th className="py-2.5 px-3 font-semibold text-slate-600">نمبر (No)</th>
-                  <th className="py-2.5 px-3 font-semibold text-slate-600">کیٹیگری</th>
-                  <th className="py-2.5 px-3 font-semibold text-slate-600 text-right">کسٹمر تفصیل</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {demands.map((d) => {
-                  const customer = users.find(u => (u.email || '').toLowerCase() === (d.userEmail || '').toLowerCase());
-                  return (
-                     <tr key={d.id} className="hover:bg-slate-50/50 transition-colors">
-                       {/* Action Buttons */}
-                       <td className="py-3 px-3 text-left">
-                         {d.status === 'pending' ? (
-                           <div className="flex gap-2">
-                             <button
-                               onClick={() => handleReject(d.id, d.number)}
-                               className="bg-red-50 hover:bg-red-100 text-red-700 font-bold px-2.5 py-1 rounded-xl transition-all flex items-center gap-1 border border-red-200 cursor-pointer text-[10px]"
-                             >
-                               <X className="w-3 h-3" />
-                               <span>مسترد</span>
-                             </button>
-                             <button
-                               onClick={() => handleApprove(d.id, d.number)}
-                               className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold px-2.5 py-1 rounded-xl transition-all flex items-center gap-1 border border-emerald-200 cursor-pointer text-[10px]"
-                             >
-                               <Check className="w-3 h-3" />
-                               <span>منظور</span>
-                             </button>
-                           </div>
-                         ) : (
-                           <span className="text-[10px] text-slate-400 font-sans italic">حل شدہ (Processed)</span>
-                         )}
-                       </td>
-
-                       {/* Status Indicator */}
-                       <td className="py-3 px-3">
-                         {d.status === 'pending' && <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">زیرِ غور ⏳</span>}
-                         {d.status === 'approved' && <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-200">منظور شدہ ✓</span>}
-                         {d.status === 'rejected' && <span className="text-[10px] text-red-600 bg-red-50 px-1.5 py-0.5 rounded-full border border-red-200">مسترد ✗</span>}
-                       </td>
-
-                       {/* Total Amount */}
-                       <td className="py-3 px-3 font-mono font-semibold text-slate-700">
-                         Rs. {(d.firstAmount + d.secondAmount).toLocaleString()}
-                       </td>
-
-                       {/* Breakdown First/Second */}
-                       <td className="py-3 px-3 font-mono text-slate-550 text-xs">
-                         F: {d.firstAmount} / S: {d.secondAmount}
-                       </td>
-
-                       {/* Target Number */}
-                       <td className="py-3 px-3 font-mono font-bold text-red-600 text-sm">
-                         {d.number}
-                       </td>
-
-                       {/* Category Type */}
-                       <td className="py-3 px-3 text-slate-600 text-xs font-semibold">
-                         {d.category === 'pakistan_bond' ? 'پاکستان بانڈ' : 'تھائی لاٹری'}
-                       </td>
-
-                       {/* Customer Details info */}
-                       <td className="py-3 px-3 text-right">
-                         <span className="font-semibold block text-slate-800">{customer?.name || 'نامعلوم'}</span>
-                         <span className="text-[10px] text-slate-400 font-mono block">{d.userEmail}</span>
-                       </td>
-                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Master Booking Control Panel Module */}
-      <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md space-y-6">
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-1.5 flex-wrap justify-end">
-            <button
-              onClick={() => setCategoryFilter('all')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                categoryFilter === 'all' ? 'bg-slate-900 text-amber-400 font-bold' : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              تمام بکنگز ({bookings.length})
-            </button>
-            <button
-              onClick={() => setCategoryFilter('pakistan_bond')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                categoryFilter === 'pakistan_bond' ? 'bg-slate-900 text-amber-400 font-bold' : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              پاکستان بانڈ ({bookings.filter(b => b.category === 'pakistan_bond').length})
-            </button>
-            <button
-              onClick={() => setCategoryFilter('thailand_lottery')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                categoryFilter === 'thailand_lottery' ? 'bg-slate-900 text-amber-400 font-bold' : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              تھائی لینڈ لاٹری ({bookings.filter(b => b.category === 'thailand_lottery').length})
-            </button>
-          </div>
-
-          <h4 className="text-base font-bold text-slate-800 flex items-center justify-end gap-2">
-            <span>تمام کسٹمرز کی بکنگز کا پینل (Master Booking Control)</span>
-            <Clock className="w-5 h-5 text-amber-500" />
-          </h4>
-        </div>
-
-        {/* Filter and Search Box */}
-        <div className="grid grid-cols-1 gap-3">
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="کسٹمر کی ای میل یا بکنگ نمبر سے تلاش کریں..."
-              value={bookingSearchQuery}
-              onChange={(e) => setBookingSearchQuery(e.target.value)}
-              className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 pl-4 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-            />
-            <Search className="w-5 h-5 text-slate-400 absolute right-4 top-3.5" />
-          </div>
-        </div>
-
-        {cancelError && (
-          <div className="p-3 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs text-right">
-            ⚠️ {cancelError}
-          </div>
-        )}
-        {cancelSuccess && (
-          <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs text-right font-sans">
-            ✓ {cancelSuccess}
-          </div>
-        )}
-
-        {(() => {
-          const filteredBookings = bookings.filter((b) => {
-            const matchesCategory = categoryFilter === 'all' || b.category === categoryFilter;
-            const matchesSearch =
-              !bookingSearchQuery ||
-              b.number.includes(bookingSearchQuery) ||
-              (b.userEmail || '').toLowerCase().includes(bookingSearchQuery.toLowerCase());
-            return matchesCategory && matchesSearch;
-          }).sort((a, b) => safeGetTime(b.timestamp) - safeGetTime(a.timestamp));
-
-          if (filteredBookings.length === 0) {
-            return <p className="text-slate-400 text-xs text-center py-6 font-sans">کوئی بکنگ ریکارڈ نہیں ملا۔</p>;
-          }
-
-          return (
-            <div className="overflow-x-auto">
-              <table className="w-full text-right border-collapse text-xs sm:text-sm">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-100">
-                    <th className="py-2.5 px-3 font-semibold text-slate-600 text-left">منسوخ کریں (Cancel)</th>
-                    <th className="py-2.5 px-3 font-semibold text-slate-600 font-mono text-[10px]">ٹائم اسٹیمپ</th>
-                    <th className="py-2.5 px-3 font-semibold text-slate-600">کل لاگت</th>
-                    <th className="py-2.5 px-3 font-semibold text-slate-600">سیکنڈ</th>
-                    <th className="py-2.5 px-3 font-semibold text-slate-600">فرسٹ</th>
-                    <th className="py-2.5 px-3 font-semibold text-slate-600">بک شدہ نمبر</th>
-                    <th className="py-2.5 px-3 font-semibold text-slate-600">کیٹیگری</th>
-                    <th className="py-2.5 px-3 font-semibold text-slate-600 text-right">کسٹمر تفصیل</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredBookings.map((b) => {
-                    const customer = users.find(u => (u.email || '').toLowerCase() === (b.userEmail || '').toLowerCase());
-                    return (
-                      <tr key={b.id} className="hover:bg-slate-50/50 transition-colors">
-                        {/* Cancel Action Button */}
-                        <td className="py-3 px-3 text-left">
-                          <button
-                            onClick={() => handleCancelBookingClick(b.id, b.number)}
-                            className="bg-red-50 hover:bg-red-100 text-red-700 font-bold px-2.5 py-1 rounded-xl transition-all flex items-center gap-1 border border-red-200 cursor-pointer text-[10px]"
-                          >
-                            <Trash className="w-3 h-3" />
-                            <span>منسوخ کریں</span>
-                          </button>
-                        </td>
-
-                        {/* Timestamp */}
-                        <td className="py-3 px-3 text-slate-400 font-mono text-[10px]">
-                          {safeFormatDate(b.timestamp, 'en-US', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit',
-                            month: 'short',
-                            day: 'numeric'
-                          })}
-                        </td>
-
-                        {/* Total Amount */}
-                        <td className="py-3 px-3 font-mono font-semibold text-slate-700">
-                          Rs. {(b.firstAmount + b.secondAmount).toLocaleString()}
-                        </td>
-
-                        {/* Breakdown Second */}
-                        <td className="py-3 px-3 font-mono text-slate-550 text-xs">
-                          Rs. {b.secondAmount.toLocaleString()}
-                        </td>
-
-                        {/* Breakdown First */}
-                        <td className="py-3 px-3 font-mono text-slate-550 text-xs">
-                          Rs. {b.firstAmount.toLocaleString()}
-                        </td>
-
-                        {/* Target Number */}
-                        <td className="py-3 px-3 font-mono font-bold text-red-600 text-sm">
-                          {b.number}
-                        </td>
-
-                        {/* Category Type */}
-                        <td className="py-3 px-3 text-slate-600 text-xs font-semibold">
-                          <div>{b.category === 'pakistan_bond' ? 'پاکستان بانڈ' : 'تھائی لاٹری'}</div>
-                          {b.category === 'pakistan_bond' && (b.bondValue || b.drawNumber || b.drawDate) && (
-                            <div className="text-[10px] text-amber-700 font-mono mt-0.5">
-                              {b.bondValue && <span>{b.bondValue} </span>}
-                              {b.drawNumber && <span>| ڈرا #{b.drawNumber} </span>}
-                              {b.drawDate && <span>| {b.drawDate}</span>}
-                            </div>
-                          )}
-                        </td>
-
-                        {/* Customer Details info */}
-                        <td className="py-3 px-3 text-right">
-                          <span className="font-semibold block text-slate-800">{customer?.name || 'نامعلوم'}</span>
-                          <span className="text-[10px] text-slate-400 font-mono block">{b.userEmail}</span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          );
-        })()}
-      </div>
-        </>
+        <AdminDemandsBookingsTab
+          users={users}
+          demands={demands}
+          bookings={bookings}
+          demandError={demandError}
+          demandSuccess={demandSuccess}
+          cancelError={cancelError}
+          cancelSuccess={cancelSuccess}
+          onApproveDemand={onApproveDemand}
+          onRejectDemand={onRejectDemand}
+          onCancelBookingByAdmin={onCancelBookingByAdmin}
+          safeGetTime={safeGetTime}
+          safeFormatDate={safeFormatDate}
+        />
       )}
 
       {activeAdminTab === 'users_finance' && isSuper && (
-        <div className="space-y-8">
-
-        {/* Module 1: Customer Wallet Management (کسٹمر والٹ مینجمنٹ) */}
-        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md">
-          <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 mb-5 flex items-center justify-end gap-2">
-            <span>Customer Wallet Management (کسٹمر والٹ مینجمنٹ)</span>
-            <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></span>
-          </h4>
-
-          {rechargeError && (
-            <div className="mb-4 p-3 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs leading-relaxed">
-              ⚠️ {rechargeError}
-            </div>
-          )}
-          {rechargeSuccess && (
-            <div className="mb-4 p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs leading-relaxed">
-              ✓ {rechargeSuccess}
-            </div>
-          )}
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-slate-600 text-xs font-semibold mb-1.5">
-                کسٹمر ای میل (Customer Email) *
-              </label>
-              <input
-                type="email"
-                placeholder="customer@example.com"
-                value={rechargeEmail}
-                onChange={(e) => setRechargeEmail(e.target.value)}
-                className="w-full text-left bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-600 text-xs font-semibold mb-1.5">
-                رقم (Amount in Rs.) *
-              </label>
-              <input
-                type="number"
-                placeholder="1000"
-                value={rechargeAmount}
-                onChange={(e) => setRechargeAmount(e.target.value)}
-                className="w-full text-left bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-600 text-xs font-semibold mb-1.5">
-                وجہ / نوٹ (Reason - Optional)
-              </label>
-              <input
-                type="text"
-                placeholder="مثال: کیش وصولی یا والٹ ایڈجسٹمنٹ"
-                value={rechargeReason}
-                onChange={(e) => setRechargeReason(e.target.value)}
-                className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => handleWalletAction('recharge')}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-2xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-              >
-                <span>والٹ ریچارج کریں (Recharge Wallet)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleWalletAction('deduct')}
-                className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-2xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-              >
-                <span>والٹ سے رقم کاٹیں (Deduct Wallet)</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Quick list of registered customers to quickly recharge */}
-          <div className="mt-6 pt-5 border-t border-slate-100">
-            <h5 className="text-[11px] text-slate-500 font-bold mb-3">رجسٹرڈ کسٹمرز کی لسٹ اور موجودہ بیلنس</h5>
-            <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
-              {users.map((u) => (
-                <div 
-                  key={u.email || u.uid} 
-                  onClick={() => setRechargeEmail(u.email || '')}
-                  className="flex justify-between items-center bg-slate-50 hover:bg-amber-50/50 p-2.5 rounded-xl text-xs transition-all cursor-pointer border border-slate-100"
-                >
-                  <span className="font-mono text-slate-600 font-semibold">Rs. {(u.balance ?? 0).toLocaleString()}</span>
-                  <div className="text-right">
-                    <span className="font-semibold block text-slate-800">{u.name} {u.isAdmin && '(ایڈمن)'}</span>
-                    <span className="text-[10px] text-slate-400 font-mono">{u.email || 'ای میل کے بغیر'}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    )}
+        <AdminUsersFinanceTab
+          users={users}
+          rechargeError={rechargeError}
+          rechargeSuccess={rechargeSuccess}
+          rechargeEmail={rechargeEmail}
+          setRechargeEmail={setRechargeEmail}
+          rechargeAmount={rechargeAmount}
+          setRechargeAmount={setRechargeAmount}
+          rechargeReason={rechargeReason}
+          setRechargeReason={setRechargeReason}
+          handleWalletAction={handleWalletAction}
+          whatsappError={whatsappError}
+          whatsappSuccess={whatsappSuccess}
+          whatsappVal={whatsappVal}
+          setWhatsappVal={setWhatsappVal}
+          handleWhatsappSubmit={handleWhatsappSubmit}
+          passwordError={passwordError}
+          passwordSuccess={passwordSuccess}
+          adminCurrentPasswordInput={adminCurrentPasswordInput}
+          setAdminCurrentPasswordInput={setAdminCurrentPasswordInput}
+          adminEmailInput={adminEmailInput}
+          adminPasswordInput={adminPasswordInput}
+          setAdminPasswordInput={setAdminPasswordInput}
+          adminConfirmPasswordInput={adminConfirmPasswordInput}
+          setAdminConfirmPasswordInput={setAdminConfirmPasswordInput}
+          handlePasswordSubmit={handlePasswordSubmit}
+          userPasswordError={userPasswordError}
+          userPasswordSuccess={userPasswordSuccess}
+          userSearchQuery={userSearchQuery}
+          setUserSearchQuery={setUserSearchQuery}
+          foundUser={foundUser}
+          setFoundUser={setFoundUser}
+          handleSearchUser={handleSearchUser}
+          userNewPassword={userNewPassword}
+          setUserNewPassword={setUserNewPassword}
+          userConfirmPassword={userConfirmPassword}
+          setUserConfirmPassword={setUserConfirmPassword}
+          handleUserPasswordReset={handleUserPasswordReset}
+        />
+      )}
 
       {activeAdminTab === 'limits_deadlines' && isSuper && (
-        <div className="space-y-8">
-          {/* Module 2: Number Booking Limit Configuration (نمبر لمٹ مقرر کریں) */}
-        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md flex flex-col justify-between">
-          <div>
-            <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 mb-5 flex items-center justify-end gap-2">
-              <span>بکنگ نمبر زیادہ سے زیادہ لمٹ</span>
-              <span className="w-2.5 h-2.5 bg-amber-500 rounded-full"></span>
-            </h4>
-
-            {limitError && (
-              <div className="mb-4 p-3 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs leading-relaxed">
-                ⚠️ {limitError}
-              </div>
-            )}
-            {limitSuccess && (
-              <div className="mb-4 p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs leading-relaxed">
-                ✓ {limitSuccess}
-              </div>
-            )}
-
-            <form onSubmit={handleLimitSubmit} className="space-y-4">
-              <div>
-                <label className="block text-slate-600 text-xs font-semibold mb-1.5">
-                  کیٹیگری منتخب کریں (Choose Draw Type) *
-                </label>
-                <div className="grid grid-cols-2 gap-2 text-xs font-medium">
-                  <button
-                    type="button"
-                    onClick={() => setLimitCategory('pakistan_bond')}
-                    className={`py-2 px-3 rounded-xl border text-center transition-all ${
-                      limitCategory === 'pakistan_bond'
-                        ? 'bg-slate-900 text-amber-400 border-slate-900 font-bold'
-                        : 'bg-slate-50 text-slate-600 border-slate-200'
-                    }`}
-                  >
-                    پاکستان بانڈ
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setLimitCategory('thailand_lottery')}
-                    className={`py-2 px-3 rounded-xl border text-center transition-all ${
-                      limitCategory === 'thailand_lottery'
-                        ? 'bg-slate-900 text-amber-400 border-slate-900 font-bold'
-                        : 'bg-slate-50 text-slate-600 border-slate-200'
-                    }`}
-                  >
-                    تھائی لینڈ لاٹری
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                    زیادہ سے زیادہ رقم لمٹ *
-                  </label>
-                  <input
-                    type="number"
-                    placeholder="مثال: 50"
-                    value={limitAmount}
-                    onChange={(e) => setLimitAmount(e.target.value)}
-                    className="w-full text-left bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                    مخصوص نمبر لکھیں *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="نمبر لکھیں"
-                    value={limitNumber}
-                    onChange={(e) => setLimitNumber(e.target.value)}
-                    className="w-full text-left bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold py-3 px-4 rounded-2xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Plus className="w-4 h-4 text-amber-400" />
-                <span>خصوصی بکنگ لمٹ لگائیں</span>
-              </button>
-            </form>
-
-            {/* List of active set limits */}
-            <div className="mt-6 pt-5 border-t border-slate-100">
-              <h5 className="text-xs font-bold text-slate-700 mb-3 text-right">موجودہ سیٹ شدہ نمبر لمٹس کی لسٹ ({limits.length})</h5>
-              {limits.length === 0 ? (
-                <p className="text-xs text-slate-400 text-center py-3 bg-slate-50 rounded-2xl">کوئی فعال نمبر لمٹ نہیں ہے۔</p>
-              ) : (
-                <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
-                  {limits.map((limit) => {
-                    const categoryMap: Record<DrawCategory, string> = {
-                      pakistan_bond: 'پاکستان پرائز بانڈ',
-                      thailand_lottery: 'تھائی لینڈ لاٹری'
-                    };
-                    return (
-                      <div key={limit.id} className="flex justify-between items-center bg-slate-50 hover:bg-slate-100 p-3 rounded-2xl text-xs transition-all border border-slate-200">
-                        <button
-                          onClick={async () => {
-                            if (window.confirm(`کیا آپ واقعی نمبر #${limit.number} کی لمٹ ختم کرنا چاہتے ہیں؟`)) {
-                              await onDeleteLimit(limit.id);
-                            }
-                          }}
-                          className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl transition-all cursor-pointer"
-                          title="حذف کریں"
-                        >
-                          <Trash className="w-4 h-4" />
-                        </button>
-                        <div className="text-right">
-                          <div className="font-bold text-slate-800 flex items-center justify-end gap-2">
-                            <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-lg font-mono font-bold">#{limit.number}</span>
-                            <span>{categoryMap[limit.category] || limit.category}</span>
-                          </div>
-                          <span className="text-[11px] text-slate-500 font-mono block mt-1">زیادہ سے زیادہ فرسٹ/سیکنڈ لمٹ: Rs. {limit.maxAmount.toLocaleString()}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Module 3: Booking Deadline Settings (بکنگ آخری وقت اور تاریخ) */}
-        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md md:col-span-2 space-y-4">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-3 border-b border-slate-100">
-            {editingDrawId ? (
-              <button
-                type="button"
-                onClick={resetDeadlineForm}
-                className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-4 py-2 rounded-2xl text-xs flex items-center gap-1.5 cursor-pointer transition-all"
-              >
-                <X className="w-4 h-4" />
-                <span>فارم ریسیٹ کریں / نیا ڈرا بنائیں (Reset Form / Create New Draw)</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={resetDeadlineForm}
-                className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded-2xl text-xs flex items-center gap-1.5 cursor-pointer transition-all shadow-sm"
-              >
-                <Plus className="w-4 h-4" />
-                <span>نیا ڈرا شامل کریں (Add New Draw)</span>
-              </button>
-            )}
-
-            <div className="text-right">
-              <h4 className="text-base font-bold text-slate-800 flex items-center justify-end gap-2">
-                <span>ڈرا کی بکنگ کا آخری وقت اور تاریخ (Booking Deadlines)</span>
-                <Clock className="w-5 h-5 text-red-500" />
-              </h4>
-              {editingDrawId && (
-                <span className="text-xs text-amber-600 font-semibold">ایڈٹ موڈ: ڈرا ID {editingDrawId}</span>
-              )}
-            </div>
-          </div>
-
-          {deadlineError && (
-            <div className="p-3 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs">
-              ⚠️ {deadlineError}
-            </div>
-          )}
-          {deadlineSuccess && (
-            <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs">
-              ✓ {deadlineSuccess}
-            </div>
-          )}
-
-          <form onSubmit={handleDeadlineSubmit} className="space-y-4">
-            {/* Booking Status Selector (Open / Closed / Result Announced manual switch) */}
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2">
-              <label className="block text-slate-700 text-xs font-bold text-right">
-                بکنگ اسٹیٹس (دستی کنٹرول) *
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDeadlineStatus('open');
-                    setDeadlineTitle('بکنگ فائنل کھل گئی ہے');
-                  }}
-                  className={`py-2.5 px-3 rounded-2xl border text-center transition-all text-xs font-bold flex items-center justify-center gap-1.5 ${
-                    deadlineStatus === 'open'
-                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm shadow-emerald-600/10'
-                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                  }`}
-                >
-                  <span className={`w-2 h-2 rounded-full ${deadlineStatus === 'open' ? 'bg-white animate-ping' : 'bg-slate-400'}`}></span>
-                  <span>اوپن (Open)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDeadlineStatus('closed');
-                    setDeadlineTitle('بکنگ فائنل بند ہے');
-                  }}
-                  className={`py-2.5 px-3 rounded-2xl border text-center transition-all text-xs font-bold flex items-center justify-center gap-1.5 ${
-                    deadlineStatus === 'closed'
-                      ? 'bg-red-600 text-white border-red-600 shadow-sm shadow-red-600/10'
-                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                  }`}
-                >
-                  <span className="w-2 h-2 rounded-full bg-current"></span>
-                  <span>بند (Closed)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDeadlineStatus('result_announced');
-                    setDeadlineTitle('قرعہ اندازی کا نتیجہ جاری ہو گیا ہے');
-                  }}
-                  className={`py-2.5 px-3 rounded-2xl border text-center transition-all text-xs font-bold flex items-center justify-center gap-1.5 ${
-                    deadlineStatus === 'result_announced'
-                      ? 'bg-amber-600 text-white border-amber-600 shadow-sm shadow-amber-600/10'
-                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                  }`}
-                >
-                  <span className="w-2 h-2 rounded-full bg-current"></span>
-                  <span>نتیجہ (Result)</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              
-              {/* Field 1: Category Selection */}
-              <div>
-                <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                  کیٹیگری منتخب کریں *
-                </label>
-                <select
-                  value={deadlineCategory}
-                  onChange={(e) => {
-                    const cat = e.target.value as 'pakistan_bond' | 'thailand_lottery';
-                    setDeadlineCategory(cat);
-                  }}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-                >
-                  <option value="pakistan_bond">پاکستان بانڈ</option>
-                  <option value="thailand_lottery">تھائی لینڈ لاٹری</option>
-                </select>
-              </div>
-
-              {/* Field 2: Status Text / Title */}
-              <div>
-                <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                  اسٹیٹس پیغام (Urdu Status Message) *
-                </label>
-                <input
-                  type="text"
-                  placeholder="مثال: بکنگ فائنل کھل گئی ہے"
-                  value={deadlineTitle}
-                  onChange={(e) => setDeadlineTitle(e.target.value)}
-                  className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-                  required
-                />
-              </div>
-
-              {/* Field 3: Date & Time Picker */}
-              <div>
-                <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                  آخری تاریخ اور وقت (Deadline Date & Time) *
-                </label>
-                <input
-                  type="datetime-local"
-                  value={deadlineDateTime}
-                  onChange={(e) => setDeadlineDateTime(e.target.value)}
-                  className="w-full text-left bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans font-mono"
-                  required
-                />
-              </div>
-
-              {/* Next Draw Fields (Conditional on category) */}
-              {deadlineCategory === 'pakistan_bond' && (
-                <>
-                  <div>
-                    <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                      انعامی بانڈ مالیت (Prize Bond Value) *
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="مثال: Rs. 200 یا Rs. 750"
-                      value={nextPrizeBondValue}
-                      onChange={(e) => setNextPrizeBondValue(e.target.value)}
-                      className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                      ڈرا شہر (Draw City)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="مثال: لاہور"
-                      value={nextDrawCity}
-                      onChange={(e) => setNextDrawCity(e.target.value)}
-                      className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                      ڈرا نمبر (Draw Number)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="مثال: 95"
-                      value={nextDrawNumber}
-                      onChange={(e) => setNextDrawNumber(e.target.value)}
-                      className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-                    />
-                  </div>
-                </>
-              )}
-
-              <div>
-                <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                  ڈرا تاریخ (Draw Date)
-                </label>
-                <input
-                  type="text"
-                  placeholder="مثال: 15-08-2026"
-                  value={nextDrawDate}
-                  onChange={(e) => setNextDrawDate(e.target.value)}
-                  className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-                />
-              </div>
-
-            </div>
-
-            <button
-              type="submit"
-              className="w-full bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold py-3 px-4 rounded-2xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
-            >
-              <span>{editingDrawId ? 'ڈرا سیٹنگز تبدیل کریں (Update Draw Settings)' : 'نیا ڈرا محفوظ کریں (Save New Draw)'}</span>
-            </button>
-          </form>
-
-          {/* Display active deadlines */}
-          <div className="pt-4 border-t border-slate-100">
-            <h5 className="text-xs font-bold text-slate-700 mb-3">موجودہ فعال بکنگ ڈیڈلائنز کی حیثیت ({deadlines.length})</h5>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {deadlines.map((d) => {
-                const isOver = d.status === 'closed' || safeGetTime(d.deadlineIso) <= Date.now();
-                const drawKey = d.id || `${d.category}-${d.nextPrizeBondValue || ''}`;
-                return (
-                  <div key={drawKey} className="p-4 bg-slate-50 rounded-2xl border border-slate-150 space-y-2 flex flex-col justify-between shadow-sm">
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          d.status === 'result_announced'
-                            ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                            : d.status === 'closed' || safeGetTime(d.deadlineIso) <= Date.now()
-                            ? 'bg-red-50 text-red-600 border border-red-100'
-                            : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
-                        }`}>
-                          {d.status === 'result_announced' ? 'نتیجہ جاری (Result)' : d.status === 'closed' || safeGetTime(d.deadlineIso) <= Date.now() ? 'بند ہے (Closed)' : 'اوپن ہے (Open)'}
-                        </span>
-                        <span className="font-bold text-xs text-slate-800">
-                          {d.category === 'pakistan_bond' ? `پاکستان بانڈ ${d.nextPrizeBondValue ? '- ' + d.nextPrizeBondValue : ''}` : 'تھائی لینڈ لاٹری'}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-600">
-                        اسٹیٹس: <strong className={d.status === 'result_announced' ? 'text-amber-600' : d.status === 'closed' ? 'text-red-600' : 'text-emerald-600'}>{d.status === 'result_announced' ? 'نتیجہ جاری (Result Announced)' : d.status === 'closed' ? 'بند (Closed)' : 'اوپن (Open)'}</strong>
-                      </p>
-                      <p className="text-[11px] text-slate-600">
-                        عنوان: <strong className="text-slate-800">{d.titleUrdu}</strong>
-                      </p>
-                      <p className="text-[11px] text-slate-500 font-mono">
-                        آخری وقت: {safeFormatDate(d.deadlineIso, 'en-US')}
-                      </p>
-                      {d.category === 'pakistan_bond' ? (
-                        <div className="mt-1 pt-1 border-t border-slate-200/50 space-y-0.5 text-[10px] text-slate-500">
-                          {d.nextPrizeBondValue && (
-                            <div>مالیت: <strong className="text-slate-700">{d.nextPrizeBondValue}</strong></div>
-                          )}
-                          {d.nextDrawCity && (
-                            <div>شہر: <strong className="text-slate-700">{d.nextDrawCity}</strong></div>
-                          )}
-                          {d.nextDrawNumber && (
-                            <div>ڈرا نمبر: <strong className="text-slate-700">{d.nextDrawNumber}</strong></div>
-                          )}
-                          {d.nextDrawDate && (
-                            <div>ڈرا تاریخ: <strong className="text-slate-700">{d.nextDrawDate}</strong></div>
-                          )}
-                        </div>
-                      ) : (
-                        d.nextDrawDate && (
-                          <div className="mt-1 pt-1 border-t border-slate-200/50 text-[10px] text-slate-500">
-                            ڈرا تاریخ: <strong className="text-slate-700">{d.nextDrawDate}</strong>
-                          </div>
-                        )
-                      )}
-                    </div>
-
-                    {/* Action buttons: Edit, Delete, Toggle Open/Close */}
-                    <div className="space-y-2 mt-2 pt-2 border-t border-slate-200/60">
-                      <div className="flex gap-2 justify-end">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingDrawId(d.id || d.category);
-                            setDeadlineCategory(d.category);
-                            setDeadlineTitle(d.titleUrdu);
-                            setDeadlineDateTime(d.deadlineIso);
-                            setDeadlineStatus(d.status || 'open');
-                            setNextPrizeBondValue(d.nextPrizeBondValue || '');
-                            setNextDrawCity(d.nextDrawCity || '');
-                            setNextDrawNumber(d.nextDrawNumber || '');
-                            setNextDrawDate(d.nextDrawDate || '');
-                          }}
-                          className="py-1 px-3 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 cursor-pointer transition-all"
-                        >
-                          ایڈٹ (Edit)
-                        </button>
-                        {onDeleteDeadline && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              if (window.confirm('کیا آپ واقعی یہ ڈرا ڈیڈ لائن حذف کرنا چاہتے ہیں؟')) {
-                                await onDeleteDeadline(d.id || d.category);
-                              }
-                            }}
-                            className="py-1 px-3 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 cursor-pointer transition-all"
-                          >
-                            حذف (Delete)
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-                            const isoStr = futureDate.toISOString().slice(0, 16);
-                            onSetDeadline(
-                              d.category,
-                              isoStr,
-                              'بکنگ فائنل کھل گئی ہے',
-                              'open',
-                              d.nextPrizeBondValue,
-                              d.nextDrawCity,
-                              d.nextDrawNumber,
-                              d.nextDrawDate,
-                              d.id || d.category
-                            );
-                          }}
-                          className={`py-1.5 px-1 rounded-xl text-[10px] font-bold transition-all cursor-pointer text-center flex items-center justify-center gap-1 border ${
-                            d.status === 'open' 
-                              ? 'bg-emerald-600 text-white border-emerald-600' 
-                              : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'
-                          }`}
-                        >
-                          <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse"></span>
-                          <span>کھولیں</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
-                            const isoStr = pastDate.toISOString().slice(0, 16);
-                            onSetDeadline(
-                              d.category,
-                              isoStr,
-                              'بکنگ فائنل بند ہے',
-                              'closed',
-                              d.nextPrizeBondValue,
-                              d.nextDrawCity,
-                              d.nextDrawNumber,
-                              d.nextDrawDate,
-                              d.id || d.category
-                            );
-                          }}
-                          className={`py-1.5 px-1 rounded-xl text-[10px] font-bold transition-all cursor-pointer text-center flex items-center justify-center gap-1 border ${
-                            d.status === 'closed' 
-                              ? 'bg-red-600 text-white border-red-600' 
-                              : 'bg-white text-red-600 border-red-200 hover:bg-red-50'
-                          }`}
-                        >
-                          <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-                          <span>بند کریں</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
-                            const isoStr = pastDate.toISOString().slice(0, 16);
-                            onSetDeadline(
-                              d.category,
-                              isoStr,
-                              'قرعہ اندازی کا نتیجہ جاری ہو گیا ہے',
-                              'result_announced',
-                              d.nextPrizeBondValue,
-                              d.nextDrawCity,
-                              d.nextDrawNumber,
-                              d.nextDrawDate,
-                              d.id || d.category
-                            );
-                          }}
-                          className={`py-1.5 px-1 rounded-xl text-[10px] font-bold transition-all cursor-pointer text-center flex items-center justify-center gap-1 border ${
-                            d.status === 'result_announced' 
-                              ? 'bg-amber-600 text-white border-amber-600' 
-                              : 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50'
-                          }`}
-                        >
-                          <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-                          <span>نتیجہ</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-    )}
-
-      {activeAdminTab === 'users_finance' && isSuper && (
-        <div className="space-y-8">
-          {/* Module 4: WhatsApp Support Helpline Configuration */}
-        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md md:col-span-2 space-y-4">
-          <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 flex items-center justify-end gap-2">
-            <span>واٹس ایپ ہیلپ لائن اور رابطہ سیٹنگز (WhatsApp Help Settings)</span>
-            <MessageCircle className="w-5 h-5 text-emerald-600" />
-          </h4>
-
-          {whatsappError && (
-            <div className="p-3 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs text-right">
-              ⚠️ {whatsappError}
-            </div>
-          )}
-          {whatsappSuccess && (
-            <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs text-right">
-              ✓ {whatsappSuccess}
-            </div>
-          )}
-
-          <form onSubmit={handleWhatsappSubmit} className="space-y-4">
-            <p className="text-xs text-slate-500 leading-relaxed text-right">
-              یہاں پر وہ واٹس ایپ نمبر درج کریں جس پر کسٹمرز کسی مدد یا والٹ بیلنس ریچارج کے لیے رابطہ کر سکیں۔ نمبر میں کنٹری کوڈ (جیسے پاکستان کے لیے 92) لازمی لکھیں بغیر پلس (+) یا صفر (0) کے، جیسے 923001234567۔
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button
-                type="submit"
-                className="bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold py-3 px-6 rounded-2xl text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md sm:w-48 whitespace-nowrap"
-              >
-                <span>محفوظ کریں (Save Phone)</span>
-              </button>
-
-              <div className="flex-1 relative">
-                <input
-                  type="text"
-                  placeholder="923001234567"
-                  value={whatsappVal}
-                  onChange={(e) => setWhatsappVal(e.target.value)}
-                  className="w-full text-left bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans font-mono"
-                  required
-                />
-              </div>
-            </div>
-          </form>
-        </div>
-
-        {/* Module 5: Admin Password Configuration (ایڈمن پاس ورڈ تبدیل کریں) */}
-        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md md:col-span-2 space-y-4">
-          <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 flex items-center justify-end gap-2">
-            <span>ایڈمن پاس ورڈ اور سیکیورٹی سیٹنگز (Admin Password Settings)</span>
-            <ShieldCheck className="w-5 h-5 text-blue-600" />
-          </h4>
-
-          {passwordError && (
-            <div className="p-3 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs text-right">
-              ⚠️ {passwordError}
-            </div>
-          )}
-          {passwordSuccess && (
-            <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs text-right">
-              ✓ {passwordSuccess}
-            </div>
-          )}
-
-          <form onSubmit={handlePasswordSubmit} className="space-y-4">
-            <p className="text-xs text-slate-500 leading-relaxed text-right">
-              یہاں سے آپ ایڈمن کا لاگ ان پاس ورڈ تبدیل کر سکتے ہیں۔ پاس ورڈ تبدیل ہونے کے بعد، اگلی بار ایڈمن کو نئے پاس ورڈ کے ساتھ ہی لاگ ان کرنا ہوگا۔
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                  موجودہ پاس ورڈ (Current Password) *
-                </label>
-                <input
-                  type="password"
-                  placeholder="موجودہ پاس ورڈ درج کریں"
-                  value={adminCurrentPasswordInput}
-                  onChange={(e) => setAdminCurrentPasswordInput(e.target.value)}
-                  className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                  ایڈمن ای میل (Admin Email)
-                </label>
-                <input
-                  type="email"
-                  value={adminEmailInput}
-                  readOnly
-                  disabled
-                  className="w-full text-left bg-slate-100 border border-slate-200 rounded-2xl py-3 px-4 text-sm font-mono text-slate-500 cursor-not-allowed"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                  نیا مضبوط پاس ورڈ (New Password) *
-                </label>
-                <input
-                  type="password"
-                  placeholder="نیا پاس ورڈ درج کریں"
-                  value={adminPasswordInput}
-                  onChange={(e) => setAdminPasswordInput(e.target.value)}
-                  className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                  نیا پاس ورڈ دوبارہ درج کریں (Confirm Password) *
-                </label>
-                <input
-                  type="password"
-                  placeholder="نیا پاس ورڈ دوبارہ درج کریں"
-                  value={adminConfirmPasswordInput}
-                  onChange={(e) => setAdminConfirmPasswordInput(e.target.value)}
-                  className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="w-full bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold py-3 px-4 rounded-2xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
-            >
-              <span>پاس ورڈ تبدیل کریں (Update Password)</span>
-            </button>
-          </form>
-        </div>
-
-        {/* Module 6: User Password Management (صارفین کے پاس ورڈ کا انتظام) */}
-        <div id="module-user-password-management" className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md md:col-span-2 space-y-4">
-          <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 flex items-center justify-end gap-2">
-            <span>صارفین کے پاس ورڈ کا انتظام (User Password Management)</span>
-            <UserCheck className="w-5 h-5 text-indigo-600" />
-          </h4>
-
-          {userPasswordError && (
-            <div id="admin-user-password-reset-error" className="p-3 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs text-right font-sans">
-              ⚠️ {userPasswordError}
-            </div>
-          )}
-          {userPasswordSuccess && (
-            <div id="admin-user-password-reset-success" className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs text-right font-sans">
-              ✓ {userPasswordSuccess}
-            </div>
-          )}
-
-          <div className="space-y-4">
-            <p className="text-xs text-slate-500 leading-relaxed text-right">
-              یہاں سے آپ کسی بھی کسٹمر کا پاس ورڈ براہِ راست تبدیل کر سکتے ہیں۔ پہلے کسٹمر کا ای میل یا موبائل نمبر درج کر کے تلاش کریں۔
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button
-                id="admin-search-user-btn"
-                type="button"
-                onClick={handleSearchUser}
-                className="bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold py-3 px-6 rounded-2xl text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md sm:w-48 whitespace-nowrap"
-              >
-                <span>تلاش کریں (Search)</span>
-                <Search className="w-4 h-4" />
-              </button>
-
-              <div className="flex-1 relative">
-                <input
-                  id="admin-search-user-query"
-                  type="text"
-                  placeholder="ای میل یا موبائل نمبر درج کریں"
-                  value={userSearchQuery}
-                  onChange={(e) => {
-                    setUserSearchQuery(e.target.value);
-                    setFoundUser(null);
-                  }}
-                  className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-                />
-              </div>
-            </div>
-
-            {foundUser && (
-              <div id="searched-user-details" className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-4 text-right">
-                <h5 className="text-xs font-bold text-slate-700 border-b border-slate-200 pb-2">صارف کی تفصیلات (User Details)</h5>
-                
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-sans text-slate-700">
-                  <div className="bg-white p-3 rounded-xl border border-slate-100">
-                    <span className="block text-slate-400 mb-1 font-semibold text-[10px]">کردار (Role)</span>
-                    <span className="font-bold text-slate-800">{foundUser.role || (foundUser.isAdmin ? 'admin' : 'customer')}</span>
-                  </div>
-                  <div className="bg-white p-3 rounded-xl border border-slate-100">
-                    <span className="block text-slate-400 mb-1 font-semibold text-[10px]">موبائل نمبر (Mobile)</span>
-                    <span className="font-mono font-bold text-slate-800">{foundUser.phone || 'N/A'}</span>
-                  </div>
-                  <div className="bg-white p-3 rounded-xl border border-slate-100">
-                    <span className="block text-slate-400 mb-1 font-semibold text-[10px]">ای میل (Email)</span>
-                    <span className="font-mono font-bold text-slate-800 break-all">{foundUser.email}</span>
-                  </div>
-                  <div className="bg-white p-3 rounded-xl border border-slate-100">
-                    <span className="block text-slate-400 mb-1 font-semibold text-[10px]">نام (Name)</span>
-                    <span className="font-bold text-slate-800">{foundUser.name}</span>
-                  </div>
-                </div>
-
-                <form id="admin-user-password-reset-form" onSubmit={handleUserPasswordReset} className="space-y-4 pt-2 border-t border-slate-200">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                        پاس ورڈ کی تصدیق کریں (Confirm New Password) *
-                      </label>
-                      <input
-                        id="admin-confirm-reset-user-password"
-                        type="password"
-                        placeholder="دوبارہ پاس ورڈ درج کریں"
-                        value={userConfirmPassword}
-                        onChange={(e) => setUserConfirmPassword(e.target.value)}
-                        className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                        نیا پاس ورڈ - کم از کم 8 ہندسے (New Password - Min 8 chars) *
-                      </label>
-                      <input
-                        id="admin-reset-user-password"
-                        type="password"
-                        placeholder="نیا پاس ورڈ درج کریں"
-                        value={userNewPassword}
-                        onChange={(e) => setUserNewPassword(e.target.value)}
-                        className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    id="admin-save-user-password-btn"
-                    type="submit"
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-2xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
-                  >
-                    <span>پاس ورڈ محفوظ کریں (Save Password)</span>
-                  </button>
-                </form>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    )}
+        <AdminLimitsDeadlinesTab
+          limits={limits}
+          deadlines={deadlines}
+          limitError={limitError}
+          limitSuccess={limitSuccess}
+          limitCategory={limitCategory}
+          setLimitCategory={setLimitCategory}
+          limitNumber={limitNumber}
+          setLimitNumber={setLimitNumber}
+          limitAmount={limitAmount}
+          setLimitAmount={setLimitAmount}
+          handleLimitSubmit={handleLimitSubmit}
+          onDeleteLimit={onDeleteLimit}
+          deadlineError={deadlineError}
+          deadlineSuccess={deadlineSuccess}
+          editingDrawId={editingDrawId}
+          resetDeadlineForm={resetDeadlineForm}
+          deadlineCategory={deadlineCategory}
+          setDeadlineCategory={setDeadlineCategory}
+          deadlineTitle={deadlineTitle}
+          setDeadlineTitle={setDeadlineTitle}
+          deadlineDateTime={deadlineDateTime}
+          setDeadlineDateTime={setDeadlineDateTime}
+          deadlineStatus={deadlineStatus}
+          setDeadlineStatus={setDeadlineStatus}
+          nextPrizeBondValue={nextPrizeBondValue}
+          setNextPrizeBondValue={setNextPrizeBondValue}
+          nextDrawCity={nextDrawCity}
+          setNextDrawCity={setNextDrawCity}
+          nextDrawNumber={nextDrawNumber}
+          setNextDrawNumber={setNextDrawNumber}
+          nextDrawDate={nextDrawDate}
+          setNextDrawDate={setNextDrawDate}
+          handleDeadlineSubmit={handleDeadlineSubmit}
+          onSetDeadline={onSetDeadline}
+          onDeleteDeadline={onDeleteDeadline}
+          setEditingDrawId={setEditingDrawId}
+          safeGetTime={safeGetTime}
+          safeFormatDate={safeFormatDate}
+        />
+      )}
 
       {activeAdminTab === 'results' && (
-        <>
-          {/* Module 7: Result Management (قرعہ اندازی کے نتائج کا انتظام) */}
-        <div id="module-result-management" className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md md:col-span-2 space-y-6 text-right">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-3 border-b border-slate-100">
-            {/* Add Result Button */}
-            {!resultFormOpen ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setResultFormMode('add');
-                  resetResultForm();
-                  setResultFormOpen(true);
-                }}
-                className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-5 py-2.5 rounded-2xl flex items-center justify-center gap-2 cursor-pointer shadow-sm shadow-amber-500/10 transition-all text-xs"
-              >
-                <Plus className="w-4 h-4" />
-                <span>نیا نتیجہ شامل کریں (Add New Result)</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setResultFormOpen(false)}
-                className="w-full sm:w-auto bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-5 py-2.5 rounded-2xl flex items-center justify-center gap-2 cursor-pointer transition-all text-xs"
-              >
-                <X className="w-4 h-4" />
-                <span>فارم بند کریں (Close Form)</span>
-              </button>
-            )}
-
-            <div className="text-right">
-              <h4 className="text-base font-bold text-slate-800 flex items-center justify-end gap-2">
-                <span>قرعہ اندازی کے نتائج کا انتظام (Result Management)</span>
-                <History className="w-5 h-5 text-amber-500" />
-              </h4>
-              <p className="text-xs text-slate-400 mt-1">پاکستان پرائز بانڈ اور تھائی لینڈ لاٹری کے نتائج شامل کریں، تبدیل کریں یا حذف کریں</p>
-            </div>
-          </div>
-
-          {resultError && (
-            <div id="admin-result-error" className="p-3 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs text-right font-sans">
-              ⚠️ {resultError}
-            </div>
-          )}
-          {resultSuccess && (
-            <div id="admin-result-success" className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs text-right font-sans">
-              ✓ {resultSuccess}
-            </div>
-          )}
-
-          {/* Form Modal / Collapsible Section */}
-          {resultFormOpen && (
-            <div id="admin-result-form" className="bg-slate-50 p-5 sm:p-6 rounded-3xl border border-slate-150 space-y-4 text-right">
-              <h5 className="text-sm font-bold text-slate-800 border-b border-slate-200 pb-2">
-                {resultFormMode === 'add' ? 'نیا نتیجہ شامل کریں (Add New Result)' : 'نتیجہ ایڈٹ کریں (Edit Result)'}
-              </h5>
-
-              <form onSubmit={handleSaveResult} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs font-sans">
-                  
-                  {/* Category Selection */}
-                  <div>
-                    <label className="block text-slate-600 font-semibold mb-1 text-right">کیٹیگری (Category) *</label>
-                    <select
-                      id="result-form-category"
-                      value={resCategory}
-                      onChange={(e) => {
-                        const cat = e.target.value as 'pakistan_bond' | 'thailand_lottery';
-                        setResCategory(cat);
-                        if (cat === 'thailand_lottery') {
-                          setResCity('بنکاک');
-                        } else {
-                          setResCity('');
-                        }
-                      }}
-                      disabled={resultFormMode === 'edit'}
-                      className="w-full text-right bg-white border border-slate-200 rounded-xl py-2 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-                    >
-                      <option value="pakistan_bond">پاکستان پرائز بانڈ</option>
-                      <option value="thailand_lottery">تھائی لینڈ لاٹری</option>
-                    </select>
-                  </div>
-
-                  {/* Date Picker */}
-                  <div>
-                    <label className="block text-slate-600 font-semibold mb-1 text-right">ڈرا کی تاریخ (Draw Date) *</label>
-                    <input
-                      id="result-form-date"
-                      type="date"
-                      value={resDate}
-                      onChange={(e) => setResDate(e.target.value)}
-                      required
-                      className="w-full text-right bg-white border border-slate-200 rounded-xl py-2 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-                    />
-                  </div>
-
-                  {/* City */}
-                  <div>
-                    <label className="block text-slate-600 font-semibold mb-1 text-right">شہر (City) *</label>
-                    <input
-                      id="result-form-city"
-                      type="text"
-                      placeholder={resCategory === 'pakistan_bond' ? "مثلاً ملتان، کراچی" : "مثلاً بنکاک"}
-                      value={resCity}
-                      onChange={(e) => setResCity(e.target.value)}
-                      required
-                      className="w-full text-right bg-white border border-slate-200 rounded-xl py-2 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-                    />
-                  </div>
-
-                  {/* Conditional: Pakistan Bond Fields */}
-                  {resCategory === 'pakistan_bond' && (
-                    <>
-                      {/* Bond Value */}
-                      <div>
-                        <label className="block text-slate-600 font-semibold mb-1 text-right">بانڈ کی مالیت (Bond Value) *</label>
-                        <select
-                          id="result-form-bond-value"
-                          value={resBondValue}
-                          onChange={(e) => setResBondValue(e.target.value)}
-                          className="w-full text-right bg-white border border-slate-200 rounded-xl py-2 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-                        >
-                          <option value="Rs. 100">Rs. 100</option>
-                          <option value="Rs. 200">Rs. 200</option>
-                          <option value="Rs. 750">Rs. 750</option>
-                          <option value="Rs. 1,500">Rs. 1,500</option>
-                          <option value="Rs. 7,500">Rs. 7,500</option>
-                          <option value="Rs. 15,000">Rs. 15,000</option>
-                          <option value="Rs. 25,000 Premium">Rs. 25,000 Premium</option>
-                          <option value="Rs. 40,000 Premium">Rs. 40,000 Premium</option>
-                        </select>
-                      </div>
-
-                      {/* Draw Number Only */}
-                      <div>
-                        <label className="block text-slate-600 font-semibold mb-1 text-right">ڈرا نمبر (Draw Number Only) *</label>
-                        <input
-                          id="result-form-draw-no-only"
-                          type="text"
-                          placeholder="مثلاً 106"
-                          value={resDrawNoOnly}
-                          onChange={(e) => setResDrawNoOnly(e.target.value)}
-                          required
-                          className="w-full text-right bg-white border border-slate-200 rounded-xl py-2 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  {/* Conditional: Thai Lottery Fields */}
-                  {resCategory === 'thailand_lottery' && (
-                    <>
-                      {/* Draw No Full */}
-                      <div>
-                        <label className="block text-slate-600 font-semibold mb-1 text-right">ڈرا نمبر اور نام (Draw Title) *</label>
-                        <input
-                          id="result-form-draw-no-thai"
-                          type="text"
-                          placeholder="مثلاً Thai Draw #384"
-                          value={resDrawNo}
-                          onChange={(e) => setResDrawNo(e.target.value)}
-                          required
-                          className="w-full text-right bg-white border border-slate-200 rounded-xl py-2 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  {/* First Prize */}
-                  <div>
-                    <label className="block text-slate-600 font-semibold mb-1 text-right">فرسٹ پرائز نمبر (First Prize Number) *</label>
-                    <input
-                      id="result-form-first-prize"
-                      type="text"
-                      maxLength={6}
-                      placeholder="6 ہندسوں کا لکی نمبر"
-                      value={resFirstPrize}
-                      onChange={(e) => setResFirstPrize(e.target.value.replace(/\D/g, ''))}
-                      required
-                      className="w-full text-right bg-white border border-slate-200 rounded-xl py-2 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans font-mono"
-                    />
-                  </div>
-
-                  {/* Conditional: Thai Lottery Digits (Auto-computed but editable) */}
-                  {resCategory === 'thailand_lottery' && (
-                    <>
-                      <div>
-                        <label className="block text-slate-600 font-semibold mb-1 text-right">آخری 2 ہندسے (Last 2 Digits)</label>
-                        <input
-                          id="result-form-last2"
-                          type="text"
-                          maxLength={2}
-                          value={resLast2Digits}
-                          onChange={(e) => setResLast2Digits(e.target.value.replace(/\D/g, ''))}
-                          className="w-full text-right bg-white border border-slate-200 rounded-xl py-2 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans font-mono"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-slate-600 font-semibold mb-1 text-right">فرنٹ 3 ہندسے (Front 3 Digits)</label>
-                        <input
-                          id="result-form-front3"
-                          type="text"
-                          maxLength={3}
-                          value={resFront3Digits}
-                          onChange={(e) => setResFront3Digits(e.target.value.replace(/\D/g, ''))}
-                          className="w-full text-right bg-white border border-slate-200 rounded-xl py-2 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans font-mono"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-slate-600 font-semibold mb-1 text-right">بیک 3 ہندسے (Back 3 Digits)</label>
-                        <input
-                          id="result-form-back3"
-                          type="text"
-                          maxLength={3}
-                          value={resBack3Digits}
-                          onChange={(e) => setResBack3Digits(e.target.value.replace(/\D/g, ''))}
-                          className="w-full text-right bg-white border border-slate-200 rounded-xl py-2 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans font-mono"
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {/* Second Prizes textarea */}
-                <div>
-                  <label className="block text-xs text-slate-600 font-semibold mb-1 text-right">سیکنڈ پرائز نمبرز - کوما سے الگ کریں (Second Prize Numbers - Comma separated)</label>
-                  <textarea
-                    id="result-form-seconds"
-                    rows={2}
-                    placeholder="مثال کے طور پر: 070148, 194865, 222052"
-                    value={resSecondPrizesStr}
-                    onChange={(e) => setResSecondPrizesStr(e.target.value)}
-                    className="w-full text-right bg-white border border-slate-200 rounded-xl py-2 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans font-mono text-xs"
-                  />
-                </div>
-
-                {/* Display constructed Pakistan Draw Name preview */}
-                {resCategory === 'pakistan_bond' && resDrawNoOnly && (
-                  <div className="bg-amber-50 border border-amber-200/50 p-2.5 rounded-xl text-xs text-amber-800 font-semibold text-right">
-                    <span>ڈرا کا پورا نام (Full Draw Name Preview): </span>
-                    <span className="font-mono">{resDrawNo}</span>
-                  </div>
-                )}
-
-                {/* Form Buttons */}
-                <div className="flex gap-3 pt-2">
-                  <button
-                    id="result-form-submit"
-                    type="submit"
-                    className="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-3 px-4 rounded-2xl text-xs sm:text-sm transition-all shadow-md cursor-pointer text-center"
-                  >
-                    <span>نتیجہ محفوظ کریں (Save Result)</span>
-                  </button>
-                  <button
-                    id="result-form-cancel"
-                    type="button"
-                    onClick={() => {
-                      setResultFormOpen(false);
-                      resetResultForm();
-                    }}
-                    className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-6 rounded-2xl text-xs sm:text-sm transition-all cursor-pointer text-center"
-                  >
-                    <span>منسوخ کریں (Cancel)</span>
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          {/* Results List View & Filtering */}
-          <div className="space-y-4">
-            <div className="flex flex-col md:flex-row gap-3 justify-between items-center bg-slate-50 p-3.5 rounded-2xl border border-slate-100 text-xs font-sans">
-              
-              {/* Search Result Bar */}
-              <div className="relative w-full md:w-64">
-                <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                  <Search className="w-4 h-4 text-slate-400" />
-                </span>
-                <input
-                  id="result-search-bar"
-                  type="text"
-                  placeholder="سرچ کریں (نمبر، شہر، ڈرا)..."
-                  value={resultSearchQuery}
-                  onChange={(e) => setResultSearchQuery(e.target.value)}
-                  className="w-full bg-white text-right text-xs text-slate-800 pl-9 pr-3.5 py-2 rounded-xl border border-slate-200 focus:border-amber-500 outline-none"
-                />
-              </div>
-
-              {/* View Category Toggles */}
-              <div className="flex gap-2 w-full md:w-auto">
-                <button
-                  id="btn-filter-pakbond"
-                  type="button"
-                  onClick={() => {
-                    setResultViewCategory('pakistan_bond');
-                    if (!resultFormOpen) setResCategory('pakistan_bond');
-                  }}
-                  className={`flex-1 md:flex-initial py-1.5 px-3 rounded-lg border font-semibold cursor-pointer text-center transition-all ${resultViewCategory === 'pakistan_bond' ? 'bg-amber-500 border-amber-500 text-slate-950 font-bold shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                >
-                  پاکستان بانڈز (Pakistan Bonds)
-                </button>
-                <button
-                  id="btn-filter-thai"
-                  type="button"
-                  onClick={() => {
-                    setResultViewCategory('thailand_lottery');
-                    if (!resultFormOpen) setResCategory('thailand_lottery');
-                  }}
-                  className={`flex-1 md:flex-initial py-1.5 px-3 rounded-lg border font-semibold cursor-pointer text-center transition-all ${resultViewCategory === 'thailand_lottery' ? 'bg-amber-500 border-amber-500 text-slate-950 font-bold shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                >
-                  تھائی لاٹری (Thai Lottery)
-                </button>
-              </div>
-            </div>
-
-            {/* Rendered List */}
-            <div className="overflow-x-auto rounded-2xl border border-slate-100 shadow-sm max-h-[380px] overflow-y-auto">
-              <table className="w-full text-right border-collapse text-xs sm:text-sm">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-500 border-b border-slate-100 sticky top-0 z-10">
-                    <th className="py-2.5 px-3 text-left">اقدام (Actions)</th>
-                    <th className="py-2.5 px-3">تاریخ (Date)</th>
-                    <th className="py-2.5 px-3">شہر / ملک</th>
-                    <th className="py-2.5 px-3">سیکنڈ پرائزز</th>
-                    <th className="py-2.5 px-3">فرسٹ پرائز</th>
-                    <th className="py-2.5 px-3">ڈرا نمبر / تفصیل</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
-                  {(() => {
-                    const activeResults = resultViewCategory === 'pakistan_bond' ? pakistanBondResults : thaiLotteryResults;
-                    const queryClean = resultSearchQuery.trim().toLowerCase();
-                    const filtered = activeResults.filter(r => {
-                      if (!queryClean) return true;
-                      const matchesDrawNo = r.drawNo && r.drawNo.toLowerCase().includes(queryClean);
-                      const matchesCity = r.city && r.city.toLowerCase().includes(queryClean);
-                      const matchesFirst = r.firstPrize && r.firstPrize.includes(queryClean);
-                      const matchesDate = r.date && r.date.includes(queryClean);
-                      const matchesSeconds = r.secondPrizes && r.secondPrizes.some(s => s.includes(queryClean));
-                      const matchesBondVal = r.category === 'pakistan_bond' && (r as PakistanBondResult).bondValue && (r as PakistanBondResult).bondValue.toLowerCase().includes(queryClean);
-                      return matchesDrawNo || matchesCity || matchesFirst || matchesDate || matchesSeconds || matchesBondVal;
-                    });
-
-                    if (filtered.length === 0) {
-                      return (
-                        <tr>
-                          <td colSpan={6} className="py-8 text-center text-slate-400">کوئی نتیجہ نہیں ملا۔</td>
-                        </tr>
-                      );
-                    }
-
-                    return filtered.map((draw) => (
-                      <tr key={draw.id} className="hover:bg-slate-50/50 transition-colors">
-                        {/* Actions */}
-                        <td className="py-3 px-3 text-left flex gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleEditClick(draw)}
-                            className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all"
-                          >
-                            ایڈٹ (Edit)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteClick(draw.id, draw.category)}
-                            className="bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all"
-                          >
-                            حذف (Delete)
-                          </button>
-                        </td>
-                        
-                        {/* Date */}
-                        <td className="py-3 px-3 font-mono text-slate-500 text-xs">{draw.date}</td>
-                        
-                        {/* City */}
-                        <td className="py-3 px-3 text-slate-700 font-semibold">{draw.city}</td>
-                        
-                        {/* Seconds */}
-                        <td className="py-3 px-3 text-slate-500 font-mono text-xs max-w-[150px] truncate" title={draw.secondPrizes.join(', ')}>
-                          {draw.secondPrizes.join(', ')}
-                        </td>
-                        
-                        {/* First */}
-                        <td className="py-3 px-3 font-mono font-bold text-amber-600">{draw.firstPrize}</td>
-                        
-                        {/* Draw No */}
-                        <td className="py-3 px-3 font-bold text-slate-800">
-                          <div>{draw.drawNo}</div>
-                          {draw.category === 'pakistan_bond' && (
-                            <span className="text-[10px] text-slate-400">پاکستان بانڈ - {(draw as PakistanBondResult).bondValue}</span>
-                          )}
-                          {draw.category === 'thailand_lottery' && (
-                            <div className="text-[9px] text-slate-400 font-mono flex gap-1 justify-end mt-0.5">
-                              <span>L2: {(draw as ThaiLotteryResult).last2Digits}</span> |
-                              <span>F3: {(draw as ThaiLotteryResult).front3Digits}</span> |
-                              <span>B3: {(draw as ThaiLotteryResult).back3Digits}</span>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ));
-                  })()}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-        </>
+        <AdminResultsTab
+          pakistanBondResults={pakistanBondResults}
+          thaiLotteryResults={thaiLotteryResults}
+          resultError={resultError}
+          resultSuccess={resultSuccess}
+          resultFormOpen={resultFormOpen}
+          setResultFormOpen={setResultFormOpen}
+          resultFormMode={resultFormMode}
+          setResultFormMode={setResultFormMode}
+          resCategory={resCategory}
+          setResCategory={setResCategory}
+          resDate={resDate}
+          setResDate={setResDate}
+          resCity={resCity}
+          setResCity={setResCity}
+          resBondValue={resBondValue}
+          setResBondValue={setResBondValue}
+          resDrawNoOnly={resDrawNoOnly}
+          setResDrawNoOnly={setResDrawNoOnly}
+          resDrawNo={resDrawNo}
+          setResDrawNo={setResDrawNo}
+          resFirstPrize={resFirstPrize}
+          setResFirstPrize={setResFirstPrize}
+          resLast2Digits={resLast2Digits}
+          setResLast2Digits={setResLast2Digits}
+          resFront3Digits={resFront3Digits}
+          setResFront3Digits={setResFront3Digits}
+          resBack3Digits={resBack3Digits}
+          setResBack3Digits={setResBack3Digits}
+          resSecondPrizesStr={resSecondPrizesStr}
+          setResSecondPrizesStr={setResSecondPrizesStr}
+          resetResultForm={resetResultForm}
+          handleSaveResult={handleSaveResult}
+          resultSearchQuery={resultSearchQuery}
+          setResultSearchQuery={setResultSearchQuery}
+          resultViewCategory={resultViewCategory}
+          setResultViewCategory={setResultViewCategory}
+          handleEditClick={handleEditClick}
+          handleDeleteClick={handleDeleteClick}
+        />
       )}
 
-      {/* Active limits display list */}
-      {activeAdminTab === 'limits_deadlines' && isSuper && (
-        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md">
-          <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 mb-5 text-right">
-            فعال بکنگ لمٹس (Active Limits)
-          </h4>
-
-          {limits.length === 0 ? (
-            <p className="text-slate-400 text-sm text-center py-6">کوئی خصوصی لِمٹ لاگو نہیں کی گئی ہے۔ تمام نمبرز لامحدود بک ہو سکتے ہیں۔</p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {limits.map((l) => (
-                <div 
-                  key={l.id} 
-                  className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-150 rounded-2xl"
-                >
-                  <button
-                    type="button"
-                    onClick={() => onDeleteLimit(l.id)}
-                    className="p-1 px-1.5 text-red-500 hover:bg-red-50 rounded-lg hover:text-red-700 transition-all cursor-pointer"
-                    title="لمٹ ختم کریں"
-                  >
-                    <Trash className="w-4 h-4" />
-                  </button>
-
-                  <div className="text-right">
-                    <span className="font-mono text-sm font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-lg ml-2">
-                      {l.number}
-                    </span>
-                    <span className="text-xs text-slate-400 font-mono tracking-wider">حد: Rs. {l.maxAmount}</span>
-                    <div className="text-[10px] text-slate-500 mt-1 font-sans">
-                      {l.category === 'pakistan_bond' ? 'پاکستان بانڈ' : 'تھائی لینڈ لاٹری'}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Admin Management Screen */}
       {activeAdminTab === 'admin_management' && isSuper && (
-        <div className="space-y-8">
-          {/* Create New Admin Form */}
-          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md space-y-6">
-            <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 flex items-center justify-end gap-2">
-              <span>نیا ایڈمن بنائیں (Create New Admin)</span>
-              <ShieldCheck className="w-5 h-5 text-amber-500" />
-            </h4>
-
-            {adminManageError && (
-              <div className="p-3 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs text-right" dir="rtl">
-                ⚠️ {adminManageError}
-              </div>
-            )}
-            {adminManageSuccess && (
-              <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs text-right" dir="rtl">
-                ✓ {adminManageSuccess}
-              </div>
-            )}
-
-            <form onSubmit={handleCreateAdminSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right font-sans">ایڈمن نام (Admin Name) *</label>
-                  <input
-                    type="text"
-                    placeholder="نام لکھیں"
-                    value={newAdminName}
-                    onChange={(e) => setNewAdminName(e.target.value)}
-                    className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-2.5 px-4 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right font-sans">موبائل نمبر (Mobile Number) *</label>
-                  <input
-                    type="tel"
-                    placeholder="03001234567"
-                    value={newAdminPhone}
-                    onChange={(e) => setNewAdminPhone(e.target.value)}
-                    className="w-full text-left bg-slate-50 border border-slate-200 rounded-2xl py-2.5 px-4 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right font-sans">ای میل ایڈریس (Admin Email) *</label>
-                  <input
-                    type="email"
-                    placeholder="admin@example.com"
-                    value={newAdminEmail}
-                    onChange={(e) => setNewAdminEmail(e.target.value)}
-                    className="w-full text-left bg-slate-50 border border-slate-200 rounded-2xl py-2.5 px-4 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right font-sans">لاگ ان پاس ورڈ (Login Password) *</label>
-                  <input
-                    type="password"
-                    placeholder="کم از کم 6 ہندسے"
-                    value={newAdminPassword}
-                    onChange={(e) => setNewAdminPassword(e.target.value)}
-                    className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-2.5 px-4 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-2">
-                <div className="flex gap-4 items-center">
-                  <span className="text-slate-600 text-xs font-semibold font-sans">انتخابِ عہدہ (Admin Role):</span>
-                  <label className="inline-flex items-center gap-1 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="adminRole"
-                      checked={newAdminRole === 'dataEntryAdmin'}
-                      onChange={() => setNewAdminRole('dataEntryAdmin')}
-                      className="text-amber-500 focus:ring-amber-500"
-                    />
-                    <span className="text-xs text-slate-700 font-semibold font-sans">ڈیٹا انٹری ایڈمن (Data Entry Admin)</span>
-                  </label>
-                  <label className="inline-flex items-center gap-1 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="adminRole"
-                      checked={newAdminRole === 'superAdmin'}
-                      onChange={() => setNewAdminRole('superAdmin')}
-                      className="text-amber-500 focus:ring-amber-500"
-                    />
-                    <span className="text-xs text-slate-700 font-semibold font-sans">سپر ایڈمن (Super Admin)</span>
-                  </label>
-                </div>
-
-                <button
-                  type="submit"
-                  className="bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold py-2.5 px-6 rounded-2xl text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md w-full sm:w-auto"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span className="font-sans font-bold">نیا ایڈمن رجسٹر کریں (Register Admin)</span>
-                </button>
-              </div>
-            </form>
-          </div>
-
-          {/* Registered Admins List */}
-          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md space-y-6">
-            <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 flex items-center justify-end gap-2">
-              <span>رجسٹرڈ ایڈمنز کی فہرست (Registered Admins)</span>
-              <Sparkles className="w-5 h-5 text-amber-500" />
-            </h4>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-right border-collapse text-xs sm:text-sm">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-100">
-                    <th className="py-2.5 px-3 font-semibold text-slate-600 text-left">اقدامات (Actions)</th>
-                    <th className="py-2.5 px-3 font-semibold text-slate-600">آخری لاگ ان (Last Login)</th>
-                    <th className="py-2.5 px-3 font-semibold text-slate-600">حیثیت (Status)</th>
-                    <th className="py-2.5 px-3 font-semibold text-slate-600">عہدہ (Role)</th>
-                    <th className="py-2.5 px-3 font-semibold text-slate-600">موبائل نمبر</th>
-                    <th className="py-2.5 px-3 font-semibold text-slate-600 text-right">ایڈمن تفصیل</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {users
-                    .filter(u => u.isAdmin === true || u.role === 'superAdmin' || u.role === 'dataEntryAdmin' || u.role === 'admin')
-                    .map((admin) => {
-                      const isMainOwner = (admin.email || '').toLowerCase() === getAdminConfiguredEmail().toLowerCase().trim();
-                      const isActive = admin.active !== false;
-                      const loginTime = admin.lastLogin ? safeFormatDate(admin.lastLogin, 'ur-PK', { timeZone: 'Asia/Karachi' }) : 'N/A';
-                      const formattedLogin = loginTime === 'N/A' ? 'لاگ ان نہیں ہوا (No Login)' : loginTime;
-
-                      return (
-                        <tr key={admin.email || admin.uid} className="hover:bg-slate-50/50 transition-colors">
-                          {/* Actions Column */}
-                          <td className="py-3 px-3 text-left">
-                            {!isMainOwner ? (
-                              <div className="flex gap-2">
-                                {/* Delete Button */}
-                                <button
-                                  onClick={() => handleDeleteAdmin(admin.email)}
-                                  className="bg-red-50 hover:bg-red-100 text-red-600 p-1.5 rounded-xl border border-red-200 transition-all cursor-pointer"
-                                  title="ایڈمن کو حذف کریں"
-                                >
-                                  <Trash className="w-4 h-4" />
-                                </button>
-
-                                {/* Toggle Active Status */}
-                                <button
-                                  onClick={() => handleToggleActiveAdmin(admin.email, isActive)}
-                                  className={`px-2 py-1 rounded-xl text-[10px] font-bold border transition-all cursor-pointer ${
-                                    isActive
-                                      ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200'
-                                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
-                                  }`}
-                                >
-                                  {isActive ? 'Deactivate' : 'Activate'}
-                                </button>
-
-                                {/* Toggle Role */}
-                                <button
-                                  onClick={() => handleChangeAdminRole(
-                                    admin.email,
-                                    admin.role === 'superAdmin' ? 'dataEntryAdmin' : 'superAdmin'
-                                  )}
-                                  className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-[10px] font-bold transition-all cursor-pointer"
-                                >
-                                  {admin.role === 'superAdmin' ? 'Make DataEntry' : 'Make Super'}
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-[10px] text-slate-400 font-sans italic">سپر مالک (Owner)</span>
-                            )}
-                          </td>
-
-                          {/* Last Login timestamp */}
-                          <td className="py-3 px-3 font-mono text-xs text-slate-500 text-left" dir="ltr">
-                            {formattedLogin}
-                          </td>
-
-                          {/* Active Status */}
-                          <td className="py-3 px-3">
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
-                              isActive 
-                                ? 'text-emerald-700 bg-emerald-50 border-emerald-200' 
-                                : 'text-red-600 bg-red-50 border-red-200'
-                            }`}>
-                              {isActive ? 'فعال (Active)' : 'غیر فعال (Inactive)'}
-                            </span>
-                          </td>
-
-                          {/* Role */}
-                          <td className="py-3 px-3">
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
-                              admin.role === 'superAdmin'
-                                ? 'text-purple-700 bg-purple-50 border-purple-200 font-bold'
-                                : 'text-blue-700 bg-blue-50 border-blue-200 font-semibold'
-                            }`}>
-                              {admin.role === 'superAdmin' ? 'Super Admin' : 'Data Entry Admin'}
-                            </span>
-                          </td>
-
-                          {/* Mobile Phone */}
-                          <td className="py-3 px-3 font-mono text-slate-600">
-                            {admin.phone}
-                          </td>
-
-                          {/* Name and Email */}
-                          <td className="py-3 px-3 text-right">
-                            <span className="font-semibold block text-slate-800 font-sans">{admin.name}</span>
-                            <span className="text-[10px] text-slate-400 font-mono block">{admin.email}</span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+        <AdminManagementTab
+          users={users}
+          adminManageError={adminManageError}
+          adminManageSuccess={adminManageSuccess}
+          newAdminName={newAdminName}
+          setNewAdminName={setNewAdminName}
+          newAdminPhone={newAdminPhone}
+          setNewAdminPhone={setNewAdminPhone}
+          newAdminEmail={newAdminEmail}
+          setNewAdminEmail={setNewAdminEmail}
+          newAdminPassword={newAdminPassword}
+          setNewAdminPassword={setNewAdminPassword}
+          newAdminRole={newAdminRole}
+          setNewAdminRole={setNewAdminRole}
+          handleCreateAdminSubmit={handleCreateAdminSubmit}
+          handleDeleteAdmin={handleDeleteAdmin}
+          handleToggleActiveAdmin={handleToggleActiveAdmin}
+          handleChangeAdminRole={handleChangeAdminRole}
+          safeFormatDate={safeFormatDate}
+        />
       )}
-
     </div>
   );
 }
