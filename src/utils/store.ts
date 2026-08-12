@@ -283,37 +283,48 @@ export function initializeStore() {
     localStorage.setItem('mqe_whatsapp_number', '923453090146');
   }
 
-  // A. Listen to Auth State dynamically
-  onAuthStateChanged(auth, async (firebaseUser) => {
-    if (firebaseUser) {
-      const email = firebaseUser.email;
-      const uid = firebaseUser.uid;
-      if (email) {
-        const normalized = email.toLowerCase().trim();
-        // Look up user role dynamically
-        let userProfile = cachedUsers.find(u => u.uid === uid);
-        if (!userProfile) {
-          try {
-            const docRef = doc(db, 'users', uid);
-            const userDoc = await getDocFromServer(docRef);
-            if (userDoc.exists()) {
-              userProfile = userDoc.data() as User;
-            }
-          } catch (e) {
-            console.error("Failed to fetch user role on auth state change:", e);
-          }
-        }
-        
-        const isSuper = userProfile && (userProfile.role === 'superAdmin' || userProfile.role === 'admin');
-        const isDataEntry = userProfile && userProfile.role === 'dataEntryAdmin';
-        
-        if (isSuper || isDataEntry) {
-          sessionStorage.setItem('admin_verified', 'true');
-        }
-      }
+  // A. Listen to Auth State dynamically.
+  // Do NOT wait for Firestore network calls to determine built-in admin access.
+  onAuthStateChanged(auth, (firebaseUser) => {
+    if (!firebaseUser) {
+      sessionStorage.removeItem('admin_verified');
+      notifyListeners();
+      return;
+    }
+
+    const email = (firebaseUser.email || '').toLowerCase().trim();
+    const uid = firebaseUser.uid;
+
+    const isDefaultSuper =
+      uid === 's6dXc7vXJnd0uXfcYxacbKfwASF3' ||
+      email === 'mastermaind.qureshi110@gmail.com';
+
+    const isDefaultDataEntry =
+      uid === 'fo7mGVcdIeTyh4X61yyJGrjgsgP2' ||
+      email === 'fareed.ghulam@gmail.com';
+
+    const cached = cachedUsers.find(
+      (u) =>
+        u.uid === uid ||
+        ((u.email || '').toLowerCase().trim() === email && email !== '')
+    );
+
+    const isFirestoreAdmin =
+      cached?.isAdmin === true ||
+      cached?.role === 'superAdmin' ||
+      cached?.role === 'admin' ||
+      cached?.role === 'dataEntryAdmin';
+
+    if (
+      isDefaultSuper ||
+      isDefaultDataEntry ||
+      isFirestoreAdmin
+    ) {
+      sessionStorage.setItem('admin_verified', 'true');
     } else {
       sessionStorage.removeItem('admin_verified');
     }
+
     notifyListeners();
   });
 
@@ -728,12 +739,25 @@ export function saveNumberLimits(limits: NumberLimit[]) {
 export function getLoggedInUser(): User | null {
   const firebaseUser = auth.currentUser;
   if (!firebaseUser) return null;
+
   const emailLower = firebaseUser.email?.toLowerCase().trim() || '';
-  const user = cachedUsers.find((u) => u.uid === firebaseUser.uid || (emailLower && u.email && u.email.toLowerCase().trim() === emailLower)) || null;
-  
+
+  const user = cachedUsers.find(
+    (u) =>
+      u.uid === firebaseUser.uid ||
+      (emailLower &&
+        u.email &&
+        u.email.toLowerCase().trim() === emailLower)
+  ) || null;
+
   if (user) {
-    const isSuper = user.role === 'superAdmin' || user.role === 'admin';
-    const isDataEntry = user.role === 'dataEntryAdmin';
+    const isSuper =
+      user.role === 'superAdmin' ||
+      user.role === 'admin';
+
+    const isDataEntry =
+      user.role === 'dataEntryAdmin';
+
     if (user.isAdmin || isSuper || isDataEntry) {
       return {
         ...user,
@@ -741,22 +765,56 @@ export function getLoggedInUser(): User | null {
         role: isDataEntry ? 'dataEntryAdmin' : 'superAdmin'
       };
     }
+
     return user;
   }
-  
-  // Robust timing fallback to prevent white screens / login kicks before cachedUsers is fully populated
-  const isDefaultSuper = emailLower === 'mastermaind.qureshi110@gmail.com';
-  const isDefaultDataEntry = emailLower === 'fareed.ghulam@gmail.com';
-  
+
+  // Authoritative fallback for built-in administrator accounts.
+  // Admin access must never depend on Firestore cache timing.
+
+  const isDefaultSuper =
+    firebaseUser.uid === 's6dXc7vXJnd0uXfcYxacbKfwASF3' ||
+    emailLower === 'mastermaind.qureshi110@gmail.com';
+
+  const isDefaultDataEntry =
+    firebaseUser.uid === 'fo7mGVcdIeTyh4X61yyJGrjgsgP2' ||
+    emailLower === 'fareed.ghulam@gmail.com';
+
+  if (isDefaultSuper) {
+    return {
+      uid: firebaseUser.uid,
+      email: 'mastermaind.qureshi110@gmail.com',
+      name: 'ایڈمن قریشی صاحب',
+      phone: '03453090146',
+      city: 'Karachi',
+      balance: 500000,
+      isAdmin: true,
+      role: 'superAdmin'
+    };
+  }
+
+  if (isDefaultDataEntry) {
+    return {
+      uid: firebaseUser.uid,
+      email: 'fareed.ghulam@gmail.com',
+      name: 'غلام فرید',
+      phone: '03212057166',
+      city: 'Karachi',
+      balance: 15000,
+      isAdmin: true,
+      role: 'dataEntryAdmin'
+    };
+  }
+
   return {
     uid: firebaseUser.uid,
     email: emailLower,
-    name: isDefaultSuper ? 'ایڈمن قریشی صاحب ڈاٹ' : (isDefaultDataEntry ? 'غلام فرید' : 'لوڈ ہو رہا ہے...'),
+    name: 'لوڈ ہو رہا ہے...',
     phone: '',
     city: '',
-    balance: isDefaultSuper ? 500000 : (isDefaultDataEntry ? 15000 : 0),
-    isAdmin: isDefaultSuper || isDefaultDataEntry,
-    role: isDefaultSuper ? 'superAdmin' : (isDefaultDataEntry ? 'dataEntryAdmin' : 'customer')
+    balance: 0,
+    isAdmin: false,
+    role: 'customer'
   };
 }
 
