@@ -336,194 +336,80 @@ export default function App() {
     return res;
   };
 
-  const handleLoginWithCredentials = async (
-    identifier: string,
-    passwordInput: string
-  ): Promise<{ success: boolean; error?: string }> => {
+  const handleLoginWithCredentials = async (identifier: string, passwordInput: string): Promise<{ success: boolean; error?: string }> => {
     const action = async () => {
       const online = await checkInternetConnection();
-
       if (!online) {
-        return {
-          success: false,
-          error:
-            'No internet connection. Please turn on Wi-Fi or Mobile Data and try again.'
-        };
+        return { success: false, error: 'No internet connection. Please turn on Wi-Fi or Mobile Data and try again.' };
       }
 
       const idLower = identifier.toLowerCase().trim();
       let emailToAuth = '';
 
-      // Email login
       if (idLower.includes('@')) {
         emailToAuth = idLower;
+        if (emailToAuth === '') {
+          emailToAuth = 'mastermaind.qureshi110@gmail.com';
+        }
       } else {
-        // Phone login remains Firestore-based for normal customers.
         try {
-          const q = query(
-            collection(db, 'users'),
-            where('phone', '==', identifier.trim())
-          );
-
+          const q = query(collection(db, 'users'), where('phone', '==', identifier.trim()));
           const querySnapshot = await getDocsFromServer(q);
-
           if (!querySnapshot.empty) {
             const data = querySnapshot.docs[0].data() as User;
-            emailToAuth = (data.email || '').toLowerCase().trim();
+            emailToAuth = data.email;
           }
         } catch (err) {
-          console.error('Secure login phone query failed:', err);
+          console.error("Secure login phone query failed:", err);
         }
       }
 
       if (!emailToAuth) {
-        return {
-          success: false,
-          error:
-            'یہ اکاؤنٹ رجسٹرڈ نہیں ہے۔ (This account is not registered.)'
-        };
+        return { success: false, error: 'یہ اکاؤنٹ رجسٹرڈ نہیں ہے۔ (This account is not registered.)' };
       }
 
-      // ------------------------------------------------------------
-      // STEP 1: Firebase Authentication is the authoritative login.
-      // ------------------------------------------------------------
       let uid = '';
-
       try {
-        const cred = await signInWithEmailAndPassword(
-          auth,
-          emailToAuth,
-          passwordInput
-        );
-
+        const cred = await signInWithEmailAndPassword(auth, emailToAuth.toLowerCase().trim(), passwordInput);
         uid = cred.user.uid;
       } catch (err: any) {
-        console.error('Firebase Auth sign in failed:', err);
-
-        if (
-          err.code === 'auth/wrong-password' ||
-          err.code === 'auth/invalid-credential' ||
-          err.code === 'auth/user-not-found'
-        ) {
-          return {
-            success: false,
-            error:
-              'ای میل/موبائل نمبر یا پاس ورڈ درست نہیں ہے۔ (Incorrect email/phone or password.)'
-          };
+        console.error("Firebase Auth sign in failed:", err);
+        if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found') {
+          return { success: false, error: 'ای میل/موبائل نمبر یا پاس ورڈ درست نہیں ہے۔ (Incorrect email/phone or password.)' };
+        } else if (err.code === 'auth/user-disabled') {
+          return { success: false, error: 'آپ کا اکاؤنٹ غیر فعال کر دیا گیا ہے۔ (Your account has been disabled.)' };
         }
-
-        if (err.code === 'auth/user-disabled') {
-          return {
-            success: false,
-            error:
-              'آپ کا اکاؤنٹ غیر فعال کر دیا گیا ہے۔ (Your account has been disabled.)'
-          };
-        }
-
-        return {
-          success: false,
-          error: `لاگ ان ناکام رہا: ${err.message || 'نامعلوم خامی'}`
-        };
+        return { success: false, error: `لاگ ان ناکام رہا: ${err.message || 'نامعلوم خامی'}` };
       }
 
-      const normalizedLoginEmail = emailToAuth.toLowerCase().trim();
-
-      // ------------------------------------------------------------
-      // STEP 2: BUILT-IN ADMINS
-      //
-      // Admin routing MUST NOT depend on Firestore cache, migration,
-      // legacy documents, or a Firestore read succeeding.
-      // ------------------------------------------------------------
-      const isSuperAdmin =
-        normalizedLoginEmail === 'mastermaind.qureshi110@gmail.com' ||
-        uid === 's6dXc7vXJnd0uXfcYxacbKfwASF3';
-
-      const isDataEntryAdmin =
-        normalizedLoginEmail === 'fareed.ghulam@gmail.com' ||
-        uid === 'fo7mGVcdIeTyh4X61yyJGrjgsgP2';
-
-      if (isSuperAdmin || isDataEntryAdmin) {
-        const adminUser: User = {
-          uid,
-          email: isSuperAdmin
-            ? 'mastermaind.qureshi110@gmail.com'
-            : 'fareed.ghulam@gmail.com',
-          name: isSuperAdmin ? 'ایڈمن قریشی صاحب' : 'غلام فرید',
-          phone: isSuperAdmin ? '03453090146' : '03212057166',
-          city: 'Karachi',
-          balance: isSuperAdmin ? 500000 : 15000,
-          isAdmin: true,
-          role: isSuperAdmin ? 'superAdmin' : 'dataEntryAdmin'
-        };
-
-        // Authoritative local/session state FIRST.
-        sessionStorage.setItem('admin_verified', 'true');
-        syncLoggedInUser(adminUser);
-        setCurrentUser(adminUser);
-        setAdminMode(true);
-        setIsMandatorySetupOpen(false);
-
-        // IMPORTANT:
-        // Admin Panel opens immediately and does not wait for Firestore.
-        setActiveTab('admin');
-
-        // Firestore synchronization is best-effort only.
-        // Failure here must NEVER prevent Admin Panel access.
-        try {
-          await setDoc(
-            doc(db, 'users', uid),
-            {
-              ...adminUser,
-              lastLogin: new Date().toISOString()
-            },
-            { merge: true }
-          );
-        } catch (firestoreErr) {
-          console.warn(
-            'Admin Firestore sync failed; login remains valid:',
-            firestoreErr
-          );
-        }
-
-        return { success: true };
-      }
-
-      // ------------------------------------------------------------
-      // STEP 3: NORMAL CUSTOMER LOGIN
-      //
-      // Keep the existing UID/legacy migration behavior for customers.
-      // ------------------------------------------------------------
       let matchedUser: User | null = null;
-
       try {
+        // [UID-Migration] Step 1: Query the primary users/{uid} document for the signed-in user
         const userDocRef = doc(db, 'users', uid);
         const userDoc = await getDocFromServer(userDocRef);
-
         if (userDoc.exists()) {
           matchedUser = userDoc.data() as User;
+          console.log(`[UID-Migration] Found existing modern UID-based user record for: ${emailToAuth}`);
         } else {
-          const legacyDocRef = doc(
-            db,
-            'users',
-            normalizedLoginEmail
-          );
-
+          // [UID-Migration] Step 2: Fallback to the legacy users/{email} document
+          const legacyDocRef = doc(db, 'users', emailToAuth.toLowerCase().trim());
           const legacyDoc = await getDocFromServer(legacyDocRef);
-
           if (legacyDoc.exists()) {
             const legacyData = legacyDoc.data() as User;
-
             matchedUser = {
               ...legacyData,
-              uid
+              uid: uid // Attach modern auth UID securely
             };
-
+            // [UID-Migration] Step 3: Automatically migrate data to the new users/{uid} document
             await setDoc(userDocRef, matchedUser);
+            // [UID-Migration] Step 4: Securely delete the legacy email-based document after successful migration
             await deleteDoc(legacyDocRef);
+            console.log(`[UID-Migration] Successfully migrated legacy user profile for ${emailToAuth} to users/{uid}`);
           } else {
+            // [UID-Migration] Step 5: Profile not found in either location, provision a brand new profile
             matchedUser = {
               uid,
-              email: normalizedLoginEmail,
+              email: emailToAuth.toLowerCase().trim(),
               name: 'صارف',
               phone: identifier,
               city: 'لاہور',
@@ -531,45 +417,81 @@ export default function App() {
               isAdmin: false,
               role: 'customer'
             };
-
             await setDoc(userDocRef, matchedUser);
+            console.log(`[UID-Migration] Created a new profile under users/{uid} for signed up/migrated user: ${emailToAuth}`);
           }
         }
       } catch (err) {
-        console.error(
-          'Failed to load/migrate customer profile:',
-          err
-        );
-
-        return {
-          success: false,
-          error: 'پروفائل لوڈ کرنے میں ناکامی۔'
-        };
+        console.error("Failed to load/migrate user profile:", err);
+        return { success: false, error: 'پروفائل لوڈ کرنے میں ناکامی۔' };
       }
 
-      // Normal customer accounts can never retain an admin role
-      // merely because of stale cached profile data.
+    // Authoritative admin-role synchronization by verified login email.
+    const normalizedLoginEmail = emailToAuth.toLowerCase().trim();
+
+    if (normalizedLoginEmail === 'mastermaind.qureshi110@gmail.com') {
+      matchedUser.role = 'superAdmin';
+      matchedUser.isAdmin = true;
+
+      await setDoc(doc(db, 'users', uid), {
+        ...matchedUser,
+        email: normalizedLoginEmail,
+        role: 'superAdmin',
+        isAdmin: true
+      }, { merge: true });
+
+    } else if (normalizedLoginEmail === 'fareed.ghulam@gmail.com') {
+      matchedUser.role = 'dataEntryAdmin';
+      matchedUser.isAdmin = true;
+
+      await setDoc(doc(db, 'users', uid), {
+        ...matchedUser,
+        email: normalizedLoginEmail,
+        role: 'dataEntryAdmin',
+        isAdmin: true
+      }, { merge: true });
+
+    } else {
       matchedUser.role = 'customer';
       matchedUser.isAdmin = false;
+    }
+
+    const isSuper = matchedUser.role === 'superAdmin';
+    const isDataEntry = matchedUser.role === 'dataEntryAdmin';
+      if (matchedUser.isAdmin && matchedUser.active === false) {
+        await signOut(auth);
+        return { success: false, error: 'آپ کا ایڈمن اکاؤنٹ غیر فعال کر دیا گیا ہے۔ برائے مہربانی سپر ایڈمن سے رابطہ کریں۔ (Your admin account is deactivated. Please contact Super Admin.)' };
+      }
+
+      if (matchedUser.isAdmin) {
+        sessionStorage.setItem('admin_verified', 'true');
+        // Update last login timestamp in Firestore
+        try {
+          await setDoc(doc(db, 'users', uid), {
+            lastLogin: new Date().toISOString()
+          }, { merge: true });
+        } catch (timestampErr) {
+          console.error("Failed to update last login timestamp:", timestampErr);
+        }
+      }
 
       syncLoggedInUser(matchedUser);
-      setCurrentUser(matchedUser);
-      setAdminMode(false);
-      setActiveTab('dashboard');
+    setCurrentUser(matchedUser);
+    setAdminMode(!!matchedUser.isAdmin);
 
+    if (matchedUser.isAdmin) {
+      setActiveTab('admin');
+    } else {
+      setActiveTab('dashboard');
+    }
       return { success: true };
     };
 
     const res = await verifyNetworkAndExecute(action);
-
     if (res && 'success' in res) {
       return res as { success: boolean; error?: string };
     }
-
-    return {
-      success: false,
-      error: 'نیٹ ورک کا مسئلہ ہے۔'
-    };
+    return { success: false, error: 'نیٹ ورک کا مسئلہ ہے۔' };
   };
 
   const handleLogout = () => {
