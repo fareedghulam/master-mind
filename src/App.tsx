@@ -116,30 +116,64 @@ export default function App() {
       syncWithStore();
     });
 
+    let authResolved = false;
+
+    const finishAuthLoading = () => {
+      if (!authResolved) {
+        authResolved = true;
+        setAuthLoading(false);
+      }
+    };
+
     const unsubscribeAuth = onAuthStateChanged(auth, () => {
-      syncWithStore();
-      setAuthLoading(false);
+      try {
+        syncWithStore();
+      } catch (error) {
+        console.error("Auth state synchronization failed:", error);
+      } finally {
+        finishAuthLoading();
+      }
     });
 
+    // Firebase Auth must never leave the application permanently
+    // stuck on the startup loading screen.
+    const authTimeout = window.setTimeout(() => {
+      console.warn("Firebase Auth initialization timed out; continuing startup.");
+      finishAuthLoading();
+    }, 8000);
+
     return () => {
+      window.clearTimeout(authTimeout);
       unsubscribe();
       unsubscribeAuth();
     };
   }, []);
 
-  // Auto navigate based on user role upon login or session recovery
+  // Authoritative role-based navigation.
+  // Admin roles always open the Admin Panel after login/session recovery.
   useEffect(() => {
-    if (currentUser && !hasAutoNavigated) {
-      if (currentUser.isAdmin) {
-        setActiveTab('admin');
-      } else {
-        setActiveTab('dashboard');
-      }
-      setHasAutoNavigated(true);
-    } else if (!currentUser) {
+    if (!currentUser) {
       setHasAutoNavigated(false);
+      setAdminMode(false);
+      return;
     }
-  }, [currentUser, hasAutoNavigated]);
+
+    const isAdminUser =
+      currentUser.isAdmin === true ||
+      currentUser.role === 'superAdmin' ||
+      currentUser.role === 'admin' ||
+      currentUser.role === 'dataEntryAdmin';
+
+    setAdminMode(isAdminUser);
+
+    if (isAdminUser) {
+      setActiveTab('admin');
+    } else {
+      setActiveTab('dashboard');
+    }
+
+    setHasAutoNavigated(true);
+  }, [currentUser]);
 
   const syncWithStore = () => {
     const loggedIn = getLoggedInUser();
@@ -615,10 +649,10 @@ export default function App() {
             <div className="absolute inset-0 rounded-full border-4 border-t-amber-400 animate-spin"></div>
           </div>
           <h2 className="text-xl font-bold text-slate-100 font-sans tracking-wide mt-2">
-            لوڈ ہو رہا ہے... (Loading...)
+            Master Mind Qureshi Enterprise
           </h2>
           <p className="text-xs text-slate-400 font-sans">
-            براہ کرم انتظار کریں، سیکیورٹی سسٹم اور ڈیٹا بیس کو مربوط کیا جا رہا ہے۔
+            
           </p>
         </div>
       </div>
