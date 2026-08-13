@@ -1,29 +1,17 @@
 import React, { useState } from 'react';
-import { User, Booking, DrawCategory, Transaction } from '../types';
+import { User, Booking, DrawCategory } from '../types';
 import { 
-  CreditCard, 
   ArrowUpRight, 
   Sparkles, 
   MessageCircle, 
   Wallet, 
-  ArrowDownLeft, 
   User as UserIcon, 
   Edit3, 
-  History, 
   Gift, 
   Globe, 
-  Music, 
-  CheckCircle2, 
-  Clock, 
-  X,
   FileText
 } from 'lucide-react';
-import { 
-  getSupportWhatsAppNumber, 
-  requestRecharge, 
-  requestWithdrawal, 
-  getUserTransactions 
-} from '../utils/store';
+import { getSupportWhatsAppNumber } from '../utils/store';
 import ProfileSetupModal from './ProfileSetupModal';
 
 interface DashboardOverviewProps {
@@ -42,29 +30,9 @@ export default function DashboardOverview({
   onUpdateProfile
 }: DashboardOverviewProps) {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [isRechargeModalOpen, setIsRechargeModalOpen] = useState(false);
-  const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
-  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-
-  // Recharge Form
-  const [rechargeAmount, setRechargeAmount] = useState('');
-  const [rechargeMethod, setRechargeMethod] = useState('Easypaisa');
-  const [rechargeAccount, setRechargeAccount] = useState('');
-  const [rechargeNote, setRechargeNote] = useState('');
-  const [rechargeMsg, setRechargeMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [isRechargeSubmitting, setIsRechargeSubmitting] = useState(false);
-
-  // Withdraw Form
-  const [withdrawAmount, setWithdrawAmount] = useState('');
-  const [withdrawMethod, setWithdrawMethod] = useState('Easypaisa');
-  const [withdrawAccount, setWithdrawAccount] = useState('');
-  const [withdrawNote, setWithdrawNote] = useState('');
-  const [withdrawMsg, setWithdrawMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [isWithdrawSubmitting, setIsWithdrawSubmitting] = useState(false);
 
   // User stats calculations
   const myBookings = bookings.filter(b => b.userEmail.toLowerCase() === user.email.toLowerCase());
-  const userTransactions = getUserTransactions(user.email);
 
   const getCategoryTotal = (cat: DrawCategory) => {
     return myBookings
@@ -74,64 +42,6 @@ export default function DashboardOverview({
 
   const whatsappNumber = getSupportWhatsAppNumber();
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent("السلام علیکم! مجھے ماسٹر مائینڈ قریشی انٹرپرائز پرائز بانڈ سسٹم کے بارے میں مدد چاہئے۔")}`;
-
-  const handleRechargeSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setRechargeMsg(null);
-    const amt = parseFloat(rechargeAmount);
-    if (isNaN(amt) || amt <= 0) {
-      setRechargeMsg({ type: 'error', text: 'براہ کرم درست رقم درج کریں۔' });
-      return;
-    }
-    if (!rechargeAccount.trim()) {
-      setRechargeMsg({ type: 'error', text: 'براہ کرم ٹرانزیکشن آئی ڈی یا اکاؤنٹ نمبر درج کریں۔' });
-      return;
-    }
-
-    setIsRechargeSubmitting(true);
-    const res = await requestRecharge(user.email, user.name, amt, rechargeMethod, rechargeAccount.trim(), rechargeNote.trim());
-    setIsRechargeSubmitting(false);
-
-    if (res.success) {
-      setRechargeMsg({ type: 'success', text: 'والٹ ریچارج کی درخواست ایڈمن کو ارسال کر دی گئی ہے۔ منظوری کے بعد بیلنس شامل ہو جائے گا۔' });
-      setRechargeAmount('');
-      setRechargeAccount('');
-      setRechargeNote('');
-    } else {
-      setRechargeMsg({ type: 'error', text: res.error || 'درخواست بھیجنے میں نا کامی ہوئی۔' });
-    }
-  };
-
-  const handleWithdrawSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setWithdrawMsg(null);
-    const amt = parseFloat(withdrawAmount);
-    if (isNaN(amt) || amt <= 0) {
-      setWithdrawMsg({ type: 'error', text: 'براہ کرم درست رقم درج کریں۔' });
-      return;
-    }
-    if (amt > user.balance) {
-      setWithdrawMsg({ type: 'error', text: 'آپ کے والٹ میں کافی بیلنس موجود نہیں ہے۔' });
-      return;
-    }
-    if (!withdrawAccount.trim()) {
-      setWithdrawMsg({ type: 'error', text: 'براہ کرم اپنا اکاؤنٹ نمبر/نام درج کریں۔' });
-      return;
-    }
-
-    setIsWithdrawSubmitting(true);
-    const res = await requestWithdrawal(user.email, user.name, amt, withdrawMethod, withdrawAccount.trim(), withdrawNote.trim());
-    setIsWithdrawSubmitting(false);
-
-    if (res.success) {
-      setWithdrawMsg({ type: 'success', text: 'رقم نکلوانے (Withdrawal) کی درخواست ایڈمن کو بھیج دی گئی ہے۔' });
-      setWithdrawAmount('');
-      setWithdrawAccount('');
-      setWithdrawNote('');
-    } else {
-      setWithdrawMsg({ type: 'error', text: res.error || 'درخواست بھیجنے میں ناکامی ہوئی۔' });
-    }
-  };
 
   return (
     <div className="space-y-8 font-sans text-right max-w-5xl mx-auto pb-10">
@@ -180,14 +90,6 @@ export default function DashboardOverview({
               <Edit3 className="w-4 h-4 text-amber-400" />
               <span>پروفائل تبد یل کریں</span>
             </button>
-            
-            <button
-              onClick={() => setIsHistoryModalOpen(true)}
-              className="bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold py-2.5 px-4 rounded-xl text-xs flex items-center gap-2 transition-all cursor-pointer backdrop-blur-md"
-            >
-              <History className="w-4 h-4 text-blue-400" />
-              <span>والٹ ہسٹری</span>
-            </button>
           </div>
 
         </div>
@@ -224,50 +126,16 @@ export default function DashboardOverview({
             </div>
           </div>
 
-          {/* Wallet Actions - Customers only */}
-          {!user.isAdmin &&
-            user.role !== 'superAdmin' &&
-            user.role !== 'admin' &&
-            user.role !== 'dataEntryAdmin' && (
-            <div className="w-full md:w-80 flex flex-col justify-center gap-3">
-              <button
-                onClick={() => setIsRechargeModalOpen(true)}
-                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 px-5 rounded-2xl shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 text-sm cursor-pointer hover:-translate-y-0.5"
-              >
-                <ArrowDownLeft className="w-5 h-5" />
-                <span>والٹ ریچارج کریں (Recharge)</span>
-              </button>
-
-              <button
-                onClick={() => setIsWithdrawModalOpen(true)}
-                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 px-5 rounded-2xl shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-2 text-sm cursor-pointer hover:-translate-y-0.5"
-              >
-                <ArrowUpRight className="w-5 h-5" />
-                <span>رقم نکلوائیں (Withdraw)</span>
-              </button>
-
-              <button
-                onClick={() => onTabChange('my_bookings')}
-                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-3.5 px-5 rounded-2xl border border-slate-200 transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
-              >
-                <FileText className="w-5 h-5 text-slate-600" />
-                <span>میری کل بکنگ ہسٹری ({myBookings.length})</span>
-              </button>
-            </div>
-          )}
-
-          {/* Admin: Booking History only */}
-          {user.isAdmin && (
-            <div className="w-full md:w-80 flex flex-col justify-center gap-3">
-              <button
-                onClick={() => onTabChange('my_bookings')}
-                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-3.5 px-5 rounded-2xl border border-slate-200 transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
-              >
-                <FileText className="w-5 h-5 text-slate-600" />
-                <span>میری کل بکنگ ہسٹری ({myBookings.length})</span>
-              </button>
-            </div>
-          )}
+          {/* Wallet Action Buttons */}
+          <div className="w-full md:w-80 flex flex-col justify-center gap-3">
+            <button
+              onClick={() => onTabChange('my_bookings')}
+              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-3.5 px-5 rounded-2xl border border-slate-200 transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
+            >
+              <FileText className="w-5 h-5 text-slate-600" />
+              <span>میری کل بکنگ ہسٹری ({myBookings.length})</span>
+            </button>
+          </div>
 
         </div>
       </div>
@@ -379,229 +247,6 @@ export default function DashboardOverview({
         onSave={onUpdateProfile}
         onClose={() => setIsProfileModalOpen(false)}
       />
-
-      {/* Recharge Modal */}
-      {isRechargeModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-right font-sans">
-            <div className="bg-slate-900 text-white p-6 relative flex justify-between items-center">
-              <button onClick={() => setIsRechargeModalOpen(false)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-              <div>
-                <h3 className="text-lg font-bold">والٹ ریچارج کی درخواست</h3>
-                <p className="text-xs text-slate-400">EasyPaisa / JazzCash / Bank Transfer</p>
-              </div>
-            </div>
-
-            {rechargeMsg && (
-              <div className={`p-3 mx-6 mt-4 rounded-xl text-xs ${
-                rechargeMsg.type === 'success' ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'
-              }`}>
-                {rechargeMsg.text}
-              </div>
-            )}
-
-            <form onSubmit={handleRechargeSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">رقم درج کریں (Amount in PKR) *</label>
-                <input
-                  type="number"
-                  value={rechargeAmount}
-                  onChange={e => setRechargeAmount(e.target.value)}
-                  placeholder="مثلاً: 5000"
-                  className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-right font-mono"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">ادائیگی کا طریقہ (Payment Method)</label>
-                <select
-                  value={rechargeMethod}
-                  onChange={e => setRechargeMethod(e.target.value)}
-                  className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-right"
-                >
-                  <option value="Easypaisa">Easypaisa (ایزی پیسہ)</option>
-                  <option value="JazzCash">JazzCash (جاز کیش)</option>
-                  <option value="BankTransfer">Bank Transfer (بینک ٹرانسفر)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">ٹرانزیکشن ID یا بھیجنے والے کا فون نمبر *</label>
-                <input
-                  type="text"
-                  value={rechargeAccount}
-                  onChange={e => setRechargeAccount(e.target.value)}
-                  placeholder="مثال: TRX-9823412 یا 03001234567"
-                  className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-right font-mono"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">نوٹ (اختیاری)</label>
-                <input
-                  type="text"
-                  value={rechargeNote}
-                  onChange={e => setRechargeNote(e.target.value)}
-                  placeholder="کوئی اضافی وضاحت"
-                  className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-right"
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsRechargeModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs border border-slate-300 font-bold"
-                >
-                  منسوخ کریں
-                </button>
-                <button
-                  type="submit"
-                  disabled={isRechargeSubmitting}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-xl text-xs font-bold"
-                >
-                  {isRechargeSubmitting ? 'ارسال ہو رہا ہے...' : 'درخواست ارسال کریں'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Withdraw Modal */}
-      {isWithdrawModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-right font-sans">
-            <div className="bg-slate-900 text-white p-6 relative flex justify-between items-center">
-              <button onClick={() => setIsWithdrawModalOpen(false)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-              <div>
-                <h3 className="text-lg font-bold">رقم نکلوانے کی درخواست</h3>
-                <p className="text-xs text-slate-400">Withdrawal Request</p>
-              </div>
-            </div>
-
-            {withdrawMsg && (
-              <div className={`p-3 mx-6 mt-4 rounded-xl text-xs ${
-                withdrawMsg.type === 'success' ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'
-              }`}>
-                {withdrawMsg.text}
-              </div>
-            )}
-
-            <form onSubmit={handleWithdrawSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">رقم درج کریں (میعاد: max Rs. {user.balance}) *</label>
-                <input
-                  type="number"
-                  value={withdrawAmount}
-                  onChange={e => setWithdrawAmount(e.target.value)}
-                  placeholder="مثلاً: 2000"
-                  className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-right font-mono"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">وصولی کا طریقہ (Withdraw Method)</label>
-                <select
-                  value={withdrawMethod}
-                  onChange={e => setWithdrawMethod(e.target.value)}
-                  className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-right"
-                >
-                  <option value="Easypaisa">Easypaisa (ایزی پیسہ)</option>
-                  <option value="JazzCash">JazzCash (جاز کیش)</option>
-                  <option value="BankTransfer">Bank Transfer (بینک ٹرانسفر)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">آپ کا اکاؤنٹ نمبر اور نام *</label>
-                <input
-                  type="text"
-                  value={withdrawAccount}
-                  onChange={e => setWithdrawAccount(e.target.value)}
-                  placeholder="مثال: 03001234567 - علی احمد"
-                  className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-right"
-                  required
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsWithdrawModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs border border-slate-300 font-bold"
-                >
-                  منسوخ کریں
-                </button>
-                <button
-                  type="submit"
-                  disabled={isWithdrawSubmitting}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl text-xs font-bold"
-                >
-                  {isWithdrawSubmitting ? 'ارسال ہو رہا ہے...' : 'درخواست ارسال کریں'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Wallet History Modal */}
-      {isHistoryModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-right font-sans max-h-[85vh] flex flex-col">
-            <div className="bg-slate-900 text-white p-6 flex justify-between items-center shrink-0">
-              <button onClick={() => setIsHistoryModalOpen(false)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-              <div>
-                <h3 className="text-lg font-bold">والٹ کی ہسٹری (Transaction Log)</h3>
-                <p className="text-xs text-slate-400 font-mono">{user.email}</p>
-              </div>
-            </div>
-
-            <div className="p-6 overflow-y-auto space-y-3 flex-1">
-              {userTransactions.length === 0 ? (
-                <p className="text-center text-slate-500 py-10 text-xs">ابھی تک کوئی ٹرانزیکشن موجود نہیں ہے۔</p>
-              ) : (
-                userTransactions.map(tx => (
-                  <div key={tx.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
-                    <div>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        tx.status === 'approved' ? 'bg-emerald-100 text-emerald-800' :
-                        tx.status === 'pending' ? 'bg-amber-100 text-amber-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        {tx.status === 'approved' ? 'منظور شدہ (Approved)' :
-                         tx.status === 'pending' ? 'زیر التوا (Pending)' : 'رد شدہ (Rejected)'}
-                      </span>
-                      <p className="text-xs text-slate-400 font-mono mt-1">
-                        {new Date(tx.date).toLocaleString('ur-PK')}
-                      </p>
-                    </div>
-
-                    <div className="text-right">
-                      <p className="text-xs font-bold text-slate-900">{tx.note || tx.paymentMethod || 'ٹرانزیکشن'}</p>
-                      <p className={`text-sm font-extrabold font-mono ${
-                        tx.type === 'recharge' || tx.type === 'refund' ? 'text-emerald-600' : 'text-red-600'
-                      }`}>
-                        {tx.type === 'recharge' || tx.type === 'refund' ? '+' : '-'} Rs. {tx.amount.toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );

@@ -15,6 +15,7 @@ export interface User {
   role?: string;
   active?: boolean;
   lastLogin?: string;
+  profileCompleted?: boolean;
 }
 
 export interface Booking {
@@ -30,6 +31,7 @@ export interface Booking {
   drawNumber?: string;
   drawCity?: string;
   drawDate?: string;
+  isArchived?: boolean;
 }
 
 export interface NumberLimit {
@@ -37,6 +39,8 @@ export interface NumberLimit {
   category: DrawCategory;
   number: string;
   maxAmount: number;
+  drawId?: string;
+  isArchived?: boolean;
 }
 
 export interface Demand {
@@ -53,21 +57,27 @@ export interface Demand {
   drawNumber?: string;
   drawCity?: string;
   drawDate?: string;
+  isArchived?: boolean;
 }
 
 export interface DrawDeadline {
   id?: string;
+  drawId?: string;
   category: DrawCategory;
   titleUrdu: string;
   deadlineIso: string;
   status: 'open' | 'closed' | 'result_announced';
+  bookingStatusUrdu?: 'بکنگ کھول گئی' | 'بکنگ بند ہے';
   nextPrizeBondValue?: string;
   nextDrawCity?: string;
   nextDrawNumber?: string;
   nextDrawDate?: string;
   createdAt?: string;
   updatedAt?: string;
+  isArchived?: boolean;
 }
+
+export type Draw = DrawDeadline;
 
 export interface PakistanBondResult {
   id: string;
@@ -79,6 +89,7 @@ export interface PakistanBondResult {
   city: string;
   firstPrize: string;
   secondPrizes: string[];
+  drawId?: string;
 }
 
 export interface ThaiLotteryResult {
@@ -92,6 +103,7 @@ export interface ThaiLotteryResult {
   last2Digits: string;
   front3Digits: string;
   back3Digits: string;
+  drawId?: string;
 }
 
 export interface Transaction {

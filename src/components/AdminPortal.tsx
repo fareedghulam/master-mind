@@ -21,7 +21,7 @@ interface AdminPortalProps {
   thaiLotteryResults: ThaiLotteryResult[];
   currentUser: User | null;
   onCancelBookingByAdmin: (bookingId: string) => Promise<{ success: boolean; error?: string }>;
-  onRecharge: (email: string, amount: number) => Promise<boolean>;
+  onRecharge: (email: string, amount: number, note?: string) => Promise<{ success: boolean; error?: string }>;
   onSetLimit: (category: DrawCategory, number: string, maxAmount: number) => Promise<any>;
   onDeleteLimit: (id: string) => Promise<any>;
   onApproveDemand: (id: string) => Promise<{ success: boolean; error?: string }>;
@@ -130,9 +130,16 @@ export default function AdminPortal({
   onEditResult,
   onDeleteResult
 }: AdminPortalProps) {
-  const isSuper = currentUser?.role === 'superAdmin' || currentUser?.role === 'admin';
+  const isSuper = currentUser?.role === 'superAdmin' || currentUser?.role === 'admin' || (currentUser?.isAdmin && currentUser?.role !== 'dataEntryAdmin');
   const defaultTab = isSuper ? 'demands_bookings' : 'results';
   const [activeAdminTab, setActiveAdminTab] = useState<'demands_bookings' | 'results' | 'limits_deadlines' | 'users_finance' | 'admin_management'>(defaultTab);
+
+  // Fallback to 'results' tab for Data Entry Admin if currently on a Super Admin tab
+  useEffect(() => {
+    if (!isSuper && (activeAdminTab === 'demands_bookings' || activeAdminTab === 'users_finance' || activeAdminTab === 'limits_deadlines' || activeAdminTab === 'admin_management')) {
+      setActiveAdminTab('results');
+    }
+  }, [isSuper, activeAdminTab]);
 
   // Admin Management Screen States
   const [newAdminName, setNewAdminName] = useState('');
@@ -657,13 +664,13 @@ export default function AdminPortal({
     }
 
     const finalAmount = action === 'deduct' ? -amt : amt;
-    const ok = await onRecharge(rechargeEmail.trim(), finalAmount);
-    if (ok) {
+    const res = await onRecharge(rechargeEmail.trim(), finalAmount, rechargeReason.trim());
+    if (res.success) {
       setRechargeSuccess(action === 'deduct' ? `کامیاب: Rs. ${amt.toLocaleString()} اکاؤنٹ سے منہا کر دیے گئے ہیں۔` : `کامیاب: Rs. ${amt.toLocaleString()} اکاؤنٹ میں شامل کر دیے گئے ہیں۔`);
       setRechargeAmount('');
       setRechargeReason('');
     } else {
-      setRechargeError('والٹ ٹرانزیکشن میں خرابی پیش آئی۔');
+      setRechargeError(res.error || 'والٹ ٹرانزیکشن میں خرابی پیش آئی۔');
     }
   };
 

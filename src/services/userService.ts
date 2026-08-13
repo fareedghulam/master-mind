@@ -19,7 +19,7 @@ import {
   signInWithPopup
 } from 'firebase/auth';
 
-export async function registerInAuthOnly(email: string, passwordInput: string, cachedUsers: User[]): Promise<string> {
+export async function registerInAuthOnly(email: string, passwordInput: string, cachedUsers?: User[]): Promise<string> {
   const secondaryAppName = `SecondaryAuth_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
   const secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
   const secondaryAuth = getAuth(secondaryApp);
@@ -30,9 +30,11 @@ export async function registerInAuthOnly(email: string, passwordInput: string, c
   } catch (err: any) {
     if (err && err.code === 'auth/email-already-in-use') {
       console.log(`[FirebaseAuth] User ${email} already exists in Auth.`);
-      const existingUser = cachedUsers.find(u => u.email.toLowerCase() === email.toLowerCase().trim());
-      if (existingUser && existingUser.uid) {
-        return existingUser.uid;
+      if (cachedUsers && Array.isArray(cachedUsers)) {
+        const existingUser = cachedUsers.find(u => u.email.toLowerCase() === email.toLowerCase().trim());
+        if (existingUser && existingUser.uid) {
+          return existingUser.uid;
+        }
       }
       throw err;
     } else if (err && err.code === 'auth/operation-not-allowed') {

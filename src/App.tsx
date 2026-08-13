@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   getLoggedInUser, 
-  setLoggedInUser, syncLoggedInUser, 
+  setLoggedInUser, 
   getUsers, 
   getBookings, 
   getNumberLimits, 
@@ -59,7 +59,7 @@ export default function App() {
   const [demands, setDemands] = useState<Demand[]>([]);
   const [deadlines, setDeadlines] = useState<DrawDeadline[]>([]);
   const [adminMode, setAdminMode] = useState<boolean>(false);
-  const [adminConfiguredEmail, setAdminConfiguredEmailState] = useState<string>('');
+  const [adminConfiguredEmail, setAdminConfiguredEmailState] = useState<string>('mastermaindqureshi110@gmail.com');
   const [pakistanBondResults, setPakistanBondResults] = useState<PakistanBondResult[]>([]);
   const [thaiLotteryResults, setThaiLotteryResults] = useState<ThaiLotteryResult[]>([]);
   const [isMandatorySetupOpen, setIsMandatorySetupOpen] = useState<boolean>(false);
@@ -116,63 +116,37 @@ export default function App() {
       syncWithStore();
     });
 
-    let authResolved = false;
-
-    const finishAuthLoading = () => {
-      if (!authResolved) {
-        authResolved = true;
-        setAuthLoading(false);
-      }
-    };
-
     const unsubscribeAuth = onAuthStateChanged(auth, () => {
-      try {
-        syncWithStore();
-      } catch (error) {
-        console.error("Auth state synchronization failed:", error);
-      } finally {
-        finishAuthLoading();
-      }
+      syncWithStore();
+      setAuthLoading(false);
     });
 
-    // Firebase Auth must never leave the application permanently
-    // stuck on the startup loading screen.
-    const authTimeout = window.setTimeout(() => {
-      console.warn("Firebase Auth initialization timed out; continuing startup.");
-      finishAuthLoading();
-    }, 8000);
-
     return () => {
-      window.clearTimeout(authTimeout);
       unsubscribe();
       unsubscribeAuth();
     };
   }, []);
 
-  // Authoritative role-based navigation.
-  // Admin roles always open the Admin Panel after login/session recovery.
+  // Auto navigate based on user role upon login or session recovery
   useEffect(() => {
-    if (!currentUser) {
-      setHasAutoNavigated(false);
-      setAdminMode(false);
-      return;
-    }
-
-    const isAdminUser =
-      currentUser.isAdmin === true ||
-      currentUser.role === 'superAdmin' ||
-      currentUser.role === 'admin' ||
-      currentUser.role === 'dataEntryAdmin';
-
-    setAdminMode(isAdminUser);
-
-    if (isAdminUser) {
-      setActiveTab('admin');
+    if (currentUser) {
+      const isAdmin = currentUser.isAdmin || currentUser.role === 'superAdmin' || currentUser.role === 'dataEntryAdmin' || currentUser.role === 'admin';
+      if (isAdmin) {
+        setAdminMode(true);
+        if (!hasAutoNavigated || activeTab === 'dashboard') {
+          setActiveTab('admin');
+          setHasAutoNavigated(true);
+        }
+      } else {
+        setAdminMode(false);
+        if (!hasAutoNavigated) {
+          setActiveTab('dashboard');
+          setHasAutoNavigated(true);
+        }
+      }
     } else {
-      setActiveTab('dashboard');
+      setHasAutoNavigated(false);
     }
-
-    setHasAutoNavigated(true);
   }, [currentUser]);
 
   const syncWithStore = () => {
@@ -280,39 +254,16 @@ export default function App() {
       if (res.success && res.user) {
         setLoggedInUser(res.user.email);
         syncWithStore();
-
-        // Always resolve the authoritative user after Google login.
-        // Admin accounts must never be routed to the customer dashboard.
-        const loggedIn = getLoggedInUser();
-
-        if (loggedIn) {
-          const isAdminUser =
-            loggedIn.isAdmin === true ||
-            loggedIn.role === 'superAdmin' ||
-            loggedIn.role === 'admin' ||
-            loggedIn.role === 'dataEntryAdmin';
-
-          setCurrentUser(loggedIn);
-          setAdminMode(isAdminUser);
-
-          if (isAdminUser) {
-            setActiveTab('admin');
-            setIsMandatorySetupOpen(false);
-          } else {
-            setActiveTab('dashboard');
-
-            if (res.isNewOrIncomplete) {
-              setIsMandatorySetupOpen(true);
-            }
-          }
+        if (res.isNewOrIncomplete) {
+          setIsMandatorySetupOpen(true);
+        }
+        const userNow = getLoggedInUser();
+        if (userNow && userNow.isAdmin) {
+          setAdminMode(true);
+          setActiveTab('admin');
         } else {
           setActiveTab('dashboard');
-
-          if (res.isNewOrIncomplete) {
-            setIsMandatorySetupOpen(true);
-          }
         }
-
         return { success: true };
       }
       return { success: false, error: res.error || 'گوگل سائن ان ناکام رہا۔' };
@@ -336,240 +287,150 @@ export default function App() {
     return res;
   };
 
-  const handleLoginWithCredentials = async (
-    identifier: string,
-    passwordInput: string
-  ): Promise<{ success: boolean; error?: string }> => {
+  const handleLoginWithCredentials = async (identifier: string, passwordInput: string): Promise<{ success: boolean; error?: string }> => {
     const action = async () => {
       const online = await checkInternetConnection();
-
       if (!online) {
-        return {
-          success: false,
-          error:
-            'No internet connection. Please turn on Wi-Fi or Mobile Data and try again.'
-        };
+        return { success: false, error: 'No internet connection. Please turn on Wi-Fi or Mobile Data and try again.' };
       }
 
       const idLower = identifier.toLowerCase().trim();
       let emailToAuth = '';
 
-      // Email login
       if (idLower.includes('@')) {
         emailToAuth = idLower;
       } else {
-        // Phone login remains Firestore-based for normal customers.
         try {
-          const q = query(
-            collection(db, 'users'),
-            where('phone', '==', identifier.trim())
-          );
-
+          const q = query(collection(db, 'users'), where('phone', '==', identifier.trim()));
           const querySnapshot = await getDocsFromServer(q);
-
           if (!querySnapshot.empty) {
             const data = querySnapshot.docs[0].data() as User;
-            emailToAuth = (data.email || '').toLowerCase().trim();
+            emailToAuth = data.email;
           }
         } catch (err) {
-          console.error('Secure login phone query failed:', err);
+          console.error("Secure login phone query failed:", err);
         }
       }
 
       if (!emailToAuth) {
-        return {
-          success: false,
-          error:
-            'یہ اکاؤنٹ رجسٹرڈ نہیں ہے۔ (This account is not registered.)'
-        };
+        return { success: false, error: 'یہ اکاؤنٹ رجسٹرڈ نہیں ہے۔ (This account is not registered.)' };
       }
 
-      // ------------------------------------------------------------
-      // STEP 1: Firebase Authentication is the authoritative login.
-      // ------------------------------------------------------------
       let uid = '';
-
       try {
-        const cred = await signInWithEmailAndPassword(
-          auth,
-          emailToAuth,
-          passwordInput
-        );
-
+        const cred = await signInWithEmailAndPassword(auth, emailToAuth.toLowerCase().trim(), passwordInput);
         uid = cred.user.uid;
       } catch (err: any) {
-        console.error('Firebase Auth sign in failed:', err);
-
-        if (
-          err.code === 'auth/wrong-password' ||
-          err.code === 'auth/invalid-credential' ||
-          err.code === 'auth/user-not-found'
-        ) {
-          return {
-            success: false,
-            error:
-              'ای میل/موبائل نمبر یا پاس ورڈ درست نہیں ہے۔ (Incorrect email/phone or password.)'
-          };
+        console.error("Firebase Auth sign in failed:", err);
+        if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found') {
+          return { success: false, error: 'ای میل/موبائل نمبر یا پاس ورڈ درست نہیں ہے۔ (Incorrect email/phone or password.)' };
+        } else if (err.code === 'auth/user-disabled') {
+          return { success: false, error: 'آپ کا اکاؤنٹ غیر فعال کر دیا گیا ہے۔ (Your account has been disabled.)' };
         }
-
-        if (err.code === 'auth/user-disabled') {
-          return {
-            success: false,
-            error:
-              'آپ کا اکاؤنٹ غیر فعال کر دیا گیا ہے۔ (Your account has been disabled.)'
-          };
-        }
-
-        return {
-          success: false,
-          error: `لاگ ان ناکام رہا: ${err.message || 'نامعلوم خامی'}`
-        };
+        return { success: false, error: `لاگ ان ناکام رہا: ${err.message || 'نامعلوم خامی'}` };
       }
 
-      const normalizedLoginEmail = emailToAuth.toLowerCase().trim();
-
-      // ------------------------------------------------------------
-      // STEP 2: BUILT-IN ADMINS
-      //
-      // Admin routing MUST NOT depend on Firestore cache, migration,
-      // legacy documents, or a Firestore read succeeding.
-      // ------------------------------------------------------------
-      const isSuperAdmin =
-        normalizedLoginEmail === 'mastermaind.qureshi110@gmail.com' ||
-        uid === 's6dXc7vXJnd0uXfcYxacbKfwASF3';
-
-      const isDataEntryAdmin =
-        normalizedLoginEmail === 'fareed.ghulam@gmail.com' ||
-        uid === 'fo7mGVcdIeTyh4X61yyJGrjgsgP2';
-
-      if (isSuperAdmin || isDataEntryAdmin) {
-        const adminUser: User = {
-          uid,
-          email: isSuperAdmin
-            ? 'mastermaind.qureshi110@gmail.com'
-            : 'fareed.ghulam@gmail.com',
-          name: isSuperAdmin ? 'ایڈمن قریشی صاحب' : 'غلام فرید',
-          phone: isSuperAdmin ? '03453090146' : '03212057166',
-          city: 'Karachi',
-          balance: isSuperAdmin ? 500000 : 15000,
-          isAdmin: true,
-          role: isSuperAdmin ? 'superAdmin' : 'dataEntryAdmin'
-        };
-
-        // Authoritative local/session state FIRST.
-        sessionStorage.setItem('admin_verified', 'true');
-        syncLoggedInUser(adminUser);
-        setCurrentUser(adminUser);
-        setAdminMode(true);
-        setIsMandatorySetupOpen(false);
-
-        // IMPORTANT:
-        // Admin Panel opens immediately and does not wait for Firestore.
-        setActiveTab('admin');
-
-        // Firestore synchronization is best-effort only.
-        // Failure here must NEVER prevent Admin Panel access.
-        try {
-          await setDoc(
-            doc(db, 'users', uid),
-            {
-              ...adminUser,
-              lastLogin: new Date().toISOString()
-            },
-            { merge: true }
-          );
-        } catch (firestoreErr) {
-          console.warn(
-            'Admin Firestore sync failed; login remains valid:',
-            firestoreErr
-          );
-        }
-
-        return { success: true };
-      }
-
-      // ------------------------------------------------------------
-      // STEP 3: NORMAL CUSTOMER LOGIN
-      //
-      // Keep the existing UID/legacy migration behavior for customers.
-      // ------------------------------------------------------------
       let matchedUser: User | null = null;
-
       try {
+        // [UID-Migration] Step 1: Query the primary users/{uid} document for the signed-in user
         const userDocRef = doc(db, 'users', uid);
         const userDoc = await getDocFromServer(userDocRef);
-
         if (userDoc.exists()) {
           matchedUser = userDoc.data() as User;
+          console.log(`[UID-Migration] Found existing modern UID-based user record for: ${emailToAuth}`);
         } else {
-          const legacyDocRef = doc(
-            db,
-            'users',
-            normalizedLoginEmail
-          );
-
+          // [UID-Migration] Step 2: Fallback to the legacy users/{email} document
+          const legacyDocRef = doc(db, 'users', emailToAuth.toLowerCase().trim());
           const legacyDoc = await getDocFromServer(legacyDocRef);
-
           if (legacyDoc.exists()) {
             const legacyData = legacyDoc.data() as User;
-
             matchedUser = {
               ...legacyData,
-              uid
+              uid: uid // Attach modern auth UID securely
             };
-
+            // [UID-Migration] Step 3: Automatically migrate data to the new users/{uid} document
             await setDoc(userDocRef, matchedUser);
+            // [UID-Migration] Step 4: Securely delete the legacy email-based document after successful migration
             await deleteDoc(legacyDocRef);
+            console.log(`[UID-Migration] Successfully migrated legacy user profile for ${emailToAuth} to users/{uid}`);
           } else {
-            matchedUser = {
-              uid,
-              email: normalizedLoginEmail,
-              name: 'صارف',
-              phone: identifier,
-              city: 'لاہور',
-              balance: 100,
-              isAdmin: false,
-              role: 'customer'
+            // Step 5: Profile not found in Firestore - SECURITY ENFORCEMENT:
+            // Do NOT auto-create fake customer profiles for authenticated accounts without a Firestore record.
+            await signOut(auth);
+            return { 
+              success: false, 
+              error: 'صارف کا پروفائل ڈیٹا بیس میں نہیں ملا۔ براہ کرم ایڈمن سے رابطہ کریں۔ (User profile not found in database. Please contact Admin.)' 
             };
-
-            await setDoc(userDocRef, matchedUser);
           }
         }
       } catch (err) {
-        console.error(
-          'Failed to load/migrate customer profile:',
-          err
-        );
-
-        return {
-          success: false,
-          error: 'پروفائل لوڈ کرنے میں ناکامی۔'
-        };
+        console.error("Failed to load/migrate user profile:", err);
+        return { success: false, error: 'پروفائل لوڈ کرنے میں ناکامی۔' };
       }
 
-      // Normal customer accounts can never retain an admin role
-      // merely because of stale cached profile data.
-      matchedUser.role = 'customer';
-      matchedUser.isAdmin = false;
+      const emailLowerMatched = (matchedUser.email || emailToAuth || '').toLowerCase().trim();
+      const isSuper = (
+        emailLowerMatched === 'mastermaind.qureshi110@gmail.com' ||
+        uid === 's6dXc7vXJnd0uXfcYxacbKfwASF3' ||
+        matchedUser.role === 'superAdmin' ||
+        matchedUser.role === 'admin'
+      );
+      const isDataEntry = (
+        emailLowerMatched === 'fareed.ghulam@gmail.com' ||
+        matchedUser.role === 'dataEntryAdmin'
+      );
 
-      syncLoggedInUser(matchedUser);
-      setCurrentUser(matchedUser);
-      setAdminMode(false);
-      setActiveTab('dashboard');
+      if (isSuper) {
+        matchedUser.role = 'superAdmin';
+        matchedUser.isAdmin = true;
+      } else if (isDataEntry) {
+        matchedUser.role = 'dataEntryAdmin';
+        matchedUser.isAdmin = true;
+      } else {
+        matchedUser.role = matchedUser.role || 'customer';
+        matchedUser.isAdmin = false;
+      }
 
+      // Sync Firestore document role & isAdmin status securely
+      try {
+        await setDoc(doc(db, 'users', uid), {
+          role: matchedUser.role,
+          isAdmin: matchedUser.isAdmin,
+          email: emailLowerMatched,
+          lastLogin: new Date().toISOString()
+        }, { merge: true });
+      } catch (updateErr) {
+        console.error("Failed to sync admin profile role in Firestore:", updateErr);
+      }
+
+      if (matchedUser.isAdmin && matchedUser.active === false) {
+        await signOut(auth);
+        return { success: false, error: 'آپ کا ایڈمن اکاؤنٹ غیر فعال کر دیا گیا ہے۔ برائے مہربانی سپر ایڈمن سے رابطہ کریں۔ (Your admin account is deactivated. Please contact Super Admin.)' };
+      }
+
+      if (matchedUser.isAdmin) {
+        sessionStorage.setItem('admin_verified', 'true');
+      }
+
+      setLoggedInUser(matchedUser.email || matchedUser.uid);
+      syncWithStore();
+
+      const isAdminUser = matchedUser.isAdmin || matchedUser.role === 'superAdmin' || matchedUser.role === 'admin' || matchedUser.role === 'dataEntryAdmin';
+      if (isAdminUser) {
+        setAdminMode(true);
+        setActiveTab('admin');
+      } else {
+        setAdminMode(false);
+        setActiveTab('dashboard');
+      }
       return { success: true };
     };
 
     const res = await verifyNetworkAndExecute(action);
-
     if (res && 'success' in res) {
       return res as { success: boolean; error?: string };
     }
-
-    return {
-      success: false,
-      error: 'نیٹ ورک کا مسئلہ ہے۔'
-    };
+    return { success: false, error: 'نیٹ ورک کا مسئلہ ہے۔' };
   };
 
   const handleLogout = () => {
@@ -578,16 +439,19 @@ export default function App() {
     setActiveTab('dashboard');
   };
 
-  const handleRecharge = async (email: string, amount: number): Promise<boolean> => {
+  const handleRecharge = async (email: string, amount: number, note?: string): Promise<{ success: boolean; error?: string }> => {
     const action = async () => {
-      const success = await rechargeWallet(email, amount);
-      if (success) {
+      const res = await rechargeWallet(email, amount, note);
+      if (res.success) {
         syncWithStore();
       }
-      return success;
+      return res;
     };
     const res = await verifyNetworkAndExecute(action);
-    return typeof res === 'boolean' ? res : false;
+    if (res && typeof res === 'object' && 'success' in res) {
+      return res as { success: boolean; error?: string };
+    }
+    return { success: false, error: 'انٹرنیٹ کنکشن کا مسئلہ ہے یا نیٹ ورک کی خرابی ہے۔' };
   };
 
   const handleSetLimit = async (category: DrawCategory, number: string, maxAmount: number) => {
@@ -756,10 +620,10 @@ export default function App() {
             <div className="absolute inset-0 rounded-full border-4 border-t-amber-400 animate-spin"></div>
           </div>
           <h2 className="text-xl font-bold text-slate-100 font-sans tracking-wide mt-2">
-            Master Mind Qureshi Enterprise
+            لوڈ ہو رہا ہے... (Loading...)
           </h2>
           <p className="text-xs text-slate-400 font-sans">
-            
+            براہ کرم انتظار کریں، سیکیورٹی سسٹم اور ڈیٹا بیس کو مربوط کیا جا رہا ہے۔
           </p>
         </div>
       </div>
@@ -906,9 +770,9 @@ export default function App() {
               demands={demands}
               deadlines={deadlines}
               category="pakistan_bond"
-              onAddBooking={(num, first, second, bv, dn, dd) => handleAddBooking('pakistan_bond', num, first, second, bv, dn, dd)}
+              onAddBooking={(num, first, second, bv, dn, dd, dc, drawId) => handleAddBooking('pakistan_bond', num, first, second, bv, dn, dd, dc, drawId)}
               onCancelBooking={handleCancelBooking}
-              onAddDemand={(num, first, second, bv, dn, dd) => handleAddDemand('pakistan_bond', num, first, second, bv, dn, dd)}
+              onAddDemand={(num, first, second, bv, dn, dd, dc, drawId) => handleAddDemand('pakistan_bond', num, first, second, bv, dn, dd, dc, drawId)}
             />
           )}
 
@@ -920,9 +784,9 @@ export default function App() {
               demands={demands}
               deadlines={deadlines}
               category="thailand_lottery"
-              onAddBooking={(num, first, second, bv, dn, dd) => handleAddBooking('thailand_lottery', num, first, second, bv, dn, dd)}
+              onAddBooking={(num, first, second, bv, dn, dd, dc, drawId) => handleAddBooking('thailand_lottery', num, first, second, bv, dn, dd, dc, drawId)}
               onCancelBooking={handleCancelBooking}
-              onAddDemand={(num, first, second, bv, dn, dd) => handleAddDemand('thailand_lottery', num, first, second, bv, dn, dd)}
+              onAddDemand={(num, first, second, bv, dn, dd, dc, drawId) => handleAddDemand('thailand_lottery', num, first, second, bv, dn, dd, dc, drawId)}
             />
           )}
 
@@ -989,7 +853,7 @@ export default function App() {
       </footer>
 
       {/* Mandatory Profile Setup Modal for Google Login / New Users */}
-      {currentUser && (isMandatorySetupOpen || !currentUser.phone || !currentUser.city) && (
+      {currentUser && !currentUser.isAdmin && currentUser.role !== 'superAdmin' && currentUser.role !== 'dataEntryAdmin' && currentUser.role !== 'admin' && (isMandatorySetupOpen || !currentUser.phone || !currentUser.city) && (
         <ProfileSetupModal
           user={currentUser}
           isOpen={true}

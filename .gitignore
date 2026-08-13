@@ -7,15 +7,10 @@ coverage/
 .env*
 !.env.example
 
-# Android signing secrets — NEVER commit
-android/app/mastermind-release-key.jks
-android/mastermind-release-key.jks
+# Android signing & credentials
+android/app/*.jks
+android/app/*.keystore
 android/key.properties
-
-# Local backup / temporary files
-*.backup
-*.bak
-*.before-*
-*_backup*
-image_backup/
-src_backup_before_images_fix/
+*.jks
+*.keystore
+key.properties

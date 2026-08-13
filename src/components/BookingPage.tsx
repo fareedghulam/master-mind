@@ -11,7 +11,7 @@ interface BookingPageProps {
   limits: NumberLimit[];
   demands?: Demand[];
   deadlines?: DrawDeadline[];
-  category: DrawCategory;
+  category: DrawCategory | 'unified';
   onAddBooking: (number: string, firstAmt: number, secondAmt: number, bondValue?: string, drawNumber?: string, drawDate?: string, drawCity?: string, drawId?: string) => Promise<{ success: boolean; error?: string }>;
   onCancelBooking: (id: string) => Promise<{ success: boolean; error?: string }>;
   onAddDemand: (number: string, firstAmt: number, secondAmt: number, bondValue?: string, drawNumber?: string, drawDate?: string, drawCity?: string, drawId?: string) => Promise<{ success: boolean; error?: string }>;
@@ -40,15 +40,21 @@ export default function BookingPage({
   // Ticker for cancellation live updates
   const [timeTicker, setTimeTicker] = useState(Date.now());
 
-  // Pakistan bond draw selection
-  const pakDraws = category === 'pakistan_bond' ? deadlines.filter(d => d.category === 'pakistan_bond') : [];
+  // Available active draws
+  const activeDrawsList = (deadlines || []).filter(d => d.status !== 'result_announced' && !d.isArchived);
+  const categoryDraws = category === 'unified' ? activeDrawsList : activeDrawsList.filter(d => d.category === category);
+  const pakDraws = activeDrawsList.filter(d => d.category === 'pakistan_bond');
+
   const [selectedDrawId, setSelectedDrawId] = useState<string>('');
 
   useEffect(() => {
-    if (category === 'pakistan_bond' && pakDraws.length > 0 && !selectedDrawId) {
-      setSelectedDrawId(pakDraws[0].id || pakDraws[0].category);
+    if (categoryDraws.length > 0) {
+      if (!selectedDrawId || !categoryDraws.some(d => (d.id || d.drawId || d.category) === selectedDrawId)) {
+        const defaultDraw = categoryDraws[0];
+        setSelectedDrawId(defaultDraw.id || defaultDraw.drawId || defaultDraw.category);
+      }
     }
-  }, [category, pakDraws]);
+  }, [category, deadlines, categoryDraws]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -58,9 +64,7 @@ export default function BookingPage({
   }, []);
 
   // Selected draw deadline evaluation
-  const activeDraw = category === 'pakistan_bond' 
-    ? (pakDraws.find(d => d.id === selectedDrawId) || pakDraws[0] || (deadlines || []).find(d => d.category === category))
-    : (deadlines || []).find(d => d.category === category);
+  const activeDraw = categoryDraws.find(d => (d.id || d.drawId || d.category) === selectedDrawId) || categoryDraws[0] || (deadlines || [])[0];
 
   const rawDeadlineTime = activeDraw && activeDraw.deadlineIso 
     ? (typeof activeDraw.deadlineIso === 'object' && (activeDraw.deadlineIso as any).seconds 
@@ -68,7 +72,7 @@ export default function BookingPage({
         : new Date(activeDraw.deadlineIso).getTime()) 
     : 0;
   const deadlineTime = isNaN(rawDeadlineTime) ? 0 : rawDeadlineTime;
-  const isTimeUp = (activeDraw?.status === 'closed') || (deadlineTime > 0 && timeTicker >= deadlineTime);
+  const isTimeUp = (activeDraw?.status === 'closed') || (activeDraw?.bookingStatusUrdu === 'بکنگ بند ہے') || (deadlineTime > 0 && timeTicker >= deadlineTime);
 
   const getRemainingTimeString = () => {
     if (activeDraw?.status === 'closed') return 'بکنگ بند ہے (Closed)';
@@ -121,21 +125,44 @@ export default function BookingPage({
     }
   };
 
-  const pageTitleUrduMap: Record<DrawCategory, string> = {
-    pakistan_bond: 'پاکستان پرائز بانڈ بکنگ پورٹل',
-    thailand_lottery: 'تھائی لینڈ ڈرا بکنگ پورٹل'
-  };
-  const pageTitleEnglishMap: Record<DrawCategory, string> = {
-    pakistan_bond: 'PAKISTAN BOND DRAW',
-    thailand_lottery: 'THAILAND LOTTERY DRAW'
-  };
-  const pageTitleUrdu = pageTitleUrduMap[category] || 'پرائز بانڈ بکنگ پورٹل';
-  const pageTitleEnglish = pageTitleEnglishMap[category] || 'PRIZE BOND DRAW';
+  const pageTitleUrdu = category === 'pakistan_bond'
+    ? 'پاکستان پرائز بانڈ بکنگ پورٹل'
+    : category === 'thailand_lottery'
+      ? 'تھائی لینڈ ڈرا بکنگ پورٹل'
+      : 'پرائز بانڈ و ڈرا بکنگ پورٹل (Unified Draw Booking)';
+  
+  const pageTitleEnglish = category === 'pakistan_bond'
+    ? 'PAKISTAN BOND DRAW'
+    : category === 'thailand_lottery'
+      ? 'THAILAND LOTTERY DRAW'
+      : 'UNIFIED DRAW BOOKING';
 
   const userEmailLower = (user?.email || '').toLowerCase();
-  const filterBookings = (bookings || []).filter(b => b && b.category === category && (b.userEmail || '').toLowerCase() === userEmailLower);
-  const filterDemands = (demands || []).filter(d => d && d.category === category && (d.userEmail || '').toLowerCase() === userEmailLower);
-  const relevantLimits = (limits || []).filter(l => l && l.category === category);
+  
+  // Filter bookings and demands for current active customer view
+  const filterBookings = (bookings || []).filter(b => {
+    if (!b || (b.userEmail || '').toLowerCase() !== userEmailLower) return false;
+    if (category === 'unified') {
+      return selectedDrawId ? (b.drawId === selectedDrawId || b.category === activeDraw?.category) : true;
+    }
+    return b.category === category;
+  });
+
+  const filterDemands = (demands || []).filter(d => {
+    if (!d || (d.userEmail || '').toLowerCase() !== userEmailLower) return false;
+    if (category === 'unified') {
+      return selectedDrawId ? (d.drawId === selectedDrawId || d.category === activeDraw?.category) : true;
+    }
+    return d.category === category;
+  });
+
+  const relevantLimits = (limits || []).filter(l => {
+    if (!l) return false;
+    if (selectedDrawId && l.drawId) {
+      return l.drawId === selectedDrawId;
+    }
+    return l.category === (activeDraw?.category || (category === 'unified' ? 'pakistan_bond' : category));
+  });
 
   const currentFirstAmt = parseInt(firstAmtInput || '0', 10);
   const currentSecondAmt = parseInt(secondAmtInput || '0', 10);
@@ -281,6 +308,7 @@ export default function BookingPage({
         isTimeUp={isTimeUp}
         activeDraw={activeDraw}
         pakDraws={pakDraws}
+        availableDraws={categoryDraws}
         selectedDrawId={selectedDrawId}
         setSelectedDrawId={setSelectedDrawId}
         timeTicker={timeTicker}

@@ -5,15 +5,6 @@ import { getAdminConfiguredEmail } from '../../utils/store';
 
 interface AdminUsersFinanceTabProps {
   users: User[];
-  rechargeError: string;
-  rechargeSuccess: string;
-  rechargeEmail: string;
-  setRechargeEmail: (val: string) => void;
-  rechargeAmount: string;
-  setRechargeAmount: (val: string) => void;
-  rechargeReason: string;
-  setRechargeReason: (val: string) => void;
-  handleWalletAction: (action: 'recharge' | 'deduct') => void;
   whatsappError: string;
   whatsappSuccess: string;
   whatsappVal: string;
@@ -45,15 +36,6 @@ interface AdminUsersFinanceTabProps {
 
 export const AdminUsersFinanceTab: React.FC<AdminUsersFinanceTabProps> = ({
   users,
-  rechargeError,
-  rechargeSuccess,
-  rechargeEmail,
-  setRechargeEmail,
-  rechargeAmount,
-  setRechargeAmount,
-  rechargeReason,
-  setRechargeReason,
-  handleWalletAction,
   whatsappError,
   whatsappSuccess,
   whatsappVal,
@@ -84,100 +66,28 @@ export const AdminUsersFinanceTab: React.FC<AdminUsersFinanceTabProps> = ({
 }) => {
   return (
     <div className="space-y-8">
-      {/* Module 1: Customer Wallet Management */}
+      {/* Module 1: Registered Customers List & Balances */}
       <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md">
         <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 mb-5 flex items-center justify-end gap-2">
-          <span>Customer Wallet Management (کسٹمر والٹ مینجمنٹ)</span>
+          <span>رجسٹرڈ کسٹمرز کی لسٹ اور والٹ بیلنس (Registered Customers)</span>
           <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></span>
         </h4>
 
-        {rechargeError && (
-          <div className="mb-4 p-3 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs leading-relaxed">
-            ⚠️ {rechargeError}
-          </div>
-        )}
-        {rechargeSuccess && (
-          <div className="mb-4 p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs leading-relaxed">
-            ✓ {rechargeSuccess}
-          </div>
-        )}
-
-        <div className="space-y-4">
-          <div>
-            <label className="block text-slate-600 text-xs font-semibold mb-1.5">
-              کسٹمر ای میل (Customer Email) *
-            </label>
-            <input
-              type="email"
-              placeholder="customer@example.com"
-              value={rechargeEmail}
-              onChange={(e) => setRechargeEmail(e.target.value)}
-              className="w-full text-left bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
-            />
-          </div>
-
-          <div>
-            <label className="block text-slate-600 text-xs font-semibold mb-1.5">
-              رقم (Amount in Rs.) *
-            </label>
-            <input
-              type="number"
-              placeholder="1000"
-              value={rechargeAmount}
-              onChange={(e) => setRechargeAmount(e.target.value)}
-              className="w-full text-left bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
-            />
-          </div>
-
-          <div>
-            <label className="block text-slate-600 text-xs font-semibold mb-1.5">
-              وجہ / نوٹ (Reason - Optional)
-            </label>
-            <input
-              type="text"
-              placeholder="مثال: کیش وصولی یا والٹ ایڈجسٹمنٹ"
-              value={rechargeReason}
-              onChange={(e) => setRechargeReason(e.target.value)}
-              className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-            <button
-              type="button"
-              onClick={() => handleWalletAction('recharge')}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-2xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+        <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+          {users.map((u) => (
+            <div 
+              key={u.email || u.uid} 
+              className="flex justify-between items-center bg-slate-50 p-3 rounded-2xl text-xs border border-slate-100"
             >
-              <span>والٹ ریچارج کریں (Recharge Wallet)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleWalletAction('deduct')}
-              className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-2xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-            >
-              <span>والٹ سے رقم کاٹیں (Deduct Wallet)</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Quick list of registered customers */}
-        <div className="mt-6 pt-5 border-t border-slate-100">
-          <h5 className="text-[11px] text-slate-500 font-bold mb-3">رجسٹرڈ کسٹمرز کی لسٹ اور موجودہ بیلنس</h5>
-          <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
-            {users.map((u) => (
-              <div 
-                key={u.email || u.uid} 
-                onClick={() => setRechargeEmail(u.email || '')}
-                className="flex justify-between items-center bg-slate-50 hover:bg-amber-50/50 p-2.5 rounded-xl text-xs transition-all cursor-pointer border border-slate-100"
-              >
-                <span className="font-mono text-slate-600 font-semibold">Rs. {(u.balance ?? 0).toLocaleString()}</span>
-                <div className="text-right">
-                  <span className="font-semibold block text-slate-800">{u.name} {u.isAdmin && '(ایڈمن)'}</span>
-                  <span className="text-[10px] text-slate-400 font-mono">{u.email || 'ای میل کے بغیر'}</span>
-                </div>
+              <span className="font-mono text-emerald-700 font-bold bg-emerald-50 px-3 py-1 rounded-xl">
+                Rs. {(u.balance ?? 0).toLocaleString()}
+              </span>
+              <div className="text-right">
+                <span className="font-semibold block text-slate-800">{u.name} {u.isAdmin && '(ایڈمن)'}</span>
+                <span className="text-[10px] text-slate-400 font-mono">{u.email || 'ای میل کے بغیر'} {u.phone ? `| ${u.phone}` : ''}</span>
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       </div>
 

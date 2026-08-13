@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User, Booking, Demand, DrawCategory } from '../../types';
-import { Sparkles, Clock, Search, Trash, Check, X } from 'lucide-react';
+import { Sparkles, Clock, Search, Trash, Check, X, FileText, Filter } from 'lucide-react';
+import { generateAdminBookingsPDF } from '../../utils/pdfGenerator';
 
 interface AdminDemandsBookingsTabProps {
   users: User[];
@@ -32,7 +33,14 @@ export const AdminDemandsBookingsTab: React.FC<AdminDemandsBookingsTabProps> = (
   safeFormatDate
 }) => {
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'pakistan_bond' | 'thailand_lottery'>('all');
+  const [dateFilter, setDateFilter] = useState<string>('all');
+  const [showArchived, setShowArchived] = useState<boolean>(false);
   const [bookingSearchQuery, setBookingSearchQuery] = useState('');
+
+  // Extract unique dates for filtering
+  const availableDates = Array.from(
+    new Set(bookings.map(b => b.drawDate).filter(Boolean) as string[])
+  );
 
   const handleApprove = async (id: string, num: string) => {
     if (window.confirm(`کیا آپ نمبر #${num} کی ڈیمانڈ منظور کرنا چاہتے ہیں؟`)) {
@@ -50,6 +58,34 @@ export const AdminDemandsBookingsTab: React.FC<AdminDemandsBookingsTabProps> = (
     if (window.confirm(`کیا آپ واقعی نمبر #${number} کی بکنگ منسوخ کر کے رقم کسٹمر کے والٹ میں واپس منتقل کرنا چاہتے ہیں؟`)) {
       await onCancelBookingByAdmin(bookingId);
     }
+  };
+
+  // Filter bookings for table display & PDF generation
+  const getFilteredBookings = () => {
+    return bookings.filter((b) => {
+      const matchesCategory = categoryFilter === 'all' || b.category === categoryFilter;
+      const matchesDate = dateFilter === 'all' || b.drawDate === dateFilter;
+      const matchesArchived = showArchived ? true : !b.isArchived;
+      const matchesSearch =
+        !bookingSearchQuery ||
+        b.number.includes(bookingSearchQuery) ||
+        (b.userEmail || '').toLowerCase().includes(bookingSearchQuery.toLowerCase());
+      return matchesCategory && matchesDate && matchesArchived && matchesSearch;
+    }).sort((a, b) => safeGetTime(b.timestamp) - safeGetTime(a.timestamp));
+  };
+
+  const handleExportPDF = (filterType: 'draw' | 'date' | 'all') => {
+    const listToExport = getFilteredBookings();
+    if (listToExport.length === 0) {
+      alert('ایکسپورٹ کے لئے لسٹ میں کوئی بکنگ موجود نہیں ہے۔');
+      return;
+    }
+    const title = filterType === 'date' 
+      ? `Date_${dateFilter}` 
+      : filterType === 'draw' 
+        ? `Category_${categoryFilter}` 
+        : 'All_Bookings';
+    generateAdminBookingsPDF(title, listToExport, filterType, dateFilter !== 'all' ? dateFilter : categoryFilter);
   };
 
   return (
@@ -187,17 +223,70 @@ export const AdminDemandsBookingsTab: React.FC<AdminDemandsBookingsTabProps> = (
           </h4>
         </div>
 
-        <div className="grid grid-cols-1 gap-3">
-          <div className="relative">
+        {/* Filters and PDF Controls */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="relative md:col-span-1">
             <input
               type="text"
-              placeholder="کسٹمر کی ای میل یا بکنگ نمبر سے تلاش کریں..."
+              placeholder="کسٹمر ای میل یا نمبر تلاش کریں..."
               value={bookingSearchQuery}
               onChange={(e) => setBookingSearchQuery(e.target.value)}
-              className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 pl-4 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
+              className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-2.5 pl-4 pr-10 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
             />
-            <Search className="w-5 h-5 text-slate-400 absolute right-4 top-3.5" />
+            <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
           </div>
+
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-slate-400" />
+            <select
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-2.5 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans text-right"
+            >
+              <option value="all">تمام تاریخیں (All Dates)</option>
+              {availableDates.map(date => (
+                <option key={date} value={date}>{date}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center justify-end gap-2">
+            <label className="text-xs text-slate-600 font-medium flex items-center gap-1.5 cursor-pointer">
+              <span>آرکائیو شدہ بکنگز دکھائیں</span>
+              <input
+                type="checkbox"
+                checked={showArchived}
+                onChange={(e) => setShowArchived(e.target.checked)}
+                className="rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+              />
+            </label>
+          </div>
+        </div>
+
+        {/* PDF Export Action Buttons */}
+        <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100">
+          <span className="text-xs font-semibold text-slate-600 ml-2">پی ڈی ایف دیکھیں/ڈاؤن لوڈ کریں (PDF Reports):</span>
+          <button
+            onClick={() => handleExportPDF('draw')}
+            className="bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>PDF برائے ڈرا / کیٹیگری</span>
+          </button>
+          <button
+            onClick={() => handleExportPDF('date')}
+            className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>PDF برائے تاریخ ({dateFilter !== 'all' ? dateFilter : 'منتخب تاریخ'})</span>
+          </button>
+          <button
+            onClick={() => handleExportPDF('all')}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>تمام فلٹر شدہ بکنگز PDF</span>
+          </button>
         </div>
 
         {cancelError && (
@@ -212,14 +301,7 @@ export const AdminDemandsBookingsTab: React.FC<AdminDemandsBookingsTabProps> = (
         )}
 
         {(() => {
-          const filteredBookings = bookings.filter((b) => {
-            const matchesCategory = categoryFilter === 'all' || b.category === categoryFilter;
-            const matchesSearch =
-              !bookingSearchQuery ||
-              b.number.includes(bookingSearchQuery) ||
-              (b.userEmail || '').toLowerCase().includes(bookingSearchQuery.toLowerCase());
-            return matchesCategory && matchesSearch;
-          }).sort((a, b) => safeGetTime(b.timestamp) - safeGetTime(a.timestamp));
+          const filteredBookings = getFilteredBookings();
 
           if (filteredBookings.length === 0) {
             return <p className="text-slate-400 text-xs text-center py-6 font-sans">کوئی بکنگ ریکارڈ نہیں ملا۔</p>;

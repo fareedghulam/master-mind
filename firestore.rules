@@ -103,14 +103,18 @@ service cloud.firestore {
       );
     }
 
+    function isAdmin() {
+      return isSuperAdmin() || isDataEntryAdmin();
+    }
+
     match /users/{uid} {
       // Fully migrated to Firebase Auth UID architecture
-      allow read: if isSuperAdmin() || isDataEntryAdmin() || (request.auth != null && request.auth.uid == uid);
+      allow read: if isAdmin() || (request.auth != null && request.auth.uid == uid);
       allow create: if isValidId(uid) && (
-        isSuperAdmin() || (request.auth != null && request.auth.uid == uid)
+        isAdmin() || (request.auth != null && request.auth.uid == uid)
       ) && isValidUser(request.resource.data);
       allow update: if isValidId(uid) && (
-        isSuperAdmin() || (
+        isAdmin() || (
           request.auth != null && 
           request.auth.uid == uid &&
           (!('balance' in resource.data) || request.resource.data.balance == resource.data.balance) &&
@@ -124,13 +128,13 @@ service cloud.firestore {
     match /bookings/{bookingId} {
       allow read: if true;
       allow create: if isValidId(bookingId) && isValidBooking(request.resource.data) && (
-        isSuperAdmin() || (
+        isAdmin() || (
           request.auth != null && 
           request.resource.data.userEmail.lower() == request.auth.token.email.lower()
         )
       );
       allow update, delete: if isValidId(bookingId) && (
-        isSuperAdmin() || (
+        isAdmin() || (
           request.auth != null && 
           resource.data.userEmail.lower() == request.auth.token.email.lower()
         )
@@ -139,46 +143,46 @@ service cloud.firestore {
 
     match /limits/{limitId} {
       allow read: if true;
-      allow write: if isValidId(limitId) && isValidLimit(request.resource.data) && isSuperAdmin();
+      allow write: if isValidId(limitId) && isValidLimit(request.resource.data) && isAdmin();
     }
 
     match /demands/{demandId} {
       allow read: if true;
       allow create: if isValidId(demandId) && isValidDemand(request.resource.data) && (
-        isSuperAdmin() || (
+        isAdmin() || (
           request.auth != null && 
           request.resource.data.userEmail.lower() == request.auth.token.email.lower()
         )
       );
       allow update: if isValidId(demandId) && isValidDemand(request.resource.data) && (
-        isSuperAdmin() || (
+        isAdmin() || (
           request.auth != null && 
           resource.data.userEmail.lower() == request.auth.token.email.lower() &&
           request.resource.data.status == resource.data.status
         )
       );
-      allow delete: if isValidId(demandId) && isSuperAdmin();
+      allow delete: if isValidId(demandId) && isAdmin();
     }
 
     match /deadlines/{category} {
       allow read: if true;
-      allow write: if isValidId(category) && isValidDeadline(request.resource.data) && isSuperAdmin();
+      allow write: if isValidId(category) && isValidDeadline(request.resource.data) && isAdmin();
     }
 
     match /transactions/{txId} {
-      allow read: if isSuperAdmin() || (request.auth != null && (
+      allow read: if isAdmin() || (request.auth != null && (
         resource.data.userEmail.lower() == request.auth.token.email.lower() ||
         resource.data.userId == request.auth.uid
       ));
       allow create: if isValidId(txId) && isValidTransaction(request.resource.data) && (
-        isSuperAdmin() || (
+        isAdmin() || (
           request.auth != null && (
             request.resource.data.userEmail.lower() == request.auth.token.email.lower() ||
             request.resource.data.userId == request.auth.uid
           )
         )
       );
-      allow update: if isValidId(txId) && isSuperAdmin();
+      allow update: if isValidId(txId) && isAdmin();
       allow delete: if isSuperAdmin();
     }
 

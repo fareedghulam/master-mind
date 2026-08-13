@@ -4,6 +4,7 @@ import {
   collection, 
   doc, 
   setDoc, 
+  updateDoc,
   deleteDoc, 
   onSnapshot,
   runTransaction,
@@ -29,32 +30,10 @@ import {
 import { pakistanBondDraws } from './pakistanBondData';
 import { thaiHistoricalDraws } from './thaiLotteryData';
 
+import { registerInAuthOnly as registerInAuthOnlyService, sendPasswordResetLink as sendPasswordResetLinkService } from '../services/userService';
+
 export async function registerInAuthOnly(email: string, passwordInput: string): Promise<string> {
-  const secondaryAppName = `SecondaryAuth_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-  const secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
-  const secondaryAuth = getAuth(secondaryApp);
-  try {
-    const cred = await createUserWithEmailAndPassword(secondaryAuth, email.toLowerCase().trim(), passwordInput);
-    console.log(`[FirebaseAuth] Registered user ${email} in Auth successfully.`);
-    return cred.user.uid;
-  } catch (err: any) {
-    if (err && err.code === 'auth/email-already-in-use') {
-      console.log(`[FirebaseAuth] User ${email} already exists in Auth.`);
-      const existingUser = cachedUsers.find(u => u.email.toLowerCase() === email.toLowerCase().trim());
-      if (existingUser && existingUser.uid) {
-        return existingUser.uid;
-      }
-      throw err;
-    } else if (err && err.code === 'auth/operation-not-allowed') {
-      console.error(`[FirebaseAuth] Error: Email/Password provider is disabled in the Firebase Console. Please enable it in Authentication -> Sign-in method -> Email/Password.`, err);
-      throw err;
-    } else {
-      console.error(`[FirebaseAuth] Error in registerInAuthOnly for ${email}:`, err);
-      throw err;
-    }
-  } finally {
-    await deleteApp(secondaryApp);
-  }
+  return registerInAuthOnlyService(email, passwordInput, cachedUsers);
 }
 
 export async function syncFirebaseAuth(email: string, passwordInput?: string) {
@@ -101,22 +80,33 @@ export async function checkInternetConnection(): Promise<boolean> {
 
 const DEFAULT_DEADLINES: DrawDeadline[] = [
   {
+    id: 'pakistan_bond_15000_114',
+    drawId: 'pakistan_bond_15000_114',
     category: 'pakistan_bond',
     titleUrdu: 'پاکستان پرائز بانڈ بکنگ کھل گئی ہے',
-    deadlineIso: '2026-08-30T18:00',
-    status: 'open'
+    deadlineIso: '2026-08-16T18:00',
+    status: 'open',
+    bookingStatusUrdu: 'بکنگ کھول گئی',
+    nextPrizeBondValue: 'Rs. 15000',
+    nextDrawCity: 'Karachi',
+    nextDrawNumber: '114',
+    nextDrawDate: '16-08-2026'
   },
   {
+    id: 'thailand_lottery_20260817',
+    drawId: 'thailand_lottery_20260817',
     category: 'thailand_lottery',
     titleUrdu: 'تھائی لینڈ ڈرا بکنگ کھل گئی ہے',
-    deadlineIso: '2026-09-02T12:00',
-    status: 'open'
+    deadlineIso: '2026-08-17T12:00',
+    status: 'open',
+    bookingStatusUrdu: 'بکنگ کھول گئی',
+    nextDrawDate: '17-08-2026'
   }
 ];
 
 const DEFAULT_USERS: User[] = [
   {
-    email: '',
+    email: 'mastermaindqureshi110@gmail.com',
     name: 'ایڈمن قریشی صاحب',
     phone: '03453090146',
     city: 'لاہور',
@@ -141,15 +131,6 @@ const DEFAULT_USERS: User[] = [
     balance: 15000,
     isAdmin: true,
     role: 'dataEntryAdmin'
-  },
-  {
-    email: 'customer@test.com',
-    name: 'محمد علی',
-    phone: '03214567890',
-    city: 'کراچی',
-    balance: 3200,
-    isAdmin: false,
-    role: 'customer'
   }
 ];
 
@@ -203,7 +184,7 @@ let cachedDemands: Demand[] = [];
 let cachedDeadlines: DrawDeadline[] = [];
 let cachedTransactions: Transaction[] = [];
 let cachedSupportWhatsApp = '923453090146';
-let cachedAdminEmail = '';
+let cachedAdminEmail = 'mastermaindqureshi110@gmail.com';
 
 const listeners: Set<() => void> = new Set();
 let started = false;
@@ -240,7 +221,7 @@ export function isLoggedUserAdminOrSuper(): boolean {
   // 2. Fallback search by email
   const email = firebaseUser.email?.toLowerCase().trim();
   if (email) {
-    if (email === 'mastermaind.qureshi110@gmail.com') {
+    if (email === 'mastermaindqureshi110@gmail.com' || email === 'mastermaind.qureshi110@gmail.com') {
       return true;
     }
     const userByEmail = cachedUsers.find(u => (u.email || '').toLowerCase() === email);
@@ -277,63 +258,51 @@ export function initializeStore() {
   
   // Set local helper default keys if not set
   if (!localStorage.getItem('mqe_admin_configured_email')) {
-    localStorage.setItem('mqe_admin_configured_email', '');
+    localStorage.setItem('mqe_admin_configured_email', 'mastermaindqureshi110@gmail.com');
   }
   if (!localStorage.getItem('mqe_whatsapp_number')) {
     localStorage.setItem('mqe_whatsapp_number', '923453090146');
   }
 
-  // A. Listen to Auth State dynamically.
-  // Do NOT wait for Firestore network calls to determine built-in admin access.
-  onAuthStateChanged(auth, (firebaseUser) => {
-    if (!firebaseUser) {
-      sessionStorage.removeItem('admin_verified');
-      notifyListeners();
-      return;
-    }
-
-    const email = (firebaseUser.email || '').toLowerCase().trim();
-    const uid = firebaseUser.uid;
-
-    const isDefaultSuper =
-      uid === 's6dXc7vXJnd0uXfcYxacbKfwASF3' ||
-      email === 'mastermaind.qureshi110@gmail.com';
-
-    const isDefaultDataEntry =
-      uid === 'fo7mGVcdIeTyh4X61yyJGrjgsgP2' ||
-      email === 'fareed.ghulam@gmail.com';
-
-    const cached = cachedUsers.find(
-      (u) =>
-        u.uid === uid ||
-        ((u.email || '').toLowerCase().trim() === email && email !== '')
-    );
-
-    const isFirestoreAdmin =
-      cached?.isAdmin === true ||
-      cached?.role === 'superAdmin' ||
-      cached?.role === 'admin' ||
-      cached?.role === 'dataEntryAdmin';
-
-    if (
-      isDefaultSuper ||
-      isDefaultDataEntry ||
-      isFirestoreAdmin
-    ) {
-      sessionStorage.setItem('admin_verified', 'true');
+  // A. Listen to Auth State dynamically
+  onAuthStateChanged(auth, async (firebaseUser) => {
+    if (firebaseUser) {
+      const email = firebaseUser.email;
+      const uid = firebaseUser.uid;
+      if (email) {
+        const normalized = email.toLowerCase().trim();
+        // Look up user role dynamically
+        let userProfile = cachedUsers.find(u => u.uid === uid);
+        if (!userProfile) {
+          try {
+            const docRef = doc(db, 'users', uid);
+            const userDoc = await getDocFromServer(docRef);
+            if (userDoc.exists()) {
+              userProfile = userDoc.data() as User;
+            }
+          } catch (e) {
+            console.error("Failed to fetch user role on auth state change:", e);
+          }
+        }
+        
+        const isSuper = userProfile && (userProfile.role === 'superAdmin' || userProfile.role === 'admin');
+        const isDataEntry = userProfile && userProfile.role === 'dataEntryAdmin';
+        
+        if (isSuper || isDataEntry) {
+          sessionStorage.setItem('admin_verified', 'true');
+        }
+      }
     } else {
       sessionStorage.removeItem('admin_verified');
     }
-
     notifyListeners();
   });
 
   // B. Seed default accounts in Firebase Auth and perform safe Firestore role migration
   const seedAndMigrateDefaultUsers = async () => {
     const defaultUsersToSeed = [
-      { email: 'mastermaind.qureshi110@gmail.com', password: '123456', role: 'superAdmin', name: 'ایڈمن قریشی صاحب ڈاٹ' },
-      { email: 'fareed.ghulam@gmail.com', password: '123456', role: 'dataEntryAdmin', name: 'غلام فرید' },
-      { email: 'customer@test.com', password: '123456', role: 'customer', name: 'محمد علی' }
+      { email: 'mastermaind.qureshi110@gmail.com', password: '123456', role: 'superAdmin', name: 'ایڈمن قریشی صاحب' },
+      { email: 'fareed.ghulam@gmail.com', password: '123456', role: 'dataEntryAdmin', name: 'غلام فرید' }
     ];
 
     for (const item of defaultUsersToSeed) {
@@ -405,8 +374,13 @@ export function initializeStore() {
           }
         }
 
-        const isSuper = data.role === 'superAdmin' || data.role === 'admin';
-        const isDataEntry = data.role === 'dataEntryAdmin';
+        const emailLower = (mappedUser.email || data.email || '').toLowerCase().trim();
+        const isSuperAdminEmail = emailLower === 'mastermaind.qureshi110@gmail.com' || emailLower === 'mastermaindqureshi110@gmail.com' || mappedUser.uid === 's6dXc7vXJnd0uXfcYxacbKfwASF3';
+        const isDataEntryEmail = emailLower === 'fareed.ghulam@gmail.com';
+
+        const isSuper = isSuperAdminEmail || data.role === 'superAdmin' || data.role === 'admin';
+        const isDataEntry = isDataEntryEmail || data.role === 'dataEntryAdmin';
+
         if (isSuper) {
           mappedUser.isAdmin = true;
           mappedUser.role = 'superAdmin';
@@ -462,8 +436,12 @@ export function initializeStore() {
             uid: data.uid || uid,
             email: data.email || firebaseUser.email || ''
           };
-          const isSuper = data.role === 'superAdmin' || data.role === 'admin';
-          const isDataEntry = data.role === 'dataEntryAdmin';
+          const emailLower = (userObj.email || data.email || '').toLowerCase().trim();
+          const isSuperAdminEmail = emailLower === 'mastermaind.qureshi110@gmail.com' || emailLower === 'mastermaindqureshi110@gmail.com' || userObj.uid === 's6dXc7vXJnd0uXfcYxacbKfwASF3';
+          const isDataEntryEmail = emailLower === 'fareed.ghulam@gmail.com';
+
+          const isSuper = isSuperAdminEmail || data.role === 'superAdmin' || data.role === 'admin';
+          const isDataEntry = isDataEntryEmail || data.role === 'dataEntryAdmin';
           if (isSuper) {
             userObj.isAdmin = true;
             userObj.role = 'superAdmin';
@@ -494,15 +472,8 @@ export function initializeStore() {
   // 2. Listen to bookings
   onSnapshot(collection(db, 'bookings'), (snapshot) => {
     if (snapshot.empty) {
-      if (isLoggedUserAdminOrSuper()) {
-        DEFAULT_BOOKINGS.forEach(async (booking) => {
-          try {
-            await setDoc(doc(db, 'bookings', booking.id), booking);
-          } catch (e) {
-            console.error("Failed to seed default booking:", e);
-          }
-        });
-      }
+      cachedBookings = [];
+      notifyListeners();
     } else {
       const list = snapshot.docs.map(doc => doc.data() as Booking);
       cachedBookings = list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -566,7 +537,7 @@ export function initializeStore() {
       if (isLoggedUserAdminOrSuper()) {
         try {
           await setDoc(doc(db, 'settings', 'general'), {
-            adminEmail: '',
+            adminEmail: 'mastermaindqureshi110@gmail.com',
             whatsappNumber: '923453090146'
           });
         } catch (e) {
@@ -575,9 +546,9 @@ export function initializeStore() {
       }
     } else {
       const data = snapshot.data();
-      let adminEmail = data?.adminEmail || '';
+      let adminEmail = data?.adminEmail || 'mastermaindqureshi110@gmail.com';
       if (adminEmail === 'mastermaind.qureshi110@gmail.com') {
-        adminEmail = '';
+        adminEmail = 'mastermaindqureshi110@gmail.com';
         if (isLoggedUserAdminOrSuper()) {
           try {
             // Auto-migrate in Firestore
@@ -739,108 +710,52 @@ export function saveNumberLimits(limits: NumberLimit[]) {
 export function getLoggedInUser(): User | null {
   const firebaseUser = auth.currentUser;
   if (!firebaseUser) return null;
-
   const emailLower = firebaseUser.email?.toLowerCase().trim() || '';
-
-  const user = cachedUsers.find(
-    (u) =>
-      u.uid === firebaseUser.uid ||
-      (emailLower &&
-        u.email &&
-        u.email.toLowerCase().trim() === emailLower)
-  ) || null;
+  const user = cachedUsers.find((u) => u.uid === firebaseUser.uid || (emailLower && u.email && u.email.toLowerCase().trim() === emailLower)) || null;
+  
+  const isDefaultSuper = emailLower === 'mastermaind.qureshi110@gmail.com' || emailLower === 'mastermaindqureshi110@gmail.com' || firebaseUser.uid === 's6dXc7vXJnd0uXfcYxacbKfwASF3';
+  const isDefaultDataEntry = emailLower === 'fareed.ghulam@gmail.com';
 
   if (user) {
-    const isSuper =
-      user.role === 'superAdmin' ||
-      user.role === 'admin';
+    const userEmail = (user.email || '').toLowerCase().trim();
+    const isUserSuperEmail = userEmail === 'mastermaind.qureshi110@gmail.com' || userEmail === 'mastermaindqureshi110@gmail.com' || user.uid === 's6dXc7vXJnd0uXfcYxacbKfwASF3';
+    const isUserDataEntryEmail = userEmail === 'fareed.ghulam@gmail.com';
 
-    const isDataEntry =
-      user.role === 'dataEntryAdmin';
+    const isSuper = isDefaultSuper || isUserSuperEmail || user.role === 'superAdmin' || user.role === 'admin' || user.isAdmin === true;
+    const isDataEntry = isDefaultDataEntry || isUserDataEntryEmail || user.role === 'dataEntryAdmin';
 
-    if (user.isAdmin || isSuper || isDataEntry) {
+    if (isSuper) {
       return {
         ...user,
+        phone: user.phone || '03453090146',
+        city: user.city || 'Karachi',
         isAdmin: true,
-        role: isDataEntry ? 'dataEntryAdmin' : 'superAdmin'
+        role: 'superAdmin'
       };
     }
-
+    if (isDataEntry) {
+      return {
+        ...user,
+        phone: user.phone || '03157891234',
+        city: user.city || 'Multan',
+        isAdmin: true,
+        role: 'dataEntryAdmin'
+      };
+    }
     return user;
   }
-
-  // Authoritative fallback for built-in administrator accounts.
-  // Admin access must never depend on Firestore cache timing.
-
-  const isDefaultSuper =
-    firebaseUser.uid === 's6dXc7vXJnd0uXfcYxacbKfwASF3' ||
-    emailLower === 'mastermaind.qureshi110@gmail.com';
-
-  const isDefaultDataEntry =
-    firebaseUser.uid === 'fo7mGVcdIeTyh4X61yyJGrjgsgP2' ||
-    emailLower === 'fareed.ghulam@gmail.com';
-
-  if (isDefaultSuper) {
-    return {
-      uid: firebaseUser.uid,
-      email: 'mastermaind.qureshi110@gmail.com',
-      name: 'ایڈمن قریشی صاحب',
-      phone: '03453090146',
-      city: 'Karachi',
-      balance: 500000,
-      isAdmin: true,
-      role: 'superAdmin'
-    };
-  }
-
-  if (isDefaultDataEntry) {
-    return {
-      uid: firebaseUser.uid,
-      email: 'fareed.ghulam@gmail.com',
-      name: 'غلام فرید',
-      phone: '03212057166',
-      city: 'Karachi',
-      balance: 15000,
-      isAdmin: true,
-      role: 'dataEntryAdmin'
-    };
-  }
-
+  
+  // Robust timing fallback to prevent white screens / login kicks before cachedUsers is fully populated
   return {
     uid: firebaseUser.uid,
-    email: emailLower,
-    name: 'لوڈ ہو رہا ہے...',
-    phone: '',
-    city: '',
-    balance: 0,
-    isAdmin: false,
-    role: 'customer'
+    email: emailLower || 'mastermaind.qureshi110@gmail.com',
+    name: isDefaultSuper ? 'ایڈمن قریشی صاحب' : (isDefaultDataEntry ? 'غلام فرید' : 'لوڈ ہو رہا ہے...'),
+    phone: isDefaultSuper ? '03453090146' : (isDefaultDataEntry ? '03157891234' : ''),
+    city: isDefaultSuper ? 'Karachi' : (isDefaultDataEntry ? 'Multan' : ''),
+    balance: isDefaultSuper ? 500000 : (isDefaultDataEntry ? 15000 : 0),
+    isAdmin: isDefaultSuper || isDefaultDataEntry,
+    role: isDefaultSuper ? 'superAdmin' : (isDefaultDataEntry ? 'dataEntryAdmin' : 'customer')
   };
-}
-
-export function syncLoggedInUser(user: User) {
-  const index = cachedUsers.findIndex(
-    (u) => u.uid === user.uid || (u.email || '').toLowerCase().trim() === (user.email || '').toLowerCase().trim()
-  );
-
-  if (index >= 0) {
-    cachedUsers[index] = { ...cachedUsers[index], ...user };
-  } else {
-    cachedUsers.push(user);
-  }
-
-  if (
-    user.isAdmin === true ||
-    user.role === 'superAdmin' ||
-    user.role === 'admin' ||
-    user.role === 'dataEntryAdmin'
-  ) {
-    sessionStorage.setItem('admin_verified', 'true');
-  } else {
-    sessionStorage.removeItem('admin_verified');
-  }
-
-  notifyListeners();
 }
 
 export function setLoggedInUser(emailOrUid: string) {
@@ -853,7 +768,7 @@ export function setLoggedInUser(emailOrUid: string) {
     sessionStorage.setItem('admin_verified', 'true');
   } else {
     // Also support fallback for default emails to sync sessions
-    const isDefaultSuper = clean === 'mastermaind.qureshi110@gmail.com';
+    const isDefaultSuper = clean === 'mastermaind.qureshi110@gmail.com' || clean === 'mastermaindqureshi110@gmail.com';
     const isDefaultDataEntry = clean === 'fareed.ghulam@gmail.com';
     if (isDefaultSuper || isDefaultDataEntry) {
       sessionStorage.setItem('admin_verified', 'true');
@@ -896,8 +811,8 @@ export async function updateUserPassword(email: string, passwordInput: string): 
 
   const normalizedEmail = email.toLowerCase().trim();
   const emailsToUpdate = [normalizedEmail];
-  if (normalizedEmail === 'mastermaind.qureshi110@gmail.com') {
-    if (!emailsToUpdate.includes('')) emailsToUpdate.push('');
+  if (normalizedEmail === 'mastermaindqureshi110@gmail.com' || normalizedEmail === 'mastermaind.qureshi110@gmail.com') {
+    if (!emailsToUpdate.includes('mastermaindqureshi110@gmail.com')) emailsToUpdate.push('mastermaindqureshi110@gmail.com');
     if (!emailsToUpdate.includes('mastermaind.qureshi110@gmail.com')) emailsToUpdate.push('mastermaind.qureshi110@gmail.com');
   }
 
@@ -994,7 +909,7 @@ export async function registerUser(name: string, phone: string, city: string, em
     return null;
   }
   const normalizedEmail = email.toLowerCase().trim();
-  const isAdmin = normalizedEmail === cachedAdminEmail.toLowerCase() || normalizedEmail === 'mastermaind.qureshi110@gmail.com';
+  const isAdmin = normalizedEmail === cachedAdminEmail.toLowerCase() || normalizedEmail === 'mastermaindqureshi110@gmail.com' || normalizedEmail === 'mastermaind.qureshi110@gmail.com';
   
   try {
     // 1. Create account in Firebase Authentication
@@ -1070,7 +985,7 @@ export async function signInWithGoogle(): Promise<{ success: boolean; user?: Use
         isNewOrIncomplete = true;
       }
     } else {
-      const isAdmin = email === cachedAdminEmail.toLowerCase() || email === 'mastermaind.qureshi110@gmail.com';
+      const isAdmin = email === cachedAdminEmail.toLowerCase() || email === 'mastermaindqureshi110@gmail.com' || email === 'mastermaind.qureshi110@gmail.com';
       userProfile = {
         uid,
         email,
@@ -1355,26 +1270,73 @@ export async function updateUserProfile(
   }
 }
 
-export async function rechargeWallet(email: string, amount: number): Promise<boolean> {
+export async function rechargeWallet(
+  email: string, 
+  amount: number,
+  note?: string
+): Promise<{ success: boolean; error?: string }> {
   const online = await checkInternetConnection();
-  if (!online) return false;
+  if (!online) return { success: false, error: 'انٹرنیٹ کنکشن موجود نہیں ہے۔' };
 
   const normalizedEmail = email.toLowerCase().trim();
-  let cached = cachedUsers.find(u => (u.email || '').toLowerCase() === normalizedEmail);
+  if (!normalizedEmail) {
+    return { success: false, error: 'ای میل ایڈریس صحیح نہیں ہے۔' };
+  }
 
-  if (!cached || !cached.uid) {
-    if (auth.currentUser && (auth.currentUser.email || '').toLowerCase() === normalizedEmail) {
-      cached = cachedUsers.find(u => u.uid === auth.currentUser?.uid);
+  // 1. Try finding in cachedUsers
+  let cached = cachedUsers.find(u => (u.email || '').toLowerCase().trim() === normalizedEmail);
+
+  let targetUid = cached?.uid;
+  let targetName = cached?.name || 'صارف';
+  let targetBalance = cached?.balance || 0;
+
+  // 2. Fallback: Query Firestore directly for users collection if not found in memory
+  if (!targetUid) {
+    try {
+      const q = query(collection(db, 'users'), where('email', '==', normalizedEmail));
+      const querySnap = await getDocs(q);
+      if (!querySnap.empty) {
+        const userDoc = querySnap.docs[0];
+        const data = userDoc.data() as User;
+        targetUid = data.uid || userDoc.id;
+        targetName = data.name || 'صارف';
+        targetBalance = data.balance || 0;
+      }
+    } catch (err) {
+      console.error("[rechargeWallet] Firestore user query failed:", err);
     }
   }
 
-  if (!cached || !cached.uid) {
-    console.error(`[UID-Migration] Recharge failed: Customer ${normalizedEmail} has no valid firebase UID loaded.`);
-    return false;
+  // 3. Fallback: Try document with normalizedEmail as key
+  if (!targetUid) {
+    try {
+      const emailDocRef = doc(db, 'users', normalizedEmail);
+      const emailDocSnap = await getDocFromServer(emailDocRef);
+      if (emailDocSnap.exists()) {
+        const data = emailDocSnap.data() as User;
+        targetUid = data.uid || normalizedEmail;
+        targetName = data.name || 'صارف';
+        targetBalance = data.balance || 0;
+      }
+    } catch (err) {
+      // Ignore
+    }
+  }
+
+  if (!targetUid) {
+    console.error(`[rechargeWallet] Recharge failed: Customer ${normalizedEmail} has no valid firebase UID loaded.`);
+    return { success: false, error: 'اس ای میل کے ساتھ کوئی رجسٹرڈ کسٹمر نہیں ملا۔' };
+  }
+
+  // Check insufficient balance if deducting
+  if (amount < 0 && (targetBalance + amount < 0)) {
+    return { 
+      success: false, 
+      error: `کسٹمر کے پاس کافی بیلنس نہیں ہے۔ موجودہ بیلنس: Rs. ${targetBalance.toLocaleString()}` 
+    };
   }
   
-  const uid = cached.uid;
-  const userRef = doc(db, 'users', uid);
+  const userRef = doc(db, 'users', targetUid);
   const txId = 'tx-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
   const txRef = doc(db, 'transactions', txId);
 
@@ -1382,25 +1344,33 @@ export async function rechargeWallet(email: string, amount: number): Promise<boo
     await runTransaction(db, async (transaction) => {
       const userDoc = await transaction.get(userRef);
       if (!userDoc.exists()) {
-        throw new Error('کسٹمر ریکارڈ نہیں ملا');
+        throw new Error('کسٹمر کا اکاؤنٹ Firestore میں نہیں ملا۔');
       }
       const user = userDoc.data() as User;
-      const newBal = (user.balance || 0) + amount;
+      const currentBal = user.balance ?? 0;
+
+      if (amount < 0 && (currentBal + amount < 0)) {
+        throw new Error(`کسٹمر کا بیلنس منفی نہیں ہو سکتا۔ موجودہ بیلنس: Rs. ${currentBal.toLocaleString()}`);
+      }
+
+      const newBal = currentBal + amount;
       transaction.update(userRef, {
         balance: newBal
       });
 
+      const defaultNote = amount >= 0 ? 'ایڈمن کی جانب سے والٹ ریچارج' : 'ایڈمن کی جانب سے والٹ سے کٹوتی';
+
       const tx: Transaction = {
         id: txId,
-        userId: uid,
+        userId: targetUid!,
         userEmail: normalizedEmail,
-        userName: user.name || cached?.name || 'صارف',
+        userName: user.name || targetName,
         type: amount >= 0 ? 'recharge' : 'withdrawal',
         amount: Math.abs(amount),
         date: new Date().toISOString(),
         status: 'approved',
         paymentMethod: 'ایڈمن والٹ چارج',
-        note: amount >= 0 ? 'ایڈمن کی جانب سے والٹ ریچارج' : 'ایڈمن کی جانب سے والٹ سے کٹوتی'
+        note: note && note.trim() ? note.trim() : defaultNote
       };
       transaction.set(txRef, tx);
     });
@@ -1409,10 +1379,13 @@ export async function rechargeWallet(email: string, amount: number): Promise<boo
       cached.balance = (cached.balance || 0) + amount;
     }
     notifyListeners();
-    return true;
-  } catch (e) {
+    return { success: true };
+  } catch (e: any) {
     console.error("Recharge transaction failed:", e);
-    return false;
+    return { 
+      success: false, 
+      error: e?.message || 'والٹ ٹرانزیکشن میں خرابی پیش آئی۔' 
+    };
   }
 }
 
@@ -1596,18 +1569,19 @@ export async function cancelBookingByAdmin(bookingId: string): Promise<{ success
   }
 }
 
-export async function setOrUpdateLimit(category: DrawCategory, number: string, maxAmount: number): Promise<void> {
+export async function setOrUpdateLimit(category: DrawCategory, number: string, maxAmount: number, drawId?: string): Promise<void> {
   const online = await checkInternetConnection();
   if (!online) return;
 
-  const existing = cachedLimits.find(l => l.category === category && l.number === number);
+  const existing = cachedLimits.find(l => (drawId ? l.drawId === drawId : l.category === category) && l.number === number);
   const limitId = existing ? existing.id : 'limit-' + Date.now();
   
   const limit: NumberLimit = {
     id: limitId,
     category,
     number,
-    maxAmount
+    maxAmount,
+    ...(drawId && { drawId })
   };
   await setDoc(doc(db, 'limits', limitId), limit);
 
@@ -1806,21 +1780,24 @@ export async function setDrawDeadline(
   nextDrawCity?: string,
   nextDrawNumber?: string,
   nextDrawDate?: string,
-  drawId?: string
+  drawId?: string,
+  bookingStatusUrdu?: 'بکنگ کھول گئی' | 'بکنگ بند ہے'
 ): Promise<void> {
   const online = await checkInternetConnection();
   if (!online) return;
 
-  const targetDocId = drawId || (category === 'pakistan_bond' ? `pb_draw_${Date.now()}` : category);
-  const existing = cachedDeadlines.find(d => (d.id || d.category) === targetDocId);
+  const targetDocId = drawId || (category === 'pakistan_bond' ? `pb_draw_${Date.now()}` : `th_draw_${Date.now()}`);
+  const existing = cachedDeadlines.find(d => (d.id || d.drawId || d.category) === targetDocId);
   const now = new Date().toISOString();
 
   const deadline: DrawDeadline = {
     id: targetDocId,
+    drawId: targetDocId,
     category,
     deadlineIso,
     titleUrdu,
     status,
+    bookingStatusUrdu: bookingStatusUrdu || (status === 'closed' ? 'بکنگ بند ہے' : 'بکنگ کھول گئی'),
     ...(nextPrizeBondValue !== undefined && { nextPrizeBondValue }),
     ...(nextDrawCity !== undefined && { nextDrawCity }),
     ...(nextDrawNumber !== undefined && { nextDrawNumber }),
@@ -1830,7 +1807,7 @@ export async function setDrawDeadline(
   };
   await setDoc(doc(db, 'deadlines', targetDocId), deadline);
 
-  const idx = cachedDeadlines.findIndex(d => (d.id || d.category) === targetDocId);
+  const idx = cachedDeadlines.findIndex(d => (d.id || d.drawId || d.category) === targetDocId);
   if (idx !== -1) {
     cachedDeadlines[idx] = deadline;
   } else {
@@ -1859,44 +1836,58 @@ export function getThaiLotteryResults(): ThaiLotteryResult[] {
   return cachedThaiLotteryResults;
 }
 
-export async function autoCleanOldDrawData(category: 'pakistan_bond' | 'thailand_lottery'): Promise<void> {
+export async function autoCleanOldDrawData(category: 'pakistan_bond' | 'thailand_lottery', targetDrawId?: string): Promise<void> {
   try {
-    console.log(`Starting auto cleanup for old draw data of category: ${category}`);
+    console.log(`Starting auto archiving for completed draw data of category: ${category}, drawId: ${targetDrawId || 'all'}`);
     
-    // 1. Remove all bookings of this category
+    // 1. Archive bookings of this draw/category
     const bookingsRef = collection(db, 'bookings');
-    const bookingsQuery = query(bookingsRef, where('category', '==', category));
+    const bookingsQuery = targetDrawId 
+      ? query(bookingsRef, where('drawId', '==', targetDrawId))
+      : query(bookingsRef, where('category', '==', category));
     const bookingsSnapshot = await getDocs(bookingsQuery);
     
     for (const d of bookingsSnapshot.docs) {
-      await deleteDoc(doc(db, 'bookings', d.id));
+      await updateDoc(doc(db, 'bookings', d.id), { isArchived: true });
     }
-    console.log(`Cleaned ${bookingsSnapshot.size} bookings for category ${category}`);
+    console.log(`Archived ${bookingsSnapshot.size} bookings for category ${category}`);
 
-    // 2. Clear all number limits of this category
+    // 2. Archive demands of this draw/category
+    const demandsRef = collection(db, 'demands');
+    const demandsQuery = targetDrawId
+      ? query(demandsRef, where('drawId', '==', targetDrawId))
+      : query(demandsRef, where('category', '==', category));
+    const demandsSnapshot = await getDocs(demandsQuery);
+
+    for (const d of demandsSnapshot.docs) {
+      await updateDoc(doc(db, 'demands', d.id), { isArchived: true });
+    }
+
+    // 3. Archive number limits of this draw/category
     const limitsRef = collection(db, 'limits');
-    const limitsQuery = query(limitsRef, where('category', '==', category));
+    const limitsQuery = targetDrawId
+      ? query(limitsRef, where('drawId', '==', targetDrawId))
+      : query(limitsRef, where('category', '==', category));
     const limitsSnapshot = await getDocs(limitsQuery);
     
     for (const d of limitsSnapshot.docs) {
-      await deleteDoc(doc(db, 'limits', d.id));
+      await updateDoc(doc(db, 'limits', d.id), { isArchived: true });
     }
-    console.log(`Cleaned ${limitsSnapshot.size} limits for category ${category}`);
 
-    // 3. Prepare system for the next draw (opening the deadline)
-    const deadlineRef = doc(db, 'deadlines', category);
-    const deadlineSnap = await getDocFromServer(deadlineRef);
-    if (deadlineSnap.exists()) {
-      const currentDeadline = deadlineSnap.data() as DrawDeadline;
-      const updatedDeadline: DrawDeadline = {
-        ...currentDeadline,
-        status: 'open'
-      };
-      await setDoc(deadlineRef, updatedDeadline);
-      console.log(`Prepared system for next draw by opening deadline for ${category}`);
+    // 4. Mark draw/deadline status as result_announced and isArchived: true
+    if (targetDrawId) {
+      const deadlineRef = doc(db, 'deadlines', targetDrawId);
+      await updateDoc(deadlineRef, { status: 'result_announced', isArchived: true });
+    } else {
+      const deadlinesRef = collection(db, 'deadlines');
+      const deadlinesQuery = query(deadlinesRef, where('category', '==', category));
+      const deadlinesSnapshot = await getDocs(deadlinesQuery);
+      for (const d of deadlinesSnapshot.docs) {
+        await updateDoc(doc(db, 'deadlines', d.id), { status: 'result_announced', isArchived: true });
+      }
     }
   } catch (err) {
-    console.error("Auto clean-up of old draw data failed:", err);
+    console.error("Auto archiving of completed draw data failed:", err);
   }
 }
 
@@ -1932,8 +1923,8 @@ export async function addResult(result: AllResultType): Promise<{ success: boole
   try {
     const colName = result.category === 'pakistan_bond' ? 'pakistanBondResults' : 'thaiLotteryResults';
     await setDoc(doc(db, colName, result.id), result);
-    // Clean old draw data automatically
-    await autoCleanOldDrawData(result.category);
+    // Archive completed draw data automatically
+    await autoCleanOldDrawData(result.category, result.drawId);
     return { success: true };
   } catch (err: any) {
     console.error("Add result failed:", err);
@@ -1948,8 +1939,8 @@ export async function editResult(result: AllResultType): Promise<{ success: bool
   try {
     const colName = result.category === 'pakistan_bond' ? 'pakistanBondResults' : 'thaiLotteryResults';
     await setDoc(doc(db, colName, result.id), result, { merge: true });
-    // Clean old draw data automatically
-    await autoCleanOldDrawData(result.category);
+    // Archive completed draw data automatically
+    await autoCleanOldDrawData(result.category, result.drawId);
     return { success: true };
   } catch (err: any) {
     console.error("Edit result failed:", err);
@@ -1975,11 +1966,5 @@ export async function sendPasswordResetLink(email: string): Promise<{ success: b
   const online = await checkInternetConnection();
   if (!online) return { success: false, error: 'انٹرنیٹ کنکشن دستیاب نہیں ہے۔' };
 
-  try {
-    await sendPasswordResetEmail(auth, email.toLowerCase().trim());
-    return { success: true };
-  } catch (err: any) {
-    console.error("Password reset error:", err);
-    return { success: false, error: err.message || 'پاس ورڈ دوبارہ ترتیب دینے کی ای میل بھیجنے میں خرابی پیش آئی۔' };
-  }
+  return sendPasswordResetLinkService(email);
 }

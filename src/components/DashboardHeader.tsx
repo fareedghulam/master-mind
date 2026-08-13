@@ -20,6 +20,8 @@ export default function DashboardHeader({
 }: HeaderProps) {
   if (!user) return null;
 
+  const isUserAdmin = user.isAdmin || user.role === 'superAdmin' || user.role === 'dataEntryAdmin' || user.role === 'admin';
+
   return (
     <header className="bg-slate-950 text-white sticky top-0 z-50 border-b-4 border-blue-500">
       <div className="max-w-5xl mx-auto px-4 py-3 flex flex-col sm:flex-row justify-between items-center gap-3">
@@ -42,7 +44,7 @@ export default function DashboardHeader({
           </div>
 
           {/* Quick Admin Override Button - only visible if logged in user is actually an admin */}
-          {user.isAdmin && (
+          {isUserAdmin && (
             <button
               id="toggle-admin-btn"
               onClick={onToggleAdminView}
@@ -90,7 +92,7 @@ export default function DashboardHeader({
 
           {/* Desktop Admin switch & Logout */}
           <div className="flex items-center gap-2">
-            {user.isAdmin && (
+            {isUserAdmin && (
               <button
                 id="desktop-admin-toggle"
                 onClick={onToggleAdminView}

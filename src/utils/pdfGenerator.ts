@@ -8,7 +8,7 @@ export function generateBookingPDF(
   customerPhone: string,
   customerCity: string,
   bookings: Booking[],
-  category: DrawCategory
+  category: DrawCategory | 'unified' | string
 ) {
   const doc = new jsPDF() as any; // Cast as any to bypass internal plugin issues if TypeScript complains
 
@@ -271,5 +271,122 @@ export function generateDrawHistoryPDF(
 
   // Save the PDF
   const filename = `${category}_history_record_${new Date().toISOString().split('T')[0]}.pdf`;
+  doc.save(filename);
+}
+
+export function generateAdminBookingsPDF(
+  reportTitle: string,
+  bookings: Booking[],
+  filterType: 'draw' | 'date' | 'all',
+  filterValueLabel?: string
+) {
+  const doc = new jsPDF() as any;
+
+  // Header banner
+  doc.setFillColor(15, 23, 42);
+  doc.rect(0, 0, 210, 35, 'F');
+
+  // Title
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(18);
+  doc.setFont('helvetica', 'bold');
+  doc.text('MASTERMIND QURESHI ENTERPRISE', 105, 14, { align: 'center' });
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`ADMIN BOOKINGS REPORT - ${reportTitle.toUpperCase()}`, 105, 24, { align: 'center' });
+
+  // Summary box
+  doc.setFillColor(248, 250, 252);
+  doc.rect(10, 40, 190, 26, 'F');
+  doc.setDrawColor(226, 232, 240);
+  doc.rect(10, 40, 190, 26);
+
+  const totalFirst = bookings.reduce((sum, b) => sum + b.firstAmount, 0);
+  const totalSecond = bookings.reduce((sum, b) => sum + b.secondAmount, 0);
+  const grandTotal = totalFirst + totalSecond;
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.text('REPORT METRICS', 15, 46);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Filter Scope: ${filterType.toUpperCase()} ${filterValueLabel ? `(${filterValueLabel})` : ''}`, 15, 53);
+  doc.text(`Total Bookings Count: ${bookings.length}`, 15, 59);
+  doc.text(`Generated Date: ${new Date().toLocaleString()}`, 110, 53);
+  doc.text(`Grand Total Amount: Rs. ${grandTotal.toLocaleString()}`, 110, 59);
+
+  // Table rows
+  const tableRows = bookings.map((b, idx) => {
+    const drawInfo = [
+      b.bondValue ? (b.bondValue.startsWith('Rs') ? b.bondValue : `Rs. ${b.bondValue}`) : '',
+      b.drawNumber ? `Draw #${b.drawNumber}` : '',
+      b.drawCity || '',
+      b.drawDate || ''
+    ].filter(Boolean).join(' | ') || (b.category === 'pakistan_bond' ? 'Pakistan Prize Bond' : 'Thailand Lottery');
+
+    return [
+      idx + 1,
+      b.userEmail,
+      drawInfo,
+      b.number,
+      `Rs. ${b.firstAmount.toLocaleString()}`,
+      `Rs. ${b.secondAmount.toLocaleString()}`,
+      `Rs. ${(b.firstAmount + b.secondAmount).toLocaleString()}`,
+      b.isArchived ? 'Archived' : 'Active',
+      new Date(b.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    ];
+  });
+
+  // Append summary total row
+  tableRows.push([
+    'Total',
+    '--',
+    '--',
+    '--',
+    `Rs. ${totalFirst.toLocaleString()}`,
+    `Rs. ${totalSecond.toLocaleString()}`,
+    `Rs. ${grandTotal.toLocaleString()}`,
+    '--',
+    '--'
+  ]);
+
+  autoTable(doc, {
+    startY: 72,
+    head: [['Sr #', 'Customer Email', 'Draw / Scheme Details', 'Number', '1st Prize', '2nd Prize', 'Sub Total', 'Status', 'Time']],
+    body: tableRows,
+    theme: 'striped',
+    headStyles: { fillColor: [15, 23, 42], fontStyle: 'bold' },
+    styles: { fontSize: 7.5, cellPadding: 2.5, font: 'helvetica' },
+    columnStyles: {
+      0: { cellWidth: 10 },
+      1: { cellWidth: 42, fontStyle: 'bold' },
+      2: { cellWidth: 42 },
+      3: { fontStyle: 'bold', textColor: [220, 38, 38], cellWidth: 16 },
+      4: { cellWidth: 18 },
+      5: { cellWidth: 18 },
+      6: { fontStyle: 'bold', cellWidth: 20 },
+      7: { cellWidth: 14 },
+      8: { cellWidth: 10 }
+    },
+    didParseCell: function(data: any) {
+      if (data.row.index === bookings.length) {
+        data.cell.styles.fontStyle = 'bold';
+        data.cell.styles.textColor = [15, 23, 42];
+        if (data.column.index === 6) {
+          data.cell.styles.fillColor = [252, 211, 77];
+        }
+      }
+    }
+  });
+
+  const finalY = doc.lastAutoTable.finalY || 150;
+  doc.setFontSize(8);
+  doc.setTextColor(148, 163, 184);
+  doc.text('MasterMind Qureshi Enterprise - Official Admin Record', 105, finalY + 12, { align: 'center' });
+
+  const cleanTitle = reportTitle.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const filename = `Admin_Bookings_${cleanTitle}_${new Date().toISOString().split('T')[0]}.pdf`;
   doc.save(filename);
 }

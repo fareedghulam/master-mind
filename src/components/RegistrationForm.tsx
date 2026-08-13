@@ -152,6 +152,9 @@ export default function RegistrationForm({ onRegister, onLoginWithCredentials, o
       <div className="w-full max-w-md bg-white rounded-none border-2 border-slate-300 overflow-hidden shadow-sm">
         {/* Top brand section */}
         <div className="bg-slate-950 text-white p-8 text-center relative border-b-4 border-blue-500">
+          <div className="absolute top-3 right-3 bg-slate-900 text-blue-400 border border-slate-700 font-mono text-[9px] px-2 py-0.5 rounded-none uppercase tracking-widest font-bold">
+            Portal Access
+          </div>
           <div className="relative mx-auto mb-4 w-24 h-24 rounded-full border-2 border-amber-500/30 overflow-hidden shadow-lg shadow-black/50">
             <img 
               src="/mastermind_logo.jpg" 
