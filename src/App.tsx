@@ -59,7 +59,7 @@ export default function App() {
   const [demands, setDemands] = useState<Demand[]>([]);
   const [deadlines, setDeadlines] = useState<DrawDeadline[]>([]);
   const [adminMode, setAdminMode] = useState<boolean>(false);
-  const [adminConfiguredEmail, setAdminConfiguredEmailState] = useState<string>('mastermaindqureshi110@gmail.com');
+  const [adminConfiguredEmail, setAdminConfiguredEmailState] = useState<string>('mastermaind.qureshi110@gmail.com');
   const [pakistanBondResults, setPakistanBondResults] = useState<PakistanBondResult[]>([]);
   const [thaiLotteryResults, setThaiLotteryResults] = useState<ThaiLotteryResult[]>([]);
   const [isMandatorySetupOpen, setIsMandatorySetupOpen] = useState<boolean>(false);
@@ -371,7 +371,6 @@ export default function App() {
       const emailLowerMatched = (matchedUser.email || emailToAuth || '').toLowerCase().trim();
       const isSuper = (
         emailLowerMatched === 'mastermaind.qureshi110@gmail.com' ||
-        uid === 's6dXc7vXJnd0uXfcYxacbKfwASF3' ||
         matchedUser.role === 'superAdmin' ||
         matchedUser.role === 'admin'
       );

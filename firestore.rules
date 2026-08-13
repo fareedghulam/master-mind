@@ -84,7 +84,6 @@ service cloud.firestore {
     // Helper functions to identify roles
     function isSuperAdmin() {
       return request.auth != null && (
-        request.auth.token.email.lower() == 'mastermaindqureshi110@gmail.com' ||
         request.auth.token.email.lower() == 'mastermaind.qureshi110@gmail.com' ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superAdmin' ||

@@ -78,104 +78,6 @@ export async function checkInternetConnection(): Promise<boolean> {
 
 // Standard storage keys for local preferences
 
-const DEFAULT_DEADLINES: DrawDeadline[] = [
-  {
-    id: 'pakistan_bond_15000_114',
-    drawId: 'pakistan_bond_15000_114',
-    category: 'pakistan_bond',
-    titleUrdu: 'پاکستان پرائز بانڈ بکنگ کھل گئی ہے',
-    deadlineIso: '2026-08-16T18:00',
-    status: 'open',
-    bookingStatusUrdu: 'بکنگ کھول گئی',
-    nextPrizeBondValue: 'Rs. 15000',
-    nextDrawCity: 'Karachi',
-    nextDrawNumber: '114',
-    nextDrawDate: '16-08-2026'
-  },
-  {
-    id: 'thailand_lottery_20260817',
-    drawId: 'thailand_lottery_20260817',
-    category: 'thailand_lottery',
-    titleUrdu: 'تھائی لینڈ ڈرا بکنگ کھل گئی ہے',
-    deadlineIso: '2026-08-17T12:00',
-    status: 'open',
-    bookingStatusUrdu: 'بکنگ کھول گئی',
-    nextDrawDate: '17-08-2026'
-  }
-];
-
-const DEFAULT_USERS: User[] = [
-  {
-    email: 'mastermaindqureshi110@gmail.com',
-    name: 'ایڈمن قریشی صاحب',
-    phone: '03453090146',
-    city: 'لاہور',
-    balance: 500000,
-    isAdmin: true,
-    role: 'superAdmin'
-  },
-  {
-    email: 'mastermaind.qureshi110@gmail.com',
-    name: 'ایڈمن قریشی صاحب ڈاٹ',
-    phone: '03453090147',
-    city: 'لاہور',
-    balance: 500000,
-    isAdmin: true,
-    role: 'superAdmin'
-  },
-  {
-    email: 'fareed.ghulam@gmail.com',
-    name: 'غلام فرید',
-    phone: '03157891234',
-    city: 'ملتان',
-    balance: 15000,
-    isAdmin: true,
-    role: 'dataEntryAdmin'
-  }
-];
-
-const DEFAULT_LIMITS: NumberLimit[] = [
-  {
-    id: 'limit-1',
-    category: 'pakistan_bond',
-    number: '786',
-    maxAmount: 25
-  },
-  {
-    id: 'limit-2',
-    category: 'pakistan_bond',
-    number: '007',
-    maxAmount: 50
-  },
-  {
-    id: 'limit-3',
-    category: 'thailand_lottery',
-    number: '143',
-    maxAmount: 100
-  }
-];
-
-const DEFAULT_BOOKINGS: Booking[] = [
-  {
-    id: 'booking-mock-1',
-    userEmail: 'fareed.ghulam@gmail.com',
-    category: 'pakistan_bond',
-    number: '456',
-    firstAmount: 100,
-    secondAmount: 50,
-    timestamp: new Date(Date.now() - 45000).toISOString()
-  },
-  {
-    id: 'booking-mock-2',
-    userEmail: 'fareed.ghulam@gmail.com',
-    category: 'thailand_lottery',
-    number: '999',
-    firstAmount: 300,
-    secondAmount: 300,
-    timestamp: new Date(Date.now() - 300000).toISOString()
-  }
-];
-
 // Memory caches
 let cachedUsers: User[] = [];
 let cachedBookings: Booking[] = [];
@@ -184,7 +86,7 @@ let cachedDemands: Demand[] = [];
 let cachedDeadlines: DrawDeadline[] = [];
 let cachedTransactions: Transaction[] = [];
 let cachedSupportWhatsApp = '923453090146';
-let cachedAdminEmail = 'mastermaindqureshi110@gmail.com';
+let cachedAdminEmail = 'mastermaind.qureshi110@gmail.com';
 
 const listeners: Set<() => void> = new Set();
 let started = false;
@@ -221,7 +123,7 @@ export function isLoggedUserAdminOrSuper(): boolean {
   // 2. Fallback search by email
   const email = firebaseUser.email?.toLowerCase().trim();
   if (email) {
-    if (email === 'mastermaindqureshi110@gmail.com' || email === 'mastermaind.qureshi110@gmail.com') {
+    if (email === 'mastermaind.qureshi110@gmail.com') {
       return true;
     }
     const userByEmail = cachedUsers.find(u => (u.email || '').toLowerCase() === email);
@@ -258,7 +160,7 @@ export function initializeStore() {
   
   // Set local helper default keys if not set
   if (!localStorage.getItem('mqe_admin_configured_email')) {
-    localStorage.setItem('mqe_admin_configured_email', 'mastermaindqureshi110@gmail.com');
+    localStorage.setItem('mqe_admin_configured_email', 'mastermaind.qureshi110@gmail.com');
   }
   if (!localStorage.getItem('mqe_whatsapp_number')) {
     localStorage.setItem('mqe_whatsapp_number', '923453090146');
@@ -298,62 +200,11 @@ export function initializeStore() {
     notifyListeners();
   });
 
-  // B. Seed default accounts in Firebase Auth and perform safe Firestore role migration
-  const seedAndMigrateDefaultUsers = async () => {
-    const defaultUsersToSeed = [
-      { email: 'mastermaind.qureshi110@gmail.com', password: '123456', role: 'superAdmin', name: 'ایڈمن قریشی صاحب' },
-      { email: 'fareed.ghulam@gmail.com', password: '123456', role: 'dataEntryAdmin', name: 'غلام فرید' }
-    ];
-
-    for (const item of defaultUsersToSeed) {
-      // Safe Firestore role migration/verification using UID
-      try {
-        let uid = '';
-        try {
-          uid = await registerInAuthOnly(item.email, item.password);
-        } catch (err) {
-          console.error(`Auth seed error for ${item.email}`, err);
-          continue;
-        }
-
-        if (!uid) continue;
-
-        const docRef = doc(db, 'users', uid);
-        const userDoc = await getDocFromServer(docRef);
-        if (userDoc.exists()) {
-          const data = userDoc.data() as User;
-          if (data.role !== item.role || data.isAdmin !== (item.role !== 'customer') || !data.uid) {
-            await setDoc(docRef, {
-              uid,
-              role: item.role,
-              isAdmin: item.role !== 'customer'
-            }, { merge: true });
-            console.log(`[Migration] Migrated role/isAdmin for ${item.email} safely.`);
-          }
-        } else {
-          await setDoc(docRef, {
-            uid,
-            email: item.email,
-            name: item.name,
-            phone: item.email === 'fareed.ghulam@gmail.com' ? '03157891234' : '03453090146',
-            city: item.email === 'fareed.ghulam@gmail.com' ? 'ملتان' : 'لاہور',
-            balance: item.email === 'fareed.ghulam@gmail.com' ? 15000 : 500000,
-            isAdmin: item.role !== 'customer',
-            role: item.role
-          });
-          console.log(`[Migration] Created profile for: ${item.email}`);
-        }
-      } catch (err) {
-        console.error(`[Migration] Error migrating database doc for ${item.email}:`, err);
-      }
-    }
-  };
-  seedAndMigrateDefaultUsers();
-
   // 1. Listen to users
   onSnapshot(collection(db, 'users'), (snapshot) => {
     if (snapshot.empty) {
-      // Seeding is already handled inside seedAndMigrateDefaultUsers
+      cachedUsers = [];
+      notifyListeners();
     } else {
       const tempUsers = snapshot.docs.map(doc => {
         const data = doc.data() as User;
@@ -367,15 +218,13 @@ export function initializeStore() {
         if (!mappedUser.email) {
           if (uid.includes('@')) {
             mappedUser.email = uid;
-          } else if (mappedUser.uid === 's6dXc7vXJnd0uXfcYxacbKfwASF3') {
-            mappedUser.email = 'mastermaind.qureshi110@gmail.com';
           } else {
             mappedUser.email = '';
           }
         }
 
         const emailLower = (mappedUser.email || data.email || '').toLowerCase().trim();
-        const isSuperAdminEmail = emailLower === 'mastermaind.qureshi110@gmail.com' || emailLower === 'mastermaindqureshi110@gmail.com' || mappedUser.uid === 's6dXc7vXJnd0uXfcYxacbKfwASF3';
+        const isSuperAdminEmail = emailLower === 'mastermaind.qureshi110@gmail.com';
         const isDataEntryEmail = emailLower === 'fareed.ghulam@gmail.com';
 
         const isSuper = isSuperAdminEmail || data.role === 'superAdmin' || data.role === 'admin';
@@ -437,7 +286,7 @@ export function initializeStore() {
             email: data.email || firebaseUser.email || ''
           };
           const emailLower = (userObj.email || data.email || '').toLowerCase().trim();
-          const isSuperAdminEmail = emailLower === 'mastermaind.qureshi110@gmail.com' || emailLower === 'mastermaindqureshi110@gmail.com' || userObj.uid === 's6dXc7vXJnd0uXfcYxacbKfwASF3';
+          const isSuperAdminEmail = emailLower === 'mastermaind.qureshi110@gmail.com';
           const isDataEntryEmail = emailLower === 'fareed.ghulam@gmail.com';
 
           const isSuper = isSuperAdminEmail || data.role === 'superAdmin' || data.role === 'admin';
@@ -484,15 +333,8 @@ export function initializeStore() {
   // 3. Listen to limits
   onSnapshot(collection(db, 'limits'), (snapshot) => {
     if (snapshot.empty) {
-      if (isLoggedUserAdminOrSuper()) {
-        DEFAULT_LIMITS.forEach(async (limit) => {
-          try {
-            await setDoc(doc(db, 'limits', limit.id), limit);
-          } catch (e) {
-            console.error("Failed to seed default limit:", e);
-          }
-        });
-      }
+      cachedLimits = [];
+      notifyListeners();
     } else {
       cachedLimits = snapshot.docs.map(doc => doc.data() as NumberLimit);
       notifyListeners();
@@ -509,15 +351,8 @@ export function initializeStore() {
   // 5. Listen to deadlines
   onSnapshot(collection(db, 'deadlines'), (snapshot) => {
     if (snapshot.empty) {
-      if (isLoggedUserAdminOrSuper()) {
-        DEFAULT_DEADLINES.forEach(async (deadline) => {
-          try {
-            await setDoc(doc(db, 'deadlines', deadline.category), deadline);
-          } catch (e) {
-            console.error("Failed to seed default deadline:", e);
-          }
-        });
-      }
+      cachedDeadlines = [];
+      notifyListeners();
     } else {
       cachedDeadlines = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as DrawDeadline) }));
       notifyListeners();
@@ -537,7 +372,7 @@ export function initializeStore() {
       if (isLoggedUserAdminOrSuper()) {
         try {
           await setDoc(doc(db, 'settings', 'general'), {
-            adminEmail: 'mastermaindqureshi110@gmail.com',
+            adminEmail: 'mastermaind.qureshi110@gmail.com',
             whatsappNumber: '923453090146'
           });
         } catch (e) {
@@ -546,18 +381,7 @@ export function initializeStore() {
       }
     } else {
       const data = snapshot.data();
-      let adminEmail = data?.adminEmail || 'mastermaindqureshi110@gmail.com';
-      if (adminEmail === 'mastermaind.qureshi110@gmail.com') {
-        adminEmail = 'mastermaindqureshi110@gmail.com';
-        if (isLoggedUserAdminOrSuper()) {
-          try {
-            // Auto-migrate in Firestore
-            await setDoc(doc(db, 'settings', 'general'), { adminEmail }, { merge: true });
-          } catch (e) {
-            console.error("Failed to migrate adminEmail in settings:", e);
-          }
-        }
-      }
+      const adminEmail = data?.adminEmail || 'mastermaind.qureshi110@gmail.com';
       cachedAdminEmail = adminEmail;
       cachedSupportWhatsApp = data?.whatsappNumber || '923453090146';
       notifyListeners();
@@ -644,13 +468,6 @@ export function initializeStore() {
     }
   });
 
-  // 9. Listen to transactions
-  onSnapshot(collection(db, 'transactions'), (snapshot) => {
-    const list = snapshot.docs.map(doc => doc.data() as Transaction);
-    cachedTransactions = list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    notifyListeners();
-  });
-
 }
 
 export function getSupportWhatsAppNumber(): string {
@@ -712,23 +529,18 @@ export function getLoggedInUser(): User | null {
   if (!firebaseUser) return null;
   const emailLower = firebaseUser.email?.toLowerCase().trim() || '';
   const user = cachedUsers.find((u) => u.uid === firebaseUser.uid || (emailLower && u.email && u.email.toLowerCase().trim() === emailLower)) || null;
-  
-  const isDefaultSuper = emailLower === 'mastermaind.qureshi110@gmail.com' || emailLower === 'mastermaindqureshi110@gmail.com' || firebaseUser.uid === 's6dXc7vXJnd0uXfcYxacbKfwASF3';
-  const isDefaultDataEntry = emailLower === 'fareed.ghulam@gmail.com';
 
   if (user) {
     const userEmail = (user.email || '').toLowerCase().trim();
-    const isUserSuperEmail = userEmail === 'mastermaind.qureshi110@gmail.com' || userEmail === 'mastermaindqureshi110@gmail.com' || user.uid === 's6dXc7vXJnd0uXfcYxacbKfwASF3';
+    const isUserSuperEmail = userEmail === 'mastermaind.qureshi110@gmail.com';
     const isUserDataEntryEmail = userEmail === 'fareed.ghulam@gmail.com';
 
-    const isSuper = isDefaultSuper || isUserSuperEmail || user.role === 'superAdmin' || user.role === 'admin' || user.isAdmin === true;
-    const isDataEntry = isDefaultDataEntry || isUserDataEntryEmail || user.role === 'dataEntryAdmin';
+    const isSuper = isUserSuperEmail || user.role === 'superAdmin' || user.role === 'admin' || user.isAdmin === true;
+    const isDataEntry = isUserDataEntryEmail || user.role === 'dataEntryAdmin';
 
     if (isSuper) {
       return {
         ...user,
-        phone: user.phone || '03453090146',
-        city: user.city || 'Karachi',
         isAdmin: true,
         role: 'superAdmin'
       };
@@ -736,8 +548,6 @@ export function getLoggedInUser(): User | null {
     if (isDataEntry) {
       return {
         ...user,
-        phone: user.phone || '03157891234',
-        city: user.city || 'Multan',
         isAdmin: true,
         role: 'dataEntryAdmin'
       };
@@ -745,17 +555,7 @@ export function getLoggedInUser(): User | null {
     return user;
   }
   
-  // Robust timing fallback to prevent white screens / login kicks before cachedUsers is fully populated
-  return {
-    uid: firebaseUser.uid,
-    email: emailLower || 'mastermaind.qureshi110@gmail.com',
-    name: isDefaultSuper ? 'ایڈمن قریشی صاحب' : (isDefaultDataEntry ? 'غلام فرید' : 'لوڈ ہو رہا ہے...'),
-    phone: isDefaultSuper ? '03453090146' : (isDefaultDataEntry ? '03157891234' : ''),
-    city: isDefaultSuper ? 'Karachi' : (isDefaultDataEntry ? 'Multan' : ''),
-    balance: isDefaultSuper ? 500000 : (isDefaultDataEntry ? 15000 : 0),
-    isAdmin: isDefaultSuper || isDefaultDataEntry,
-    role: isDefaultSuper ? 'superAdmin' : (isDefaultDataEntry ? 'dataEntryAdmin' : 'customer')
-  };
+  return null;
 }
 
 export function setLoggedInUser(emailOrUid: string) {
@@ -768,7 +568,7 @@ export function setLoggedInUser(emailOrUid: string) {
     sessionStorage.setItem('admin_verified', 'true');
   } else {
     // Also support fallback for default emails to sync sessions
-    const isDefaultSuper = clean === 'mastermaind.qureshi110@gmail.com' || clean === 'mastermaindqureshi110@gmail.com';
+    const isDefaultSuper = clean === 'mastermaind.qureshi110@gmail.com';
     const isDefaultDataEntry = clean === 'fareed.ghulam@gmail.com';
     if (isDefaultSuper || isDefaultDataEntry) {
       sessionStorage.setItem('admin_verified', 'true');
@@ -811,10 +611,6 @@ export async function updateUserPassword(email: string, passwordInput: string): 
 
   const normalizedEmail = email.toLowerCase().trim();
   const emailsToUpdate = [normalizedEmail];
-  if (normalizedEmail === 'mastermaindqureshi110@gmail.com' || normalizedEmail === 'mastermaind.qureshi110@gmail.com') {
-    if (!emailsToUpdate.includes('mastermaindqureshi110@gmail.com')) emailsToUpdate.push('mastermaindqureshi110@gmail.com');
-    if (!emailsToUpdate.includes('mastermaind.qureshi110@gmail.com')) emailsToUpdate.push('mastermaind.qureshi110@gmail.com');
-  }
 
   try {
     if (auth.currentUser && auth.currentUser.email?.toLowerCase().trim() === normalizedEmail) {
@@ -909,7 +705,7 @@ export async function registerUser(name: string, phone: string, city: string, em
     return null;
   }
   const normalizedEmail = email.toLowerCase().trim();
-  const isAdmin = normalizedEmail === cachedAdminEmail.toLowerCase() || normalizedEmail === 'mastermaindqureshi110@gmail.com' || normalizedEmail === 'mastermaind.qureshi110@gmail.com';
+  const isAdmin = normalizedEmail === cachedAdminEmail.toLowerCase() || normalizedEmail === 'mastermaind.qureshi110@gmail.com';
   
   try {
     // 1. Create account in Firebase Authentication
@@ -922,7 +718,7 @@ export async function registerUser(name: string, phone: string, city: string, em
       name: name.trim(),
       phone: phone.trim(),
       city: city.trim(),
-      balance: 100, // starting balance
+      balance: 0, // production starting balance = 0
       isAdmin,
       role: isAdmin ? 'admin' : 'customer'
     };
@@ -985,7 +781,7 @@ export async function signInWithGoogle(): Promise<{ success: boolean; user?: Use
         isNewOrIncomplete = true;
       }
     } else {
-      const isAdmin = email === cachedAdminEmail.toLowerCase() || email === 'mastermaindqureshi110@gmail.com' || email === 'mastermaind.qureshi110@gmail.com';
+      const isAdmin = email === cachedAdminEmail.toLowerCase() || email === 'mastermaind.qureshi110@gmail.com';
       userProfile = {
         uid,
         email,
@@ -993,7 +789,7 @@ export async function signInWithGoogle(): Promise<{ success: boolean; user?: Use
         phone: '',
         city: '',
         photoURL,
-        balance: 100,
+        balance: 0,
         isAdmin,
         role: isAdmin ? 'admin' : 'customer'
       };
@@ -1515,6 +1311,10 @@ export async function cancelBooking(bookingId: string): Promise<{ success: boole
 
   try {
     const result = await runTransaction(db, async (transaction) => {
+      const bookingDoc = await transaction.get(bookingRef);
+      if (!bookingDoc.exists()) {
+        throw new Error('یہ بکنگ پہلے ہی منسوخ ہو چکی ہے۔');
+      }
       const userDoc = await transaction.get(userRef);
       if (userDoc.exists()) {
         const userData = userDoc.data() as User;
@@ -1552,6 +1352,10 @@ export async function cancelBookingByAdmin(bookingId: string): Promise<{ success
 
   try {
     const result = await runTransaction(db, async (transaction) => {
+      const bookingDoc = await transaction.get(bookingRef);
+      if (!bookingDoc.exists()) {
+        throw new Error('یہ بکنگ پہلے ہی منسوخ ہو چکی ہے۔');
+      }
       const userDoc = await transaction.get(userRef);
       if (userDoc.exists()) {
         const userData = userDoc.data() as User;
