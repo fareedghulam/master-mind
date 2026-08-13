@@ -638,21 +638,40 @@ export default function App() {
     }
   };
 
-  // If user is not authenticated, override and show Registration/Login component
+  // In-app Startup / Splash Screen while initializing authentication and store
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
-        <div className="flex flex-col items-center gap-4 max-w-sm text-center">
-          <div className="relative w-16 h-16">
-            <div className="absolute inset-0 rounded-full border-4 border-slate-800"></div>
-            <div className="absolute inset-0 rounded-full border-4 border-t-amber-400 animate-spin"></div>
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 select-none">
+        <div className="flex flex-col items-center max-w-sm text-center animate-fade-in">
+          {/* Official Logo */}
+          <div className="relative mb-6 w-28 h-28 rounded-full border-2 border-amber-500/40 overflow-hidden shadow-2xl shadow-black/80 ring-4 ring-amber-500/10">
+            <img 
+              src="/mastermind_logo.jpg" 
+              alt="Master Mind Qureshi Enterprise Logo" 
+              className="w-full h-full object-cover"
+            />
           </div>
-          <h2 className="text-xl font-bold text-slate-100 font-sans tracking-wide mt-2">
-            لوڈ ہو رہا ہے... (Loading...)
-          </h2>
-          <p className="text-xs text-slate-400 font-sans">
-            براہ کرم انتظار کریں، سیکیورٹی سسٹم اور ڈیٹا بیس کو مربوط کیا جا رہا ہے۔
+
+          {/* Welcome Text */}
+          <span className="text-amber-400 font-bold text-sm tracking-widest uppercase mb-1">
+            Welcome
+          </span>
+
+          {/* Master Mind Qureshi Enterprise Title */}
+          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight mb-2 font-sans">
+            Master Mind Qureshi Enterprise
+          </h1>
+
+          {/* Subtle Urdu Subtitle */}
+          <p className="text-xs text-slate-400 font-urdu mb-6 tracking-wide">
+            ماسٹر مائینڈ قریشی انٹرپرائز
           </p>
+
+          {/* Clean Progress Spinner */}
+          <div className="relative w-8 h-8 mt-2">
+            <div className="absolute inset-0 rounded-full border-2 border-slate-800"></div>
+            <div className="absolute inset-0 rounded-full border-2 border-t-amber-400 border-r-amber-400/50 animate-spin"></div>
+          </div>
         </div>
       </div>
     );
