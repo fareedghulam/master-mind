@@ -116,12 +116,26 @@ export default function App() {
       syncWithStore();
     });
 
+    let resolved = false;
+    const safetyTimer = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        syncWithStore();
+        setAuthLoading(false);
+      }
+    }, 1500);
+
     const unsubscribeAuth = onAuthStateChanged(auth, () => {
       syncWithStore();
-      setAuthLoading(false);
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(safetyTimer);
+        setAuthLoading(false);
+      }
     });
 
     return () => {
+      clearTimeout(safetyTimer);
       unsubscribe();
       unsubscribeAuth();
     };
@@ -411,14 +425,29 @@ export default function App() {
         sessionStorage.setItem('admin_verified', 'true');
       }
 
+      const isProfileComplete = matchedUser.profileCompleted === true || (Boolean(matchedUser.name?.trim()) && Boolean(matchedUser.phone?.trim()) && Boolean(matchedUser.city?.trim()));
+      matchedUser.profileCompleted = isProfileComplete;
+
+      try {
+        localStorage.setItem('mqe_cached_user_profile', JSON.stringify(matchedUser));
+      } catch (e) {
+        // Ignore
+      }
+
       setLoggedInUser(matchedUser.email || matchedUser.uid);
       syncWithStore();
 
       const isAdminUser = matchedUser.isAdmin || matchedUser.role === 'superAdmin' || matchedUser.role === 'admin' || matchedUser.role === 'dataEntryAdmin';
       if (isAdminUser) {
+        setIsMandatorySetupOpen(false);
         setAdminMode(true);
         setActiveTab('admin');
       } else {
+        if (!isProfileComplete) {
+          setIsMandatorySetupOpen(true);
+        } else {
+          setIsMandatorySetupOpen(false);
+        }
         setAdminMode(false);
         setActiveTab('dashboard');
       }
@@ -851,11 +880,12 @@ export default function App() {
         </div>
       </footer>
 
-      {/* Mandatory Profile Setup Modal for Google Login / New Users */}
-      {currentUser && !currentUser.isAdmin && currentUser.role !== 'superAdmin' && currentUser.role !== 'dataEntryAdmin' && currentUser.role !== 'admin' && (isMandatorySetupOpen || !currentUser.phone || !currentUser.city) && (
+      {/* Mandatory Profile Setup Modal for Incomplete Profiles */}
+      {currentUser && !currentUser.isAdmin && currentUser.role !== 'superAdmin' && currentUser.role !== 'dataEntryAdmin' && currentUser.role !== 'admin' && (isMandatorySetupOpen || (!currentUser.profileCompleted && (!currentUser.phone?.trim() || !currentUser.city?.trim()))) && (
         <ProfileSetupModal
           user={currentUser}
           isOpen={true}
+          isMandatory={true}
           onClose={() => setIsMandatorySetupOpen(false)}
           onSave={handleUpdateProfile}
         />

@@ -240,6 +240,10 @@ export function initializeStore() {
           mappedUser.isAdmin = data.isAdmin || false;
           mappedUser.role = data.role || 'customer';
         }
+
+        const isComplete = data.profileCompleted === true || (Boolean(mappedUser.name?.trim()) && Boolean(mappedUser.phone?.trim()) && Boolean(mappedUser.city?.trim()));
+        mappedUser.profileCompleted = isComplete;
+
         return mappedUser;
       });
 
@@ -302,11 +306,19 @@ export function initializeStore() {
             userObj.role = data.role || 'customer';
           }
 
+          const isComplete = data.profileCompleted === true || (Boolean(userObj.name?.trim()) && Boolean(userObj.phone?.trim()) && Boolean(userObj.city?.trim()));
+          userObj.profileCompleted = isComplete;
+
           const idx = cachedUsers.findIndex(u => u.uid === uid || (u.email && userObj.email && u.email.toLowerCase() === userObj.email.toLowerCase()));
           if (idx !== -1) {
             cachedUsers[idx] = userObj;
           } else {
             cachedUsers.push(userObj);
+          }
+          try {
+            localStorage.setItem('mqe_cached_user_profile', JSON.stringify(userObj));
+          } catch (e) {
+            // Ignore storage quota errors
           }
           notifyListeners();
         } else {
@@ -528,7 +540,21 @@ export function getLoggedInUser(): User | null {
   const firebaseUser = auth.currentUser;
   if (!firebaseUser) return null;
   const emailLower = firebaseUser.email?.toLowerCase().trim() || '';
-  const user = cachedUsers.find((u) => u.uid === firebaseUser.uid || (emailLower && u.email && u.email.toLowerCase().trim() === emailLower)) || null;
+  let user = cachedUsers.find((u) => u.uid === firebaseUser.uid || (emailLower && u.email && u.email.toLowerCase().trim() === emailLower)) || null;
+
+  if (!user) {
+    try {
+      const localCached = localStorage.getItem('mqe_cached_user_profile');
+      if (localCached) {
+        const parsed = JSON.parse(localCached) as User;
+        if (parsed && (parsed.uid === firebaseUser.uid || (emailLower && parsed.email?.toLowerCase().trim() === emailLower))) {
+          user = parsed;
+        }
+      }
+    } catch (e) {
+      // Ignore JSON parse errors
+    }
+  }
 
   if (user) {
     const userEmail = (user.email || '').toLowerCase().trim();
@@ -538,21 +564,28 @@ export function getLoggedInUser(): User | null {
     const isSuper = isUserSuperEmail || user.role === 'superAdmin' || user.role === 'admin' || user.isAdmin === true;
     const isDataEntry = isUserDataEntryEmail || user.role === 'dataEntryAdmin';
 
+    const isComplete = user.profileCompleted === true || (Boolean(user.name?.trim()) && Boolean(user.phone?.trim()) && Boolean(user.city?.trim()));
+
     if (isSuper) {
       return {
         ...user,
         isAdmin: true,
-        role: 'superAdmin'
+        role: 'superAdmin',
+        profileCompleted: isComplete
       };
     }
     if (isDataEntry) {
       return {
         ...user,
         isAdmin: true,
-        role: 'dataEntryAdmin'
+        role: 'dataEntryAdmin',
+        profileCompleted: isComplete
       };
     }
-    return user;
+    return {
+      ...user,
+      profileCompleted: isComplete
+    };
   }
   
   return null;
@@ -579,6 +612,11 @@ export function setLoggedInUser(emailOrUid: string) {
 
 export function logout() {
   sessionStorage.removeItem('admin_verified');
+  try {
+    localStorage.removeItem('mqe_cached_user_profile');
+  } catch (e) {
+    // Ignore
+  }
   signOut(auth).catch((e) => console.error("Firebase signOut failed:", e));
   notifyListeners();
 }
@@ -720,7 +758,8 @@ export async function registerUser(name: string, phone: string, city: string, em
       city: city.trim(),
       balance: 0, // production starting balance = 0
       isAdmin,
-      role: isAdmin ? 'admin' : 'customer'
+      role: isAdmin ? 'admin' : 'customer',
+      profileCompleted: true
     };
 
     // Write profile information to Firestore with UID key
@@ -732,6 +771,11 @@ export async function registerUser(name: string, phone: string, city: string, em
       cachedUsers[existingIdx] = newUser;
     } else {
       cachedUsers.push(newUser);
+    }
+    try {
+      localStorage.setItem('mqe_cached_user_profile', JSON.stringify(newUser));
+    } catch (e) {
+      // Ignore
     }
     notifyListeners();
 
@@ -768,16 +812,18 @@ export async function signInWithGoogle(): Promise<{ success: boolean; user?: Use
 
     if (userDoc.exists()) {
       const data = userDoc.data() as User;
+      const isComplete = data.profileCompleted === true || (Boolean(data.phone?.trim()) && Boolean(data.city?.trim()));
       userProfile = {
         ...data,
         uid,
         email,
-        photoURL: photoURL || data.photoURL || ''
+        photoURL: photoURL || data.photoURL || '',
+        profileCompleted: isComplete
       };
       if (photoURL && data.photoURL !== photoURL) {
         await setDoc(userRef, { photoURL }, { merge: true });
       }
-      if (!userProfile.phone || !userProfile.city) {
+      if (!isComplete) {
         isNewOrIncomplete = true;
       }
     } else {
@@ -791,12 +837,18 @@ export async function signInWithGoogle(): Promise<{ success: boolean; user?: Use
         photoURL,
         balance: 0,
         isAdmin,
-        role: isAdmin ? 'admin' : 'customer'
+        role: isAdmin ? 'admin' : 'customer',
+        profileCompleted: false
       };
       await setDoc(userRef, userProfile);
       isNewOrIncomplete = true;
     }
 
+    try {
+      localStorage.setItem('mqe_cached_user_profile', JSON.stringify(userProfile));
+    } catch (e) {
+      // Ignore
+    }
     notifyListeners();
     return { success: true, user: userProfile, isNewOrIncomplete };
   } catch (err: any) {
@@ -1024,7 +1076,7 @@ export async function updateUserProfile(
       name,
       phone,
       city,
-      balance: existingUser?.balance ?? 0
+      profileCompleted: true
     };
     if (photoURL) {
       updatePayload.photoURL = photoURL;
@@ -1037,9 +1089,15 @@ export async function updateUserProfile(
       existingUser.name = name;
       existingUser.phone = phone;
       existingUser.city = city;
+      existingUser.profileCompleted = true;
       if (photoURL) existingUser.photoURL = photoURL;
+      try {
+        localStorage.setItem('mqe_cached_user_profile', JSON.stringify(existingUser));
+      } catch (e) {
+        // Ignore
+      }
     } else {
-      cachedUsers.push({
+      const newUserObj: User = {
         uid,
         email: userEmail,
         name,
@@ -1048,8 +1106,15 @@ export async function updateUserProfile(
         balance: 0,
         photoURL,
         isAdmin: false,
-        role: 'customer'
-      });
+        role: 'customer',
+        profileCompleted: true
+      };
+      cachedUsers.push(newUserObj);
+      try {
+        localStorage.setItem('mqe_cached_user_profile', JSON.stringify(newUserObj));
+      } catch (e) {
+        // Ignore
+      }
     }
     notifyListeners();
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Phone, MapPin, User as UserIcon, CheckCircle2, AlertCircle, X } from 'lucide-react';
 import { User as UserType } from '../types';
 
@@ -22,6 +22,15 @@ export default function ProfileSetupModal({
   const [city, setCity] = useState(user.city || '');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setName(user.name || '');
+      setPhone(user.phone || '');
+      setCity(user.city || '');
+      setMessage(null);
+    }
+  }, [user, isOpen]);
 
   if (!isOpen) return null;
 
