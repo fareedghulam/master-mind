@@ -382,15 +382,14 @@ export default function App() {
       }
 
       const emailLowerMatched = (matchedUser.email || emailToAuth || '').toLowerCase().trim();
+
+      // SECURITY: Admin privileges come ONLY from the Firestore role.
+      // Email addresses must NEVER grant admin privileges.
       const isSuper = (
-        emailLowerMatched === 'mastermaind.qureshi110@gmail.com' ||
         matchedUser.role === 'superAdmin' ||
         matchedUser.role === 'admin'
       );
-      const isDataEntry = (
-        emailLowerMatched === 'fareed.ghulam@gmail.com' ||
-        matchedUser.role === 'dataEntryAdmin'
-      );
+      const isDataEntry = matchedUser.role === 'dataEntryAdmin';
 
       if (isSuper) {
         matchedUser.role = 'superAdmin';

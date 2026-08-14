@@ -20,6 +20,7 @@ export interface User {
 
 export interface Booking {
   id: string;
+  userId: string;
   userEmail: string;
   category: DrawCategory;
   number: string;

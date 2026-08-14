@@ -1,10 +1,19 @@
 import React, { useState } from 'react';
 import { User } from '../../types';
-import { MessageCircle, ShieldCheck, UserCheck, Search } from 'lucide-react';
+import { MessageCircle, ShieldCheck, UserCheck, Search, Wallet } from 'lucide-react';
 import { getAdminConfiguredEmail } from '../../utils/store';
 
 interface AdminUsersFinanceTabProps {
   users: User[];
+  rechargeError: string;
+  rechargeSuccess: string;
+  rechargeEmail: string;
+  setRechargeEmail: (val: string) => void;
+  rechargeAmount: string;
+  setRechargeAmount: (val: string) => void;
+  rechargeReason: string;
+  setRechargeReason: (val: string) => void;
+  handleWalletAction: (action: 'recharge' | 'deduct') => void;
   whatsappError: string;
   whatsappSuccess: string;
   whatsappVal: string;
@@ -36,6 +45,15 @@ interface AdminUsersFinanceTabProps {
 
 export const AdminUsersFinanceTab: React.FC<AdminUsersFinanceTabProps> = ({
   users,
+  rechargeError,
+  rechargeSuccess,
+  rechargeEmail,
+  setRechargeEmail,
+  rechargeAmount,
+  setRechargeAmount,
+  rechargeReason,
+  setRechargeReason,
+  handleWalletAction,
   whatsappError,
   whatsappSuccess,
   whatsappVal,
@@ -88,6 +106,77 @@ export const AdminUsersFinanceTab: React.FC<AdminUsersFinanceTabProps> = ({
               </div>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Module 2: Email Wallet Recharge */}
+      <div className="bg-white p-6 sm:p-8 rounded-3xl border border-amber-100 shadow-md space-y-4">
+        <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 flex items-center justify-end gap-2">
+          <span>ای میل کے ذریعے والٹ ریچارج (Wallet Recharge)</span>
+          <Wallet className="w-5 h-5 text-amber-600" />
+        </h4>
+
+        {rechargeError && (
+          <div className="p-3 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs text-right">
+            ⚠️ {rechargeError}
+          </div>
+        )}
+
+        {rechargeSuccess && (
+          <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs text-right">
+            ✓ {rechargeSuccess}
+          </div>
+        )}
+
+        <p className="text-xs text-slate-500 leading-relaxed text-right">
+          کسٹمر کی رجسٹرڈ ای میل کے ذریعے اس کے والٹ میں رقم جمع یا منہا کریں۔
+          ٹرانزیکشن محفوظ طریقے سے Firestore میں کسٹمر کے بیلنس کو اپ ڈیٹ کرے گی۔
+        </p>
+
+        <div className="space-y-3">
+          <input
+            type="email"
+            placeholder="کسٹمر کی ای میل درج کریں"
+            value={rechargeEmail}
+            onChange={(e) => setRechargeEmail(e.target.value)}
+            className="w-full text-left bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
+          />
+
+          <input
+            type="number"
+            min="1"
+            step="1"
+            placeholder="رقم درج کریں (مثلاً 25000)"
+            value={rechargeAmount}
+            onChange={(e) => setRechargeAmount(e.target.value)}
+            className="w-full text-left bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
+          />
+
+          <input
+            type="text"
+            placeholder="وجہ / نوٹ (اختیاری)"
+            value={rechargeReason}
+            onChange={(e) => setRechargeReason(e.target.value)}
+            className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => handleWalletAction('recharge')}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-2xl text-sm transition-all shadow-md"
+            >
+              رقم جمع کریں (Recharge)
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleWalletAction('deduct')}
+              className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-2xl text-sm transition-all shadow-md"
+            >
+              رقم منہا کریں (Deduct)
+            </button>
+          </div>
         </div>
       </div>
 

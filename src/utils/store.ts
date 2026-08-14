@@ -185,9 +185,6 @@ export function isLoggedUserAdminOrSuper(): boolean {
   // 2. Fallback search by email
   const email = firebaseUser.email?.toLowerCase().trim();
   if (email) {
-    if (email === 'mastermaind.qureshi110@gmail.com') {
-      return true;
-    }
     const userByEmail = cachedUsers.find(u => (u.email || '').toLowerCase() === email);
     return !!(userByEmail && (userByEmail.role === 'superAdmin' || userByEmail.role === 'admin' || userByEmail.isAdmin === true));
   }
@@ -207,9 +204,6 @@ export function isLoggedUserDataEntry(): boolean {
   // 2. Fallback search by email
   const email = firebaseUser.email?.toLowerCase().trim();
   if (email) {
-    if (email === 'fareed.ghulam@gmail.com') {
-      return true;
-    }
     const userByEmail = cachedUsers.find(u => (u.email || '').toLowerCase() === email);
     return !!(userByEmail && userByEmail.role === 'dataEntryAdmin');
   }
@@ -285,12 +279,10 @@ export function initializeStore() {
           }
         }
 
-        const emailLower = (mappedUser.email || data.email || '').toLowerCase().trim();
-        const isSuperAdminEmail = emailLower === 'mastermaind.qureshi110@gmail.com';
-        const isDataEntryEmail = emailLower === 'fareed.ghulam@gmail.com';
-
-        const isSuper = isSuperAdminEmail || data.role === 'superAdmin' || data.role === 'admin';
-        const isDataEntry = isDataEntryEmail || data.role === 'dataEntryAdmin';
+        // SECURITY: Admin privileges come ONLY from the Firestore role.
+        // Email addresses must NEVER grant admin privileges.
+        const isSuper = data.role === 'superAdmin' || data.role === 'admin';
+        const isDataEntry = data.role === 'dataEntryAdmin';
 
         if (isSuper) {
           mappedUser.isAdmin = true;
@@ -356,12 +348,10 @@ export function initializeStore() {
             uid: data.uid || uid,
             email: data.email || firebaseUser.email || ''
           };
-          const emailLower = (userObj.email || data.email || '').toLowerCase().trim();
-          const isSuperAdminEmail = emailLower === 'mastermaind.qureshi110@gmail.com';
-          const isDataEntryEmail = emailLower === 'fareed.ghulam@gmail.com';
-
-          const isSuper = isSuperAdminEmail || data.role === 'superAdmin' || data.role === 'admin';
-          const isDataEntry = isDataEntryEmail || data.role === 'dataEntryAdmin';
+          // SECURITY: Administrative privileges come ONLY from Firestore role.
+          // Email addresses must NEVER grant admin or data-entry access.
+          const isSuper = data.role === 'superAdmin' || data.role === 'admin';
+          const isDataEntry = data.role === 'dataEntryAdmin';
           if (isSuper) {
             userObj.isAdmin = true;
             userObj.role = 'superAdmin';
@@ -609,27 +599,11 @@ export function getLoggedInUser(): User | null {
   const emailLower = firebaseUser.email?.toLowerCase().trim() || '';
   let user = cachedUsers.find((u) => u.uid === firebaseUser.uid || (emailLower && u.email && u.email.toLowerCase().trim() === emailLower)) || null;
 
-  if (!user) {
-    try {
-      const localCached = localStorage.getItem('mqe_cached_user_profile');
-      if (localCached) {
-        const parsed = JSON.parse(localCached) as User;
-        if (parsed && (parsed.uid === firebaseUser.uid || (emailLower && parsed.email?.toLowerCase().trim() === emailLower))) {
-          user = parsed;
-        }
-      }
-    } catch (e) {
-      // Ignore JSON parse errors
-    }
-  }
-
   if (user) {
-    const userEmail = (user.email || '').toLowerCase().trim();
-    const isUserSuperEmail = userEmail === 'mastermaind.qureshi110@gmail.com';
-    const isUserDataEntryEmail = userEmail === 'fareed.ghulam@gmail.com';
-
-    const isSuper = isUserSuperEmail || user.role === 'superAdmin' || user.role === 'admin' || user.isAdmin === true;
-    const isDataEntry = isUserDataEntryEmail || user.role === 'dataEntryAdmin';
+    // SECURITY: Admin privileges come ONLY from the Firestore user profile.
+    // Do NOT grant admin access based on email address.
+    const isSuper = user.role === 'superAdmin' || user.role === 'admin';
+    const isDataEntry = user.role === 'dataEntryAdmin';
 
     const isComplete = user.profileCompleted === true || (Boolean(user.name?.trim()) && Boolean(user.phone?.trim()) && Boolean(user.city?.trim()));
 
@@ -664,15 +638,12 @@ export function setLoggedInUser(emailOrUid: string) {
   const isSuper = user && (user.role === 'superAdmin' || user.role === 'admin');
   const isDataEntry = user && (user.role === 'dataEntryAdmin');
 
+  // SECURITY: Admin session is granted ONLY from the verified Firestore role.
+  // Never grant admin access based on an email address.
   if (user && (user.isAdmin || isSuper || isDataEntry)) {
     sessionStorage.setItem('admin_verified', 'true');
   } else {
-    // Also support fallback for default emails to sync sessions
-    const isDefaultSuper = clean === 'mastermaind.qureshi110@gmail.com';
-    const isDefaultDataEntry = clean === 'fareed.ghulam@gmail.com';
-    if (isDefaultSuper || isDefaultDataEntry) {
-      sessionStorage.setItem('admin_verified', 'true');
-    }
+    sessionStorage.removeItem('admin_verified');
   }
   notifyListeners();
 }
@@ -810,7 +781,10 @@ export async function registerUser(name: string, phone: string, city: string, em
     return null;
   }
   const normalizedEmail = email.toLowerCase().trim();
-  const isAdmin = normalizedEmail === cachedAdminEmail.toLowerCase() || normalizedEmail === 'mastermaind.qureshi110@gmail.com';
+
+  // SECURITY: Normal registration can NEVER create an Admin account.
+  // Administrative roles must be assigned separately by an authorized Admin.
+  const isAdmin = false;
   
   try {
     // 1. Create account in Firebase Authentication
@@ -894,7 +868,8 @@ export async function signInWithGoogle(): Promise<{ success: boolean; user?: Use
         isNewOrIncomplete = true;
       }
     } else {
-      const isAdmin = email === cachedAdminEmail.toLowerCase() || email === 'mastermaind.qureshi110@gmail.com';
+      // SECURITY: A new Google account is ALWAYS a customer.
+      // Admin/Data Entry roles must already exist in the Firestore profile.
       userProfile = {
         uid,
         email,
@@ -903,8 +878,8 @@ export async function signInWithGoogle(): Promise<{ success: boolean; user?: Use
         city: '',
         photoURL,
         balance: 0,
-        isAdmin,
-        role: isAdmin ? 'admin' : 'customer',
+        isAdmin: false,
+        role: 'customer',
         profileCompleted: false
       };
       await setDoc(userRef, userProfile);
@@ -1379,6 +1354,7 @@ export async function addBooking(
 
       const newBooking: Booking = {
         id: bookingId,
+        userId: uid,
         userEmail: normalizedEmail,
         category,
         number,
@@ -1664,6 +1640,7 @@ export async function approveDemand(demandId: string): Promise<{ success: boolea
 
       const newBooking: Booking = {
         id: bookingId,
+        userId: cached.uid,
         userEmail: demand.userEmail,
         category: demand.category,
         number: demand.number,
