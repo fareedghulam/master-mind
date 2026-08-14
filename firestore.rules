@@ -23,9 +23,11 @@ service cloud.firestore {
 
     // Helper to validate Booking
     function isValidBooking(data) {
-      return data.keys().hasAll(['id', 'userEmail', 'category', 'number', 'firstAmount', 'secondAmount', 'timestamp'])
+      return data.keys().hasAll(['id', 'userEmail', 'category', 'number', 'firstAmount', 'secondAmount', 'timestamp', 'drawId'])
         && data.id is string
         && data.userEmail is string
+        && data.drawId is string
+        && data.drawId.size() > 0
         && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery' || data.category == 'dubai_draw' || data.category == 'zee_music_draw')
         && data.number is string
         && data.firstAmount is number
@@ -35,8 +37,10 @@ service cloud.firestore {
 
     // Helper to validate NumberLimit
     function isValidLimit(data) {
-      return data.keys().hasAll(['id', 'category', 'number', 'maxAmount'])
+      return data.keys().hasAll(['id', 'category', 'number', 'maxAmount', 'drawId'])
         && data.id is string
+        && data.drawId is string
+        && data.drawId.size() > 0
         && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery' || data.category == 'dubai_draw' || data.category == 'zee_music_draw')
         && data.number is string
         && data.maxAmount is number;
@@ -44,9 +48,11 @@ service cloud.firestore {
 
     // Helper to validate Demand
     function isValidDemand(data) {
-      return data.keys().hasAll(['id', 'userEmail', 'category', 'number', 'firstAmount', 'secondAmount', 'timestamp', 'status'])
+      return data.keys().hasAll(['id', 'userEmail', 'category', 'number', 'firstAmount', 'secondAmount', 'timestamp', 'status', 'drawId'])
         && data.id is string
         && data.userEmail is string
+        && data.drawId is string
+        && data.drawId.size() > 0
         && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery' || data.category == 'dubai_draw' || data.category == 'zee_music_draw')
         && data.number is string
         && data.firstAmount is number
@@ -61,7 +67,8 @@ service cloud.firestore {
         && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery' || data.category == 'dubai_draw' || data.category == 'zee_music_draw')
         && data.titleUrdu is string
         && data.deadlineIso is string
-        && (data.status == 'open' || data.status == 'closed');
+        && (data.status == 'open' || data.status == 'closed' || data.status == 'result_announced')
+        && (!data.keys().hasAny(['isArchived']) || data.isArchived is bool);
     }
 
     // Helper to validate Settings

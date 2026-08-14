@@ -78,6 +78,68 @@ export async function checkInternetConnection(): Promise<boolean> {
 
 // Standard storage keys for local preferences
 
+
+const DEFAULT_DEADLINES: DrawDeadline[] = [
+  {
+    id: 'pakistan_bond_15000_114',
+    drawId: 'pakistan_bond_15000_114',
+    category: 'pakistan_bond',
+    titleUrdu: 'پاکستان پرائز بانڈ بکنگ کھل گئی ہے',
+    deadlineIso: '2026-08-16T18:00',
+    status: 'open',
+    bookingStatusUrdu: 'بکنگ کھول گئی',
+    nextPrizeBondValue: 'Rs. 15000',
+    nextDrawCity: 'Karachi',
+    nextDrawNumber: '114',
+    nextDrawDate: '16-08-2026'
+  },
+  {
+    id: 'thailand_lottery_20260817',
+    drawId: 'thailand_lottery_20260817',
+    category: 'thailand_lottery',
+    titleUrdu: 'تھائی لینڈ ڈرا بکنگ کھل گئی ہے',
+    deadlineIso: '2026-08-17T12:00',
+    status: 'open',
+    bookingStatusUrdu: 'بکنگ کھول گئی',
+    nextDrawDate: '17-08-2026'
+  }
+];
+
+const DEFAULT_USERS: User[] = [
+  {
+    email: 'mastermaindqureshi110@gmail.com',
+    name: 'ایڈمن قریشی صاحب',
+    phone: '03453090146',
+    city: 'لاہور',
+    balance: 500000,
+    isAdmin: true,
+    role: 'superAdmin'
+  },
+  {
+    email: 'mastermaind.qureshi110@gmail.com',
+    name: 'ایڈمن قریشی صاحب ڈاٹ',
+    phone: '03453090147',
+    city: 'لاہور',
+    balance: 500000,
+    isAdmin: true,
+    role: 'superAdmin'
+  },
+  {
+    email: 'fareed.ghulam@gmail.com',
+    name: 'غلام فرید',
+    phone: '03157891234',
+    city: 'ملتان',
+    balance: 15000,
+    isAdmin: true,
+    role: 'dataEntryAdmin'
+  }
+];
+
+
+
+
+
+
 // Memory caches
 let cachedUsers: User[] = [];
 let cachedBookings: Booking[] = [];
@@ -350,8 +412,8 @@ export function initializeStore() {
   // 3. Listen to limits
   onSnapshot(collection(db, 'limits'), (snapshot) => {
     if (snapshot.empty) {
-      cachedLimits = [];
-      notifyListeners();
+cachedLimits = [];
+        notifyListeners();
     } else {
       cachedLimits = snapshot.docs.map(doc => doc.data() as NumberLimit);
       notifyListeners();
@@ -1267,6 +1329,10 @@ export async function addBooking(
   drawCity?: string,
   drawId?: string
 ): Promise<{ success: boolean; error?: string }> {
+  if (!drawId || !drawId.trim()) {
+    return { success: false, error: 'اس بکنگ کے لیے ڈرا منتخب نہیں کیا گیا۔' };
+  }
+
   const online = await checkInternetConnection();
   if (!online) {
     return { success: false, error: 'NO_INTERNET' };
@@ -1297,7 +1363,11 @@ export async function addBooking(
         throw new Error('آپ کے والٹ میں کافی رقم موجود نہیں ہے');
       }
 
-      const limit = cachedLimits.find(l => l.category === category && l.number === number);
+      const limit = cachedLimits.find(l =>
+      l.category === category &&
+      l.number === number &&
+      l.drawId === drawId
+    );
       if (limit) {
         if (firstAmount > limit.maxAmount) {
           throw new Error(`اس نمبر (${number}) کے لئے فرسٹ کی انفرادی حد Rs. ${limit.maxAmount} ہے`);
@@ -1315,7 +1385,7 @@ export async function addBooking(
         firstAmount,
         secondAmount,
         timestamp: new Date().toISOString(),
-        ...(drawId && { drawId }),
+        drawId,
         ...(bondValue && { bondValue }),
         ...(drawNumber && { drawNumber }),
         ...(drawCity && { drawCity }),
@@ -1444,10 +1514,19 @@ export async function cancelBookingByAdmin(bookingId: string): Promise<{ success
 }
 
 export async function setOrUpdateLimit(category: DrawCategory, number: string, maxAmount: number, drawId?: string): Promise<void> {
+  if (!drawId || !drawId.trim()) {
+    console.error('Cannot save limit without drawId');
+    return;
+  }
+
   const online = await checkInternetConnection();
   if (!online) return;
 
-  const existing = cachedLimits.find(l => (drawId ? l.drawId === drawId : l.category === category) && l.number === number);
+  const existing = cachedLimits.find(l =>
+    l.category === category &&
+    l.number === number &&
+    l.drawId === drawId
+  );
   const limitId = existing ? existing.id : 'limit-' + Date.now();
   
   const limit: NumberLimit = {
@@ -1455,7 +1534,7 @@ export async function setOrUpdateLimit(category: DrawCategory, number: string, m
     category,
     number,
     maxAmount,
-    ...(drawId && { drawId })
+    drawId
   };
   await setDoc(doc(db, 'limits', limitId), limit);
 
@@ -1501,6 +1580,9 @@ export async function addDemand(
   drawCity?: string,
   drawId?: string
 ): Promise<{ success: boolean; error?: string }> {
+  if (!drawId || !drawId.trim()) {
+    return { success: false, error: 'اس ڈیمانڈ کے لیے ڈرا منتخب نہیں کیا گیا۔' };
+  }
   const online = await checkInternetConnection();
   if (!online) {
     return { success: false, error: 'NO_INTERNET' };
@@ -1525,7 +1607,7 @@ export async function addDemand(
     secondAmount,
     timestamp: new Date().toISOString(),
     status: 'pending',
-    ...(drawId && { drawId }),
+    drawId,
     ...(bondValue && { bondValue }),
     ...(drawNumber && { drawNumber }),
     ...(drawCity && { drawCity }),
@@ -1548,6 +1630,10 @@ export async function approveDemand(demandId: string): Promise<{ success: boolea
 
   const demand = cachedDemands.find(d => d.id === demandId);
   if (!demand) return { success: false, error: 'ڈیمانڈ ریکارڈ نہیں ملا' };
+
+  if (!demand.drawId || !demand.drawId.trim()) {
+    return { success: false, error: 'اس ڈیمانڈ کے ساتھ ڈرا منتخب نہیں ہے۔' };
+  }
 
   if (demand.status !== 'pending') {
     return { success: false, error: 'یہ ڈیمانڈ پہلے ہی عمل میں لائی جا چکی ہے' };

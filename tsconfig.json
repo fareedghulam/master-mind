@@ -32,6 +32,7 @@
     "**/*.before-*",
     "src_backup_*/**/*",
     "src/utils/store.backup.ts",
-    "src/utils/store.professional.backup.ts"
+    "src/utils/store.professional.backup.ts",
+    "backup_*/**/*"
   ]
 }

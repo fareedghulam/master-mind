@@ -14,3 +14,18 @@ android/key.properties
 *.jks
 *.keystore
 key.properties
+
+# Android local build/cache
+android/app/build/
+android/build/
+android/.gradle/
+android/capacitor-cordova-android-plugins/build/
+
+# Temporary backup files
+*.bak
+*.backup
+*.backup-*
+*.before-*
+
+# Project backup directories
+backup_*/

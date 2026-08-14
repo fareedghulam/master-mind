@@ -26,7 +26,7 @@ export interface Booking {
   firstAmount: number;
   secondAmount: number;
   timestamp: string; // ISO string
-  drawId?: string;
+  drawId: string;
   bondValue?: string;
   drawNumber?: string;
   drawCity?: string;
@@ -39,7 +39,7 @@ export interface NumberLimit {
   category: DrawCategory;
   number: string;
   maxAmount: number;
-  drawId?: string;
+  drawId: string;
   isArchived?: boolean;
 }
 
@@ -52,7 +52,7 @@ export interface Demand {
   secondAmount: number;
   timestamp: string;
   status: 'pending' | 'approved' | 'rejected';
-  drawId?: string;
+  drawId: string;
   bondValue?: string;
   drawNumber?: string;
   drawCity?: string;
