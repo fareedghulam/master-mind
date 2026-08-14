@@ -36,6 +36,7 @@ export const AdminDemandsBookingsTab: React.FC<AdminDemandsBookingsTabProps> = (
   const [dateFilter, setDateFilter] = useState<string>('all');
   const [showArchived, setShowArchived] = useState<boolean>(false);
   const [bookingSearchQuery, setBookingSearchQuery] = useState('');
+  const [pdfStatus, setPdfStatus] = useState<{ text: string; isError?: boolean } | null>(null);
 
   // Extract unique dates for filtering
   const availableDates = Array.from(
@@ -77,7 +78,8 @@ export const AdminDemandsBookingsTab: React.FC<AdminDemandsBookingsTabProps> = (
   const handleExportPDF = (filterType: 'draw' | 'date' | 'all') => {
     const listToExport = getFilteredBookings();
     if (listToExport.length === 0) {
-      alert('ایکسپورٹ کے لئے لسٹ میں کوئی بکنگ موجود نہیں ہے۔');
+      setPdfStatus({ text: 'ایکسپورٹ کے لئے لسٹ میں کوئی بکنگ موجود نہیں ہے۔', isError: true });
+      setTimeout(() => setPdfStatus(null), 4000);
       return;
     }
     const title = filterType === 'date' 
@@ -85,7 +87,14 @@ export const AdminDemandsBookingsTab: React.FC<AdminDemandsBookingsTabProps> = (
       : filterType === 'draw' 
         ? `Category_${categoryFilter}` 
         : 'All_Bookings';
-    generateAdminBookingsPDF(title, listToExport, filterType, dateFilter !== 'all' ? dateFilter : categoryFilter);
+    const res = generateAdminBookingsPDF(title, listToExport, filterType, dateFilter !== 'all' ? dateFilter : categoryFilter);
+    if (res.success) {
+      setPdfStatus({ text: 'ایڈمن پی ڈی ایف رپورٹ کامیابی سے تیار اور ڈاؤن لوڈ کر دی گئی ہے!', isError: false });
+      setTimeout(() => setPdfStatus(null), 4000);
+    } else {
+      setPdfStatus({ text: res.error || 'پی ڈی ایف بنانے میں خرابی پیش آئی۔', isError: true });
+      setTimeout(() => setPdfStatus(null), 4000);
+    }
   };
 
   return (
@@ -262,6 +271,13 @@ export const AdminDemandsBookingsTab: React.FC<AdminDemandsBookingsTabProps> = (
             </label>
           </div>
         </div>
+
+        {/* PDF Export Status Notification */}
+        {pdfStatus && (
+          <div className={`p-3 rounded-2xl text-xs text-right border ${pdfStatus.isError ? 'bg-red-50 border-red-100 text-red-700' : 'bg-emerald-50 border-emerald-100 text-emerald-800'}`}>
+            {pdfStatus.isError ? '⚠️ ' : '✓ '} {pdfStatus.text}
+          </div>
+        )}
 
         {/* PDF Export Action Buttons */}
         <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100">

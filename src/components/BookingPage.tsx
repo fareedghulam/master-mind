@@ -288,15 +288,19 @@ export default function BookingPage({
       setErrorStatus('پی ڈی ایف ڈاؤن لوڈ کرنے کے لئے لسٹ میں نمبر ہونا لازمی ہے۔');
       return;
     }
-    generateBookingPDF(
-      user.name,
-      user.email,
-      user.phone,
-      user.city,
+    const res = generateBookingPDF(
+      user.name || '',
+      user.email || '',
+      user.phone || '',
+      user.city || '',
       filterBookings,
       category
     );
-    setSuccessStatus('پی ڈی ایف فائل ڈاؤن لوڈ شروع ہو گئی ہے!');
+    if (res.success) {
+      setSuccessStatus('پی ڈی ایف فائل کامیابی سے تیار اور ڈاؤن لوڈ کر دی گئی ہے!');
+    } else {
+      setErrorStatus(res.error || 'پی ڈی ایف فائل بنانے میں خرابی پیش آئی۔');
+    }
   };
 
   return (

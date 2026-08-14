@@ -106,7 +106,7 @@ export default function App() {
   const whatsappNumber = getSupportWhatsAppNumber();
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent("السلام علیکم! مجھے ماسٹر مائینڈ قریشی انٹرپرائز پرائز بانڈ سسٹم کے بارے میں مدد چاہئے۔")}`;
 
-  const [hasAutoNavigated, setHasAutoNavigated] = useState<boolean>(false);
+  const [navigatedUid, setNavigatedUid] = useState<string | null>(null);
 
   // Initialize and load state
   useEffect(() => {
@@ -141,27 +141,26 @@ export default function App() {
     };
   }, []);
 
-  // Auto navigate based on user role upon login or session recovery
+  // Auto navigate cleanly based on user role upon login or session recovery (only on user identity change)
   useEffect(() => {
-    if (currentUser) {
+    if (currentUser && currentUser.uid) {
       const isAdmin = currentUser.isAdmin || currentUser.role === 'superAdmin' || currentUser.role === 'dataEntryAdmin' || currentUser.role === 'admin';
-      if (isAdmin) {
-        setAdminMode(true);
-        if (!hasAutoNavigated || activeTab === 'dashboard') {
+      setAdminMode(isAdmin);
+      
+      // Only auto-navigate on initial session discovery / login for this user
+      if (navigatedUid !== currentUser.uid) {
+        setNavigatedUid(currentUser.uid);
+        if (isAdmin) {
           setActiveTab('admin');
-          setHasAutoNavigated(true);
-        }
-      } else {
-        setAdminMode(false);
-        if (!hasAutoNavigated) {
+        } else {
           setActiveTab('dashboard');
-          setHasAutoNavigated(true);
         }
       }
-    } else {
-      setHasAutoNavigated(false);
+    } else if (!currentUser) {
+      setNavigatedUid(null);
+      setAdminMode(false);
     }
-  }, [currentUser]);
+  }, [currentUser, navigatedUid]);
 
   const syncWithStore = () => {
     const loggedIn = getLoggedInUser();

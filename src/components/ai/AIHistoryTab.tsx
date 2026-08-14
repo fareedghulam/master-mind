@@ -18,6 +18,24 @@ export const AIHistoryTab: React.FC<AIHistoryTabProps> = ({
   setHistoryCategory,
   filteredHistory
 }) => {
+  const [statusMsg, setStatusMsg] = React.useState<{ text: string; isError?: boolean } | null>(null);
+
+  const handleDownload = () => {
+    if (!filteredHistory || filteredHistory.length === 0) {
+      setStatusMsg({ text: 'کوئی ریکارڈ موجود نہیں ہے۔', isError: true });
+      setTimeout(() => setStatusMsg(null), 4000);
+      return;
+    }
+    const res = generateDrawHistoryPDF(filteredHistory, historyCategory);
+    if (res.success) {
+      setStatusMsg({ text: 'نتائج پی ڈی ایف رپورٹ کامیابی سے تیار کر دی گئی ہے!', isError: false });
+      setTimeout(() => setStatusMsg(null), 4000);
+    } else {
+      setStatusMsg({ text: res.error || 'پی ڈی ایف بنانے میں خرابی پیش آئی۔', isError: true });
+      setTimeout(() => setStatusMsg(null), 4000);
+    }
+  };
+
   return (
     <div className="space-y-6 text-right">
       <div className="bg-slate-800/50 p-6 rounded-2xl border border-slate-700/50">
@@ -44,10 +62,16 @@ export const AIHistoryTab: React.FC<AIHistoryTabProps> = ({
           </div>
         </div>
 
+        {statusMsg && (
+          <div className={`p-3 mb-4 rounded-xl text-xs text-right border ${statusMsg.isError ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'}`}>
+            {statusMsg.isError ? '⚠️ ' : '✓ '} {statusMsg.text}
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 text-xs">
           <button
             id="download-history-pdf-btn"
-            onClick={() => generateDrawHistoryPDF(filteredHistory, historyCategory)}
+            onClick={handleDownload}
             className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-sm shadow-amber-500/10 transition-all text-xs"
           >
             <Download className="w-3.5 h-3.5" />
