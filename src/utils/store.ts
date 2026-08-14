@@ -284,24 +284,6 @@ export function initializeStore() {
       const isSuperAdminEmail = emailLower === 'mastermaind.qureshi110@gmail.com';
       const isDataEntryEmail = emailLower === 'fareed.ghulam@gmail.com';
 
-      // Immediate in-memory fallback so getLoggedInUser() never returns null during startup
-      const existingUser = cachedUsers.find(u => u.uid === uid || (emailLower && u.email && u.email.toLowerCase().trim() === emailLower));
-      if (!existingUser) {
-        const fallbackUser: User = {
-          uid,
-          email,
-          name: firebaseUser.displayName || 'صارف',
-          phone: '',
-          city: '',
-          balance: 0,
-          isAdmin: isSuperAdminEmail || isDataEntryEmail,
-          role: isSuperAdminEmail ? 'superAdmin' : (isDataEntryEmail ? 'dataEntryAdmin' : 'customer'),
-          profileCompleted: false
-        };
-        cachedUsers.push(fallbackUser);
-        notifyListeners();
-      }
-
       const userDocRef = doc(db, 'users', uid);
       
       activeUserUnsub = onSnapshot(userDocRef, (docSnap) => {
