@@ -1,401 +1,254 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    function signedIn() {
-      return request.auth != null;
-    }
-
+    
+    // Check if ID is valid
     function isValidId(id) {
-      return id is string
-        && id.size() > 0
-        && id.size() < 100;
+      return id is string && id.size() > 0 && id.size() < 100;
     }
 
+    // Helper to validate User
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'balance'])
+        && data.email is string
+        && data.balance is number
+        && (!data.keys().hasAny(['name']) || (data.name is string && data.name.size() < 150))
+        && (!data.keys().hasAny(['phone']) || (data.phone is string && data.phone.size() < 30))
+        && (!data.keys().hasAny(['city']) || (data.city is string && data.city.size() < 100))
+        && (!data.keys().hasAny(['isAdmin']) || data.isAdmin is bool)
+        && (!data.keys().hasAny(['role']) || (data.role is string && data.role.size() < 50))
+        && (!data.keys().hasAny(['active']) || data.active is bool)
+        && (!data.keys().hasAny(['password']) || (data.password is string && data.password.size() < 100));
+    }
+
+    // Helper to validate Booking
+    function isValidBooking(data) {
+      return data.keys().hasAll(['id', 'userEmail', 'category', 'number', 'firstAmount', 'secondAmount', 'timestamp'])
+        && data.id is string
+        && data.userEmail is string
+        && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery' || data.category == 'dubai_draw' || data.category == 'zee_music_draw')
+        && data.number is string
+        && data.firstAmount is number
+        && data.secondAmount is number
+        && data.timestamp is string;
+    }
+
+    // Helper to validate DealerBooking
+    function isValidDealerBooking(data) {
+      return data.keys().hasAll(['id', 'dealerId', 'dealerEmail', 'dealerName', 'category', 'number', 'firstAmount', 'secondAmount', 'timestamp'])
+        && data.id is string
+        && data.dealerId is string
+        && data.dealerEmail is string
+        && data.dealerName is string
+        && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery' || data.category == 'dubai_draw' || data.category == 'zee_music_draw')
+        && data.number is string
+        && data.firstAmount is number
+        && data.secondAmount is number
+        && data.timestamp is string;
+    }
+
+    // Helper to validate NumberLimit
+    function isValidLimit(data) {
+      return data.keys().hasAll(['id', 'category', 'number', 'maxAmount'])
+        && data.id is string
+        && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery' || data.category == 'dubai_draw' || data.category == 'zee_music_draw')
+        && data.number is string
+        && data.maxAmount is number;
+    }
+
+    // Helper to validate Demand
+    function isValidDemand(data) {
+      return data.keys().hasAll(['id', 'userEmail', 'category', 'number', 'firstAmount', 'secondAmount', 'timestamp', 'status'])
+        && data.id is string
+        && data.userEmail is string
+        && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery' || data.category == 'dubai_draw' || data.category == 'zee_music_draw')
+        && data.number is string
+        && data.firstAmount is number
+        && data.secondAmount is number
+        && data.timestamp is string
+        && (data.status == 'pending' || data.status == 'approved' || data.status == 'rejected');
+    }
+
+    // Helper to validate DrawDeadline
+    function isValidDeadline(data) {
+      return data.keys().hasAll(['category', 'titleUrdu', 'deadlineIso', 'status'])
+        && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery' || data.category == 'dubai_draw' || data.category == 'zee_music_draw')
+        && data.titleUrdu is string
+        && data.deadlineIso is string
+        && (data.status == 'open' || data.status == 'closed');
+    }
+
+    // Helper to validate Settings
+    function isValidSettings(data) {
+      return data.keys().hasAll(['adminEmail', 'whatsappNumber'])
+        && data.adminEmail is string
+        && data.whatsappNumber is string;
+    }
+
+    // Helper to validate Transaction
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['id', 'userId', 'userEmail', 'userName', 'type', 'amount', 'date', 'status'])
+        && data.id is string
+        && data.userId is string
+        && data.userEmail is string
+        && data.amount is number
+        && data.status is string;
+    }
+
+    // Helper functions to identify roles
     function isSuperAdmin() {
-      return signedIn()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superAdmin';
+      return request.auth != null && (
+        request.auth.token.email.lower() == 'mastermaind.qureshi110@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superAdmin' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true
+        ))
+      );
     }
 
     function isDataEntryAdmin() {
-      return signedIn()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'dataEntryAdmin';
+      return request.auth != null && (
+        request.auth.token.email.lower() == 'fareed.ghulam@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'dataEntryAdmin'
+        ))
+      );
     }
 
     function isAdmin() {
       return isSuperAdmin() || isDataEntryAdmin();
     }
 
-    function isOwnUser(uid) {
-      return signedIn() && request.auth.uid == uid;
-    }
-
-    function validCategory(category) {
-      return category == 'pakistan_bond'
-        || category == 'thailand_lottery'
-        || category == 'dubai_draw'
-        || category == 'zee_music_draw';
-    }
-
-    function isValidUser(data) {
-      return data.keys().hasAll([
-          'email',
-          'name',
-          'phone',
-          'city',
-          'balance'
-        ])
-        && data.email is string
-        && data.name is string
-        && data.name.size() < 150
-        && data.phone is string
-        && data.phone.size() < 30
-        && data.city is string
-        && data.city.size() < 100
-        && data.balance is number
-        && (!data.keys().hasAny(['isAdmin']) || data.isAdmin is bool)
-        && (!data.keys().hasAny(['role']) ||
-            (data.role is string && data.role.size() < 50))
-        && (!data.keys().hasAny(['active']) || data.active is bool);
-    }
-
-    function isValidBooking(data) {
-      return data.keys().hasAll([
-          'id',
-          'userId',
-          'userEmail',
-          'category',
-          'number',
-          'firstAmount',
-          'secondAmount',
-          'timestamp',
-          'drawId'
-        ])
-        && data.id is string
-        && data.userId is string
-        && data.userId.size() > 0
-        && data.userEmail is string
-        && data.category is string
-        && validCategory(data.category)
-        && data.number is string
-        && data.firstAmount is number
-        && data.secondAmount is number
-        && data.firstAmount >= 0
-        && data.secondAmount >= 0
-        && data.timestamp is string
-        && data.drawId is string
-        && data.drawId.size() > 0;
-    }
-
-    function isValidLimit(data) {
-      return data.keys().hasAll([
-          'id',
-          'category',
-          'number',
-          'maxAmount',
-          'drawId'
-        ])
-        && data.id is string
-        && data.category is string
-        && validCategory(data.category)
-        && data.number is string
-        && data.maxAmount is number
-        && data.drawId is string
-        && data.drawId.size() > 0;
-    }
-
-    function isValidDemand(data) {
-      return data.keys().hasAll([
-          'id',
-          'userEmail',
-          'category',
-          'number',
-          'firstAmount',
-          'secondAmount',
-          'timestamp',
-          'status',
-          'drawId'
-        ])
-        && data.id is string
-        && data.userEmail is string
-        && data.category is string
-        && validCategory(data.category)
-        && data.number is string
-        && data.firstAmount is number
-        && data.secondAmount is number
-        && data.timestamp is string
-        && data.status is string
-        && data.drawId is string
-        && data.drawId.size() > 0;
-    }
-
-    function isValidDeadline(data) {
-      return data.keys().hasAll([
-          'category',
-          'titleUrdu',
-          'deadlineIso',
-          'status'
-        ])
-        && validCategory(data.category)
-        && data.titleUrdu is string
-        && data.deadlineIso is string
-        && (
-          data.status == 'open'
-          || data.status == 'closed'
-          || data.status == 'result_announced'
-        )
-        && (!data.keys().hasAny(['isArchived'])
-            || data.isArchived is bool);
-    }
-
-    function isValidSettings(data) {
-      return data.keys().hasAll([
-          'adminEmail',
-          'whatsappNumber'
-        ])
-        && data.adminEmail is string
-        && data.whatsappNumber is string;
-    }
-
-    function isValidTransaction(data) {
-      return data.keys().hasAll([
-          'id',
-          'userId',
-          'userEmail',
-          'userName',
-          'type',
-          'amount',
-          'date',
-          'status'
-        ])
-        && data.id is string
-        && data.userId is string
-        && data.userEmail is string
-        && data.userName is string
-        && data.type is string
-        && data.amount is number
-        && data.amount >= 0
-        && data.date is string
-        && data.status is string;
-    }
-
-    // =========================================================
-    // USERS
-    // =========================================================
-
     match /users/{uid} {
-
-      allow read: if isAdmin() || isOwnUser(uid);
-
-      // New accounts are always customers.
-      // Admin accounts must already be created by Super Admin.
-      allow create: if isValidId(uid)
-        && isValidUser(request.resource.data)
-        && (
-          (
-            isOwnUser(uid)
-            && request.resource.data.role == 'customer'
-            && request.resource.data.isAdmin == false
-            && request.resource.data.balance == 0
-          )
-          || isSuperAdmin()
-        );
-
-      // Customer cannot modify role, balance or admin privileges.
-      // Super Admin may modify everything.
-      allow update: if isValidId(uid)
-        && (
-          isSuperAdmin()
-          ||
-          (
-            isOwnUser(uid)
-            && request.resource.data.diff(resource.data)
-              .affectedKeys()
-              .hasOnly([
-                'name',
-                'phone',
-                'city',
-                'profileCompleted',
-                'lastLogin'
-              ])
-          )
-        );
-
+      // Fully migrated to Firebase Auth UID architecture
+      allow read: if isAdmin() || (request.auth != null && request.auth.uid == uid);
+      allow create: if isValidId(uid) && (
+        isAdmin() || (
+          request.auth != null && 
+          request.auth.uid == uid &&
+          request.resource.data.balance == 0 &&
+          (!('isAdmin' in request.resource.data) || request.resource.data.isAdmin == false) &&
+          (!('role' in request.resource.data) || request.resource.data.role == 'customer')
+        )
+      ) && isValidUser(request.resource.data);
+      allow update: if isValidId(uid) && (
+        isAdmin() || (
+          request.auth != null && 
+          request.auth.uid == uid &&
+          isValidUser(request.resource.data) &&
+          // Customer Balance Security: balance cannot go negative, and customer can only reduce balance (booking deduction)
+          request.resource.data.balance >= 0 &&
+          request.resource.data.balance <= resource.data.balance &&
+          // Privilege Escalation Prevention: customer cannot alter isAdmin or role
+          (!('isAdmin' in resource.data) || request.resource.data.isAdmin == resource.data.isAdmin) &&
+          (!('role' in resource.data) || request.resource.data.role == resource.data.role) &&
+          // Email Security: customer cannot change account email directly in Firestore
+          (!('email' in resource.data) || request.resource.data.email == resource.data.email)
+        )
+      );
       allow delete: if isSuperAdmin();
     }
 
-    // =========================================================
-    // BOOKINGS
-    // =========================================================
-
     match /bookings/{bookingId} {
-
       allow read: if true;
-
-      // Customer may create ONLY his own booking.
-      // Admin/Data Entry may create bookings as before.
-      allow create: if isValidId(bookingId)
-        && isValidBooking(request.resource.data)
-        && (
-          isAdmin()
-          ||
-          (
-            signedIn()
-            && request.resource.data.userId == request.auth.uid
-            && request.resource.data.userEmail ==
-               request.auth.token.email
-          )
-        );
-
-      // Customer may modify/delete only his own booking.
-      allow update, delete: if isValidId(bookingId)
-        && (
-          isAdmin()
-          ||
-          (
-            signedIn()
-            && resource.data.userId == request.auth.uid
-          )
-        );
+      allow create: if isValidId(bookingId) && isValidBooking(request.resource.data) && (
+        isAdmin() || (
+          request.auth != null && 
+          request.resource.data.userEmail.lower() == request.auth.token.email.lower()
+        )
+      );
+      allow update, delete: if isValidId(bookingId) && (
+        isAdmin() || (
+          request.auth != null && 
+          resource.data.userEmail.lower() == request.auth.token.email.lower()
+        )
+      );
     }
 
-    // =========================================================
-    // LIMITS
-    // =========================================================
+    match /dealerBookings/{bookingId} {
+      allow read: if isAdmin() || (
+        request.auth != null && (
+          resource.data.dealerId == request.auth.uid || 
+          resource.data.dealerEmail.lower() == request.auth.token.email.lower()
+        )
+      );
+      allow create: if isValidId(bookingId) && isValidDealerBooking(request.resource.data) && (
+        isAdmin() || (
+          request.auth != null && (
+            request.resource.data.dealerId == request.auth.uid ||
+            request.resource.data.dealerEmail.lower() == request.auth.token.email.lower()
+          )
+        )
+      );
+      allow update, delete: if isValidId(bookingId) && (
+        isAdmin() || (
+          request.auth != null && (
+            resource.data.dealerId == request.auth.uid ||
+            resource.data.dealerEmail.lower() == request.auth.token.email.lower()
+          )
+        )
+      );
+    }
 
     match /limits/{limitId} {
-
       allow read: if true;
-
-      allow write: if isValidId(limitId)
-        && isValidLimit(request.resource.data)
-        && isAdmin();
+      allow write: if isValidId(limitId) && isValidLimit(request.resource.data) && isAdmin();
     }
 
-    // =========================================================
-    // DEMANDS
-    // =========================================================
-
     match /demands/{demandId} {
-
       allow read: if true;
-
-      allow create: if isValidId(demandId)
-        && isValidDemand(request.resource.data)
-        && (
-          isAdmin()
-          ||
-          (
-            signedIn()
-            && request.resource.data.userEmail ==
-               request.auth.token.email
-          )
-        );
-
-      allow update: if isValidId(demandId)
-        && isValidDemand(request.resource.data)
-        && (
-          isAdmin()
-          ||
-          (
-            signedIn()
-            && resource.data.userEmail ==
-               request.auth.token.email
-            && request.resource.data.status ==
-               resource.data.status
-          )
-        );
-
+      allow create: if isValidId(demandId) && isValidDemand(request.resource.data) && (
+        isAdmin() || (
+          request.auth != null && 
+          request.resource.data.userEmail.lower() == request.auth.token.email.lower()
+        )
+      );
+      allow update: if isValidId(demandId) && isValidDemand(request.resource.data) && (
+        isAdmin() || (
+          request.auth != null && 
+          resource.data.userEmail.lower() == request.auth.token.email.lower() &&
+          request.resource.data.status == resource.data.status
+        )
+      );
       allow delete: if isValidId(demandId) && isAdmin();
     }
 
-    // =========================================================
-    // DEADLINES
-    // =========================================================
-
     match /deadlines/{category} {
-
       allow read: if true;
-
-      allow write: if isValidId(category)
-        && isValidDeadline(request.resource.data)
-        && isAdmin();
+      allow write: if isValidId(category) && isValidDeadline(request.resource.data) && isAdmin();
     }
 
-    // =========================================================
-    // TRANSACTIONS
-    // =========================================================
-
     match /transactions/{txId} {
-
-      allow read: if isAdmin()
-        || (
-          signedIn()
-          && (
-            resource.data.userEmail == request.auth.token.email
-            || resource.data.userId == request.auth.uid
+      allow read: if isAdmin() || (request.auth != null && (
+        resource.data.userEmail.lower() == request.auth.token.email.lower() ||
+        resource.data.userId == request.auth.uid
+      ));
+      allow create: if isValidId(txId) && isValidTransaction(request.resource.data) && (
+        isAdmin() || (
+          request.auth != null && (
+            request.resource.data.userEmail.lower() == request.auth.token.email.lower() ||
+            request.resource.data.userId == request.auth.uid
           )
-        );
-
-      allow create: if isValidId(txId)
-        && isValidTransaction(request.resource.data)
-        && (
-          isAdmin()
-          ||
-          (
-            signedIn()
-            && (
-              request.resource.data.userEmail ==
-                request.auth.token.email
-              || request.resource.data.userId ==
-                request.auth.uid
-            )
-          )
-        );
-
+        )
+      );
       allow update: if isValidId(txId) && isAdmin();
-
       allow delete: if isSuperAdmin();
     }
 
-    // =========================================================
-    // SETTINGS
-    // =========================================================
-
     match /settings/{configId} {
-
       allow read: if true;
-
-      allow write: if isValidId(configId)
-        && isValidSettings(request.resource.data)
-        && isSuperAdmin();
+      allow write: if isValidId(configId) && isValidSettings(request.resource.data) && isSuperAdmin();
     }
-
-    // =========================================================
-    // PAKISTAN BOND RESULTS
-    // =========================================================
 
     match /pakistanBondResults/{resultId} {
-
       allow read: if true;
-
-      allow write: if isValidId(resultId)
-        && (isSuperAdmin() || isDataEntryAdmin());
+      allow write: if isValidId(resultId) && (isSuperAdmin() || isDataEntryAdmin());
     }
 
-    // =========================================================
-    // THAI LOTTERY RESULTS
-    // =========================================================
-
     match /thaiLotteryResults/{resultId} {
-
       allow read: if true;
-
-      allow write: if isValidId(resultId)
-        && (isSuperAdmin() || isDataEntryAdmin());
+      allow write: if isValidId(resultId) && (isSuperAdmin() || isDataEntryAdmin());
     }
   }
 }

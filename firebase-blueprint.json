@@ -30,6 +30,23 @@
       },
       "required": ["id", "userEmail", "category", "number", "firstAmount", "secondAmount", "timestamp"]
     },
+    "DealerBooking": {
+      "title": "Dealer Booking",
+      "description": "A coupon booking placed by an authorized dealer",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique dealer booking ID" },
+        "dealerId": { "type": "string", "description": "Dealer user UID" },
+        "dealerEmail": { "type": "string", "format": "email", "description": "Email of the dealer" },
+        "dealerName": { "type": "string", "description": "Name of the dealer" },
+        "category": { "type": "string", "enum": ["pakistan_bond", "thailand_lottery"], "description": "Bond/Lottery category" },
+        "number": { "type": "string", "description": "The selected number" },
+        "firstAmount": { "type": "number", "description": "Amount for first prize" },
+        "secondAmount": { "type": "number", "description": "Amount for second prize" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Timestamp of the booking" }
+      },
+      "required": ["id", "dealerId", "dealerEmail", "dealerName", "category", "number", "firstAmount", "secondAmount", "timestamp"]
+    },
     "NumberLimit": {
       "title": "Number Limit",
       "description": "Admin configured investment limit for a specific number",
@@ -130,6 +147,10 @@
     "bookings/{bookingId}": {
       "schema": "Booking",
       "description": "Bookings created by customers"
+    },
+    "dealerBookings/{bookingId}": {
+      "schema": "DealerBooking",
+      "description": "Bookings placed by authorized dealers"
     },
     "limits/{limitId}": {
       "schema": "NumberLimit",

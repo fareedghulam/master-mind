@@ -124,12 +124,17 @@ export default function UserProfilePage({ user, totalBookingsCount }: ProfilePro
         <h3 className="text-xl sm:text-2xl font-bold text-slate-800">{user.name}</h3>
         <p className="text-xs text-slate-400 font-mono mt-1">{user.email}</p>
 
-        {user.isAdmin && (
+        {user.isAdmin ? (
           <span className="mt-2.5 inline-flex items-center gap-1 bg-amber-500 text-slate-950 text-[11px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">
             <Award className="w-3.5 h-3.5" />
             <span>ایڈمن اکاؤنٹ (Admin)</span>
           </span>
-        )}
+        ) : user.role === 'dealer' ? (
+          <span className="mt-2.5 inline-flex items-center gap-1 bg-amber-100 text-amber-950 border border-amber-300 text-[11px] font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+            <Award className="w-3.5 h-3.5 text-amber-700" />
+            <span>مجاز ڈیلر (Authorized Dealer)</span>
+          </span>
+        ) : null}
 
         {!isEditing && (
           <button

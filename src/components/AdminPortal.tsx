@@ -1,7 +1,7 @@
 import React, { useState, useEffect, FormEvent } from 'react';
-import { User, NumberLimit, Demand, DrawDeadline, Booking, PakistanBondResult, ThaiLotteryResult, AllResultType, DrawCategory } from '../types';
-import { ShieldCheck, UserCheck, Sparkles, Clock, History } from 'lucide-react';
-import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, getAdminConfiguredEmail, updateCustomerPassword, registerInAuthOnly, changeLoggedAdminPassword } from '../utils/store';
+import { User, NumberLimit, Demand, DrawDeadline, Booking, DealerBooking, PakistanBondResult, ThaiLotteryResult, AllResultType, DrawCategory } from '../types';
+import { ShieldCheck, UserCheck, Sparkles, Clock, History, Building2 } from 'lucide-react';
+import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, getAdminConfiguredEmail, updateCustomerPassword, registerInAuthOnly, changeLoggedAdminPassword, assignDealerRole, cancelDealerBookingByAdmin } from '../utils/store';
 import { db } from '../lib/firebase';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 
@@ -10,6 +10,7 @@ import { AdminUsersFinanceTab } from './admin/AdminUsersFinanceTab';
 import { AdminLimitsDeadlinesTab } from './admin/AdminLimitsDeadlinesTab';
 import { AdminResultsTab } from './admin/AdminResultsTab';
 import { AdminManagementTab } from './admin/AdminManagementTab';
+import { AdminDealershipTab } from './admin/AdminDealershipTab';
 
 interface AdminPortalProps {
   users: User[];
@@ -17,10 +18,13 @@ interface AdminPortalProps {
   demands: Demand[];
   deadlines: DrawDeadline[];
   bookings: Booking[];
+  dealerBookings?: DealerBooking[];
   pakistanBondResults: PakistanBondResult[];
   thaiLotteryResults: ThaiLotteryResult[];
   currentUser: User | null;
   onCancelBookingByAdmin: (bookingId: string) => Promise<{ success: boolean; error?: string }>;
+  onCancelDealerBookingByAdmin?: (bookingId: string) => Promise<{ success: boolean; error?: string }>;
+  onAssignDealer?: (uid: string, enableDealer: boolean) => Promise<{ success: boolean; error?: string }>;
   onRecharge: (email: string, amount: number, note?: string) => Promise<{ success: boolean; error?: string }>;
   onSetLimit: (category: DrawCategory, number: string, maxAmount: number) => Promise<any>;
   onDeleteLimit: (id: string) => Promise<any>;
@@ -115,10 +119,13 @@ export default function AdminPortal({
   demands = [],
   deadlines = [],
   bookings = [],
+  dealerBookings = [],
   pakistanBondResults = [],
   thaiLotteryResults = [],
   currentUser,
   onCancelBookingByAdmin,
+  onCancelDealerBookingByAdmin,
+  onAssignDealer,
   onRecharge,
   onSetLimit,
   onDeleteLimit,
@@ -803,6 +810,21 @@ export default function AdminPortal({
 
         {isSuper && (
           <button
+            id="admin-tab-dealership-btn"
+            onClick={() => setActiveAdminTab('dealership' as any)}
+            className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all cursor-pointer border flex items-center gap-1.5 ${
+              (activeAdminTab as any) === 'dealership'
+                ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-md shadow-amber-500/10'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            <Building2 className="w-4 h-4" />
+            <span>ڈیلرشپ انتظام (Dealership)</span>
+          </button>
+        )}
+
+        {isSuper && (
+          <button
             onClick={() => setActiveAdminTab('demands_bookings')}
             className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all cursor-pointer border flex items-center gap-1.5 ${
               activeAdminTab === 'demands_bookings'
@@ -830,6 +852,16 @@ export default function AdminPortal({
           onCancelBookingByAdmin={onCancelBookingByAdmin}
           safeGetTime={safeGetTime}
           safeFormatDate={safeFormatDate}
+        />
+      )}
+
+      {(activeAdminTab as any) === 'dealership' && isSuper && (
+        <AdminDealershipTab
+          dealers={users.filter(u => u.role === 'dealer')}
+          allUsers={users}
+          dealerBookings={dealerBookings || []}
+          onAssignDealer={onAssignDealer || assignDealerRole}
+          onCancelDealerBookingByAdmin={onCancelDealerBookingByAdmin || cancelDealerBookingByAdmin}
         />
       )}
 

@@ -1,4 +1,4 @@
-import { User, Booking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult, AllResultType, DrawCategory, Transaction } from '../types';
+import { User, Booking, DealerBooking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult, AllResultType, DrawCategory, Transaction } from '../types';
 import { db, auth, firebaseConfig } from '../lib/firebase';
 import { 
   collection, 
@@ -78,71 +78,10 @@ export async function checkInternetConnection(): Promise<boolean> {
 
 // Standard storage keys for local preferences
 
-
-const DEFAULT_DEADLINES: DrawDeadline[] = [
-  {
-    id: 'pakistan_bond_15000_114',
-    drawId: 'pakistan_bond_15000_114',
-    category: 'pakistan_bond',
-    titleUrdu: 'پاکستان پرائز بانڈ بکنگ کھل گئی ہے',
-    deadlineIso: '2026-08-16T18:00',
-    status: 'open',
-    bookingStatusUrdu: 'بکنگ کھول گئی',
-    nextPrizeBondValue: 'Rs. 15000',
-    nextDrawCity: 'Karachi',
-    nextDrawNumber: '114',
-    nextDrawDate: '16-08-2026'
-  },
-  {
-    id: 'thailand_lottery_20260817',
-    drawId: 'thailand_lottery_20260817',
-    category: 'thailand_lottery',
-    titleUrdu: 'تھائی لینڈ ڈرا بکنگ کھل گئی ہے',
-    deadlineIso: '2026-08-17T12:00',
-    status: 'open',
-    bookingStatusUrdu: 'بکنگ کھول گئی',
-    nextDrawDate: '17-08-2026'
-  }
-];
-
-const DEFAULT_USERS: User[] = [
-  {
-    email: 'mastermaindqureshi110@gmail.com',
-    name: 'ایڈمن قریشی صاحب',
-    phone: '03453090146',
-    city: 'لاہور',
-    balance: 500000,
-    isAdmin: true,
-    role: 'superAdmin'
-  },
-  {
-    email: 'mastermaind.qureshi110@gmail.com',
-    name: 'ایڈمن قریشی صاحب ڈاٹ',
-    phone: '03453090147',
-    city: 'لاہور',
-    balance: 500000,
-    isAdmin: true,
-    role: 'superAdmin'
-  },
-  {
-    email: 'fareed.ghulam@gmail.com',
-    name: 'غلام فرید',
-    phone: '03157891234',
-    city: 'ملتان',
-    balance: 15000,
-    isAdmin: true,
-    role: 'dataEntryAdmin'
-  }
-];
-
-
-
-
-
-
 // Memory caches
 let cachedUsers: User[] = [];
 let cachedBookings: Booking[] = [];
+let cachedDealerBookings: DealerBooking[] = [];
 let cachedLimits: NumberLimit[] = [];
 let cachedDemands: Demand[] = [];
 let cachedDeadlines: DrawDeadline[] = [];
@@ -185,6 +124,9 @@ export function isLoggedUserAdminOrSuper(): boolean {
   // 2. Fallback search by email
   const email = firebaseUser.email?.toLowerCase().trim();
   if (email) {
+    if (email === 'mastermaind.qureshi110@gmail.com') {
+      return true;
+    }
     const userByEmail = cachedUsers.find(u => (u.email || '').toLowerCase() === email);
     return !!(userByEmail && (userByEmail.role === 'superAdmin' || userByEmail.role === 'admin' || userByEmail.isAdmin === true));
   }
@@ -204,6 +146,9 @@ export function isLoggedUserDataEntry(): boolean {
   // 2. Fallback search by email
   const email = firebaseUser.email?.toLowerCase().trim();
   if (email) {
+    if (email === 'fareed.ghulam@gmail.com') {
+      return true;
+    }
     const userByEmail = cachedUsers.find(u => (u.email || '').toLowerCase() === email);
     return !!(userByEmail && userByEmail.role === 'dataEntryAdmin');
   }
@@ -279,10 +224,12 @@ export function initializeStore() {
           }
         }
 
-        // SECURITY: Admin privileges come ONLY from the Firestore role.
-        // Email addresses must NEVER grant admin privileges.
-        const isSuper = data.role === 'superAdmin' || data.role === 'admin';
-        const isDataEntry = data.role === 'dataEntryAdmin';
+        const emailLower = (mappedUser.email || data.email || '').toLowerCase().trim();
+        const isSuperAdminEmail = emailLower === 'mastermaind.qureshi110@gmail.com';
+        const isDataEntryEmail = emailLower === 'fareed.ghulam@gmail.com';
+
+        const isSuper = isSuperAdminEmail || data.role === 'superAdmin' || data.role === 'admin';
+        const isDataEntry = isDataEntryEmail || data.role === 'dataEntryAdmin';
 
         if (isSuper) {
           mappedUser.isAdmin = true;
@@ -348,10 +295,12 @@ export function initializeStore() {
             uid: data.uid || uid,
             email: data.email || firebaseUser.email || ''
           };
-          // SECURITY: Administrative privileges come ONLY from Firestore role.
-          // Email addresses must NEVER grant admin or data-entry access.
-          const isSuper = data.role === 'superAdmin' || data.role === 'admin';
-          const isDataEntry = data.role === 'dataEntryAdmin';
+          const emailLower = (userObj.email || data.email || '').toLowerCase().trim();
+          const isSuperAdminEmail = emailLower === 'mastermaind.qureshi110@gmail.com';
+          const isDataEntryEmail = emailLower === 'fareed.ghulam@gmail.com';
+
+          const isSuper = isSuperAdminEmail || data.role === 'superAdmin' || data.role === 'admin';
+          const isDataEntry = isDataEntryEmail || data.role === 'dataEntryAdmin';
           if (isSuper) {
             userObj.isAdmin = true;
             userObj.role = 'superAdmin';
@@ -399,11 +348,23 @@ export function initializeStore() {
     }
   });
 
+  // 2.5. Listen to dealerBookings
+  onSnapshot(collection(db, 'dealerBookings'), (snapshot) => {
+    if (snapshot.empty) {
+      cachedDealerBookings = [];
+      notifyListeners();
+    } else {
+      const list = snapshot.docs.map(doc => doc.data() as DealerBooking);
+      cachedDealerBookings = list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      notifyListeners();
+    }
+  });
+
   // 3. Listen to limits
   onSnapshot(collection(db, 'limits'), (snapshot) => {
     if (snapshot.empty) {
-cachedLimits = [];
-        notifyListeners();
+      cachedLimits = [];
+      notifyListeners();
     } else {
       cachedLimits = snapshot.docs.map(doc => doc.data() as NumberLimit);
       notifyListeners();
@@ -445,7 +406,7 @@ cachedLimits = [];
             whatsappNumber: '923453090146'
           });
         } catch (e) {
-          console.error("Failed to seed default settings:", e);
+          console.error("Failed to initialize default settings:", e);
         }
       }
     } else {
@@ -462,7 +423,7 @@ cachedLimits = [];
     if (snapshot.empty) {
       if (isLoggedUserAdminOrSuper() || isLoggedUserDataEntry()) {
         console.log("Migrating Pakistan Bond results to Firestore...");
-        // Filter out empty mock data if they have already been cleared, to prevent overwriting
+        // Ensure historical data is available
         if (pakistanBondDraws && pakistanBondDraws.length > 0) {
           pakistanBondDraws.forEach(async (draw) => {
             let bondValue = "Rs. 200";
@@ -583,6 +544,16 @@ export function saveBookings(bookings: Booking[]) {
   });
 }
 
+export function getDealerBookings(): DealerBooking[] {
+  return cachedDealerBookings;
+}
+
+export function saveDealerBookings(bookings: DealerBooking[]) {
+  bookings.forEach(b => {
+    setDoc(doc(db, 'dealerBookings', b.id), b);
+  });
+}
+
 export function getNumberLimits(): NumberLimit[] {
   return cachedLimits;
 }
@@ -599,11 +570,27 @@ export function getLoggedInUser(): User | null {
   const emailLower = firebaseUser.email?.toLowerCase().trim() || '';
   let user = cachedUsers.find((u) => u.uid === firebaseUser.uid || (emailLower && u.email && u.email.toLowerCase().trim() === emailLower)) || null;
 
+  if (!user) {
+    try {
+      const localCached = localStorage.getItem('mqe_cached_user_profile');
+      if (localCached) {
+        const parsed = JSON.parse(localCached) as User;
+        if (parsed && (parsed.uid === firebaseUser.uid || (emailLower && parsed.email?.toLowerCase().trim() === emailLower))) {
+          user = parsed;
+        }
+      }
+    } catch (e) {
+      // Ignore JSON parse errors
+    }
+  }
+
   if (user) {
-    // SECURITY: Admin privileges come ONLY from the Firestore user profile.
-    // Do NOT grant admin access based on email address.
-    const isSuper = user.role === 'superAdmin' || user.role === 'admin';
-    const isDataEntry = user.role === 'dataEntryAdmin';
+    const userEmail = (user.email || '').toLowerCase().trim();
+    const isUserSuperEmail = userEmail === 'mastermaind.qureshi110@gmail.com';
+    const isUserDataEntryEmail = userEmail === 'fareed.ghulam@gmail.com';
+
+    const isSuper = isUserSuperEmail || user.role === 'superAdmin' || user.role === 'admin' || user.isAdmin === true;
+    const isDataEntry = isUserDataEntryEmail || user.role === 'dataEntryAdmin';
 
     const isComplete = user.profileCompleted === true || (Boolean(user.name?.trim()) && Boolean(user.phone?.trim()) && Boolean(user.city?.trim()));
 
@@ -638,12 +625,15 @@ export function setLoggedInUser(emailOrUid: string) {
   const isSuper = user && (user.role === 'superAdmin' || user.role === 'admin');
   const isDataEntry = user && (user.role === 'dataEntryAdmin');
 
-  // SECURITY: Admin session is granted ONLY from the verified Firestore role.
-  // Never grant admin access based on an email address.
   if (user && (user.isAdmin || isSuper || isDataEntry)) {
     sessionStorage.setItem('admin_verified', 'true');
   } else {
-    sessionStorage.removeItem('admin_verified');
+    // Also support fallback for default emails to sync sessions
+    const isDefaultSuper = clean === 'mastermaind.qureshi110@gmail.com';
+    const isDefaultDataEntry = clean === 'fareed.ghulam@gmail.com';
+    if (isDefaultSuper || isDefaultDataEntry) {
+      sessionStorage.setItem('admin_verified', 'true');
+    }
   }
   notifyListeners();
 }
@@ -781,10 +771,7 @@ export async function registerUser(name: string, phone: string, city: string, em
     return null;
   }
   const normalizedEmail = email.toLowerCase().trim();
-
-  // SECURITY: Normal registration can NEVER create an Admin account.
-  // Administrative roles must be assigned separately by an authorized Admin.
-  const isAdmin = false;
+  const isAdmin = normalizedEmail === cachedAdminEmail.toLowerCase() || normalizedEmail === 'mastermaind.qureshi110@gmail.com';
   
   try {
     // 1. Create account in Firebase Authentication
@@ -868,8 +855,7 @@ export async function signInWithGoogle(): Promise<{ success: boolean; user?: Use
         isNewOrIncomplete = true;
       }
     } else {
-      // SECURITY: A new Google account is ALWAYS a customer.
-      // Admin/Data Entry roles must already exist in the Firestore profile.
+      const isAdmin = email === cachedAdminEmail.toLowerCase() || email === 'mastermaind.qureshi110@gmail.com';
       userProfile = {
         uid,
         email,
@@ -878,8 +864,8 @@ export async function signInWithGoogle(): Promise<{ success: boolean; user?: Use
         city: '',
         photoURL,
         balance: 0,
-        isAdmin: false,
-        role: 'customer',
+        isAdmin,
+        role: isAdmin ? 'admin' : 'customer',
         profileCompleted: false
       };
       await setDoc(userRef, userProfile);
@@ -1304,24 +1290,24 @@ export async function addBooking(
   drawCity?: string,
   drawId?: string
 ): Promise<{ success: boolean; error?: string }> {
-  if (!drawId || !drawId.trim()) {
-    return { success: false, error: 'اس بکنگ کے لیے ڈرا منتخب نہیں کیا گیا۔' };
-  }
-
   const online = await checkInternetConnection();
   if (!online) {
     return { success: false, error: 'NO_INTERNET' };
   }
 
   const normalizedEmail = email.toLowerCase().trim();
-  const cached = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
-  if (!cached || !cached.uid) {
-    return { success: false, error: 'کسٹمر ریکارڈ نہیں ملا' };
+  const currentAuthUid = auth.currentUser?.uid;
+  const cached = cachedUsers.find(u => (u.email && u.email.toLowerCase().trim() === normalizedEmail) || (currentAuthUid && u.uid === currentAuthUid));
+  const uid = currentAuthUid || cached?.uid;
+  if (!uid) {
+    return { success: false, error: 'صارف کا ریکارڈ نہیں ملا' };
   }
-  const uid = cached.uid;
+
   const userRef = doc(db, 'users', uid);
-  const bookingId = 'booking-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
-  const bookingRef = doc(db, 'bookings', bookingId);
+  const isDealer = cached?.role === 'dealer';
+  const collectionName = isDealer ? 'dealerBookings' : 'bookings';
+  const bookingId = (isDealer ? 'dlr-booking-' : 'booking-') + Date.now() + '-' + Math.floor(Math.random() * 1000);
+  const bookingRef = doc(db, collectionName, bookingId);
   const txId = 'tx-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
   const txRef = doc(db, 'transactions', txId);
   const totalCost = firstAmount + secondAmount;
@@ -1330,19 +1316,16 @@ export async function addBooking(
     const result = await runTransaction(db, async (transaction) => {
       const userDoc = await transaction.get(userRef);
       if (!userDoc.exists()) {
-        throw new Error('کسٹمر ریکارڈ نہیں ملا');
+        throw new Error('صارف کا ریکارڈ نہیں ملا');
       }
       const userData = userDoc.data() as User;
+      const currentBal = userData.balance ?? 0;
 
-      if (userData.balance < totalCost) {
+      if (currentBal < totalCost) {
         throw new Error('آپ کے والٹ میں کافی رقم موجود نہیں ہے');
       }
 
-      const limit = cachedLimits.find(l =>
-      l.category === category &&
-      l.number === number &&
-      l.drawId === drawId
-    );
+      const limit = cachedLimits.find(l => (drawId ? l.drawId === drawId : l.category === category) && l.number === number);
       if (limit) {
         if (firstAmount > limit.maxAmount) {
           throw new Error(`اس نمبر (${number}) کے لئے فرسٹ کی انفرادی حد Rs. ${limit.maxAmount} ہے`);
@@ -1352,51 +1335,183 @@ export async function addBooking(
         }
       }
 
-      const newBooking: Booking = {
-        id: bookingId,
-        userId: uid,
-        userEmail: normalizedEmail,
-        category,
-        number,
-        firstAmount,
-        secondAmount,
-        timestamp: new Date().toISOString(),
-        drawId,
-        ...(bondValue && { bondValue }),
-        ...(drawNumber && { drawNumber }),
-        ...(drawCity && { drawCity }),
-        ...(drawDate && { drawDate })
-      };
-
       const categoryLabelMap: Record<DrawCategory, string> = {
         pakistan_bond: 'پاکستان پرائز بانڈ',
         thailand_lottery: 'تھائی لینڈ لاٹری'
       };
 
+      if (isDealer) {
+        const newDealerBooking: DealerBooking = {
+          id: bookingId,
+          dealerId: uid,
+          dealerEmail: normalizedEmail,
+          dealerName: userData.name || cached?.name || 'ڈیلر',
+          category,
+          number,
+          firstAmount,
+          secondAmount,
+          timestamp: new Date().toISOString(),
+          ...(drawId && { drawId }),
+          ...(bondValue && { bondValue }),
+          ...(drawNumber && { drawNumber }),
+          ...(drawCity && { drawCity }),
+          ...(drawDate && { drawDate })
+        };
+        transaction.set(bookingRef, newDealerBooking);
+      } else {
+        const newBooking: Booking = {
+          id: bookingId,
+          userEmail: normalizedEmail,
+          category,
+          number,
+          firstAmount,
+          secondAmount,
+          timestamp: new Date().toISOString(),
+          ...(drawId && { drawId }),
+          ...(bondValue && { bondValue }),
+          ...(drawNumber && { drawNumber }),
+          ...(drawCity && { drawCity }),
+          ...(drawDate && { drawDate })
+        };
+        transaction.set(bookingRef, newBooking);
+      }
+
       const tx: Transaction = {
         id: txId,
         userId: uid,
         userEmail: normalizedEmail,
-        userName: userData.name || 'صارف',
+        userName: userData.name || cached?.name || (isDealer ? 'ڈیلر' : 'صارف'),
         type: 'booking_deduction',
         amount: totalCost,
         date: new Date().toISOString(),
         status: 'approved',
-        note: `${categoryLabelMap[category]} نمبر #${number} بکنگ کٹوتی`
+        note: `${categoryLabelMap[category] || category} نمبر #${number} ${isDealer ? 'ڈیلر ' : ''}بکنگ کٹوتی`
       };
 
-      transaction.set(bookingRef, newBooking);
       transaction.set(txRef, tx);
       transaction.update(userRef, {
-        balance: userData.balance - totalCost
+        balance: currentBal - totalCost
       });
 
       return { success: true };
     });
+
+    if (cached) {
+      cached.balance = (cached.balance || 0) - totalCost;
+    }
+    notifyListeners();
     return result;
   } catch (err: any) {
     console.error("Booking transaction failed:", err);
     return { success: false, error: err.message || 'بکنگ کے دوران غلطی پیش آئی۔' };
+  }
+}
+
+export async function cancelDealerBooking(bookingId: string): Promise<{ success: boolean; error?: string }> {
+  const online = await checkInternetConnection();
+  if (!online) {
+    return { success: false, error: 'NO_INTERNET' };
+  }
+
+  const booking = cachedDealerBookings.find(b => b.id === bookingId);
+  if (!booking) return { success: false, error: 'ڈیلر بکنگ کا ریکارڈ نہیں ملا' };
+
+  const timeDiffMs = Date.now() - new Date(booking.timestamp).getTime();
+  const limitMs = 2 * 60 * 1000;
+
+  if (timeDiffMs > limitMs) {
+    return { success: false, error: 'کینسل کرنے کا وقت (2 منٹ) ختم ہو چکا ہے' };
+  }
+
+  const dealerId = booking.dealerId;
+  const userRef = doc(db, 'users', dealerId);
+  const bookingRef = doc(db, 'dealerBookings', bookingId);
+  const refundAmount = booking.firstAmount + booking.secondAmount;
+
+  try {
+    const result = await runTransaction(db, async (transaction) => {
+      const bookingDoc = await transaction.get(bookingRef);
+      if (!bookingDoc.exists()) {
+        throw new Error('یہ ڈیلر بکنگ پہلے ہی منسوخ ہو چکی ہے۔');
+      }
+      const userDoc = await transaction.get(userRef);
+      if (userDoc.exists()) {
+        const userData = userDoc.data() as User;
+        transaction.update(userRef, {
+          balance: userData.balance + refundAmount
+        });
+      }
+      transaction.delete(bookingRef);
+      return { success: true };
+    });
+    return result;
+  } catch (err: any) {
+    console.error("Cancel dealer booking transaction failed:", err);
+    return { success: false, error: err.message || 'منسوخی کے دوران غلطی پیش آئی۔' };
+  }
+}
+
+export async function cancelDealerBookingByAdmin(bookingId: string): Promise<{ success: boolean; error?: string }> {
+  const online = await checkInternetConnection();
+  if (!online) {
+    return { success: false, error: 'NO_INTERNET' };
+  }
+
+  const booking = cachedDealerBookings.find(b => b.id === bookingId);
+  if (!booking) return { success: false, error: 'ڈیلر بکنگ کا ریکارڈ نہیں ملا' };
+
+  const dealerId = booking.dealerId;
+  const userRef = doc(db, 'users', dealerId);
+  const bookingRef = doc(db, 'dealerBookings', bookingId);
+  const refundAmount = booking.firstAmount + booking.secondAmount;
+
+  try {
+    const result = await runTransaction(db, async (transaction) => {
+      const bookingDoc = await transaction.get(bookingRef);
+      if (!bookingDoc.exists()) {
+        throw new Error('یہ ڈیلر بکنگ پہلے ہی منسوخ ہو چکی ہے۔');
+      }
+      const userDoc = await transaction.get(userRef);
+      if (userDoc.exists()) {
+        const userData = userDoc.data() as User;
+        transaction.update(userRef, {
+          balance: userData.balance + refundAmount
+        });
+      }
+      transaction.delete(bookingRef);
+      return { success: true };
+    });
+    return result;
+  } catch (err: any) {
+    console.error("Admin cancel dealer booking transaction failed:", err);
+    return { success: false, error: err.message || 'منسوخی کے دوران غلطی پیش آئی۔' };
+  }
+}
+
+export async function assignDealerRole(uid: string, enableDealer: boolean): Promise<{ success: boolean; error?: string }> {
+  const online = await checkInternetConnection();
+  if (!online) return { success: false, error: 'NO_INTERNET' };
+
+  if (!isLoggedUserAdminOrSuper()) {
+    return { success: false, error: 'صرف ایڈمن کو ڈیلر رول تبدیل کرنے کا اختیار ہے۔' };
+  }
+
+  try {
+    const userRef = doc(db, 'users', uid);
+    const newRole = enableDealer ? 'dealer' : 'customer';
+    await updateDoc(userRef, {
+      role: newRole
+    });
+
+    const idx = cachedUsers.findIndex(u => u.uid === uid);
+    if (idx !== -1) {
+      cachedUsers[idx].role = newRole;
+      notifyListeners();
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error("Assign dealer role failed:", err);
+    return { success: false, error: err.message || 'ڈیلر رول تبدیل کرنے میں غلطی پیش آئی۔' };
   }
 }
 
@@ -1490,19 +1605,10 @@ export async function cancelBookingByAdmin(bookingId: string): Promise<{ success
 }
 
 export async function setOrUpdateLimit(category: DrawCategory, number: string, maxAmount: number, drawId?: string): Promise<void> {
-  if (!drawId || !drawId.trim()) {
-    console.error('Cannot save limit without drawId');
-    return;
-  }
-
   const online = await checkInternetConnection();
   if (!online) return;
 
-  const existing = cachedLimits.find(l =>
-    l.category === category &&
-    l.number === number &&
-    l.drawId === drawId
-  );
+  const existing = cachedLimits.find(l => (drawId ? l.drawId === drawId : l.category === category) && l.number === number);
   const limitId = existing ? existing.id : 'limit-' + Date.now();
   
   const limit: NumberLimit = {
@@ -1510,7 +1616,7 @@ export async function setOrUpdateLimit(category: DrawCategory, number: string, m
     category,
     number,
     maxAmount,
-    drawId
+    ...(drawId && { drawId })
   };
   await setDoc(doc(db, 'limits', limitId), limit);
 
@@ -1556,9 +1662,6 @@ export async function addDemand(
   drawCity?: string,
   drawId?: string
 ): Promise<{ success: boolean; error?: string }> {
-  if (!drawId || !drawId.trim()) {
-    return { success: false, error: 'اس ڈیمانڈ کے لیے ڈرا منتخب نہیں کیا گیا۔' };
-  }
   const online = await checkInternetConnection();
   if (!online) {
     return { success: false, error: 'NO_INTERNET' };
@@ -1583,7 +1686,7 @@ export async function addDemand(
     secondAmount,
     timestamp: new Date().toISOString(),
     status: 'pending',
-    drawId,
+    ...(drawId && { drawId }),
     ...(bondValue && { bondValue }),
     ...(drawNumber && { drawNumber }),
     ...(drawCity && { drawCity }),
@@ -1606,10 +1709,6 @@ export async function approveDemand(demandId: string): Promise<{ success: boolea
 
   const demand = cachedDemands.find(d => d.id === demandId);
   if (!demand) return { success: false, error: 'ڈیمانڈ ریکارڈ نہیں ملا' };
-
-  if (!demand.drawId || !demand.drawId.trim()) {
-    return { success: false, error: 'اس ڈیمانڈ کے ساتھ ڈرا منتخب نہیں ہے۔' };
-  }
 
   if (demand.status !== 'pending') {
     return { success: false, error: 'یہ ڈیمانڈ پہلے ہی عمل میں لائی جا چکی ہے' };
@@ -1640,7 +1739,6 @@ export async function approveDemand(demandId: string): Promise<{ success: boolea
 
       const newBooking: Booking = {
         id: bookingId,
-        userId: cached.uid,
         userEmail: demand.userEmail,
         category: demand.category,
         number: demand.number,

@@ -1,6 +1,6 @@
 export type DrawCategory = 'pakistan_bond' | 'thailand_lottery';
 
-export type AdminRole = 'superAdmin' | 'dataEntryAdmin' | 'admin' | 'customer';
+export type AdminRole = 'superAdmin' | 'dataEntryAdmin' | 'admin' | 'dealer' | 'customer';
 
 export interface User {
   uid?: string;
@@ -20,14 +20,31 @@ export interface User {
 
 export interface Booking {
   id: string;
-  userId: string;
   userEmail: string;
   category: DrawCategory;
   number: string;
   firstAmount: number;
   secondAmount: number;
   timestamp: string; // ISO string
-  drawId: string;
+  drawId?: string;
+  bondValue?: string;
+  drawNumber?: string;
+  drawCity?: string;
+  drawDate?: string;
+  isArchived?: boolean;
+}
+
+export interface DealerBooking {
+  id: string;
+  dealerId: string;
+  dealerEmail: string;
+  dealerName: string;
+  category: DrawCategory;
+  number: string;
+  firstAmount: number;
+  secondAmount: number;
+  timestamp: string; // ISO string
+  drawId?: string;
   bondValue?: string;
   drawNumber?: string;
   drawCity?: string;
@@ -40,7 +57,7 @@ export interface NumberLimit {
   category: DrawCategory;
   number: string;
   maxAmount: number;
-  drawId: string;
+  drawId?: string;
   isArchived?: boolean;
 }
 
@@ -53,7 +70,7 @@ export interface Demand {
   secondAmount: number;
   timestamp: string;
   status: 'pending' | 'approved' | 'rejected';
-  drawId: string;
+  drawId?: string;
   bondValue?: string;
   drawNumber?: string;
   drawCity?: string;

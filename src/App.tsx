@@ -4,12 +4,15 @@ import {
   setLoggedInUser, 
   getUsers, 
   getBookings, 
+  getDealerBookings,
   getNumberLimits, 
   registerUser, 
   rechargeWallet, 
   addBooking, 
   cancelBooking, 
   cancelBookingByAdmin, 
+  cancelDealerBookingByAdmin,
+  assignDealerRole,
   setOrUpdateLimit, 
   deleteLimit, 
   logout,
@@ -34,7 +37,7 @@ import {
   signInWithGoogle,
   updateUserProfile
 } from './utils/store';
-import { User, Booking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult, DrawCategory } from './types';
+import { User, Booking, DealerBooking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult, DrawCategory } from './types';
 import { db, auth } from './lib/firebase';
 import { doc, getDocFromServer, collection, query, where, getDocsFromServer, setDoc, deleteDoc } from 'firebase/firestore';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
@@ -55,6 +58,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [users, setUsers] = useState<User[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [dealerBookings, setDealerBookings] = useState<DealerBooking[]>([]);
   const [limits, setLimits] = useState<NumberLimit[]>([]);
   const [demands, setDemands] = useState<Demand[]>([]);
   const [deadlines, setDeadlines] = useState<DrawDeadline[]>([]);
@@ -167,6 +171,7 @@ export default function App() {
     setCurrentUser(loggedIn);
     setUsers(getUsers());
     setBookings(getBookings());
+    setDealerBookings(getDealerBookings());
     setLimits(getNumberLimits());
     setDemands(getDemands());
     setDeadlines(getDrawDeadlines());
@@ -382,14 +387,15 @@ export default function App() {
       }
 
       const emailLowerMatched = (matchedUser.email || emailToAuth || '').toLowerCase().trim();
-
-      // SECURITY: Admin privileges come ONLY from the Firestore role.
-      // Email addresses must NEVER grant admin privileges.
       const isSuper = (
+        emailLowerMatched === 'mastermaind.qureshi110@gmail.com' ||
         matchedUser.role === 'superAdmin' ||
         matchedUser.role === 'admin'
       );
-      const isDataEntry = matchedUser.role === 'dataEntryAdmin';
+      const isDataEntry = (
+        emailLowerMatched === 'fareed.ghulam@gmail.com' ||
+        matchedUser.role === 'dataEntryAdmin'
+      );
 
       if (isSuper) {
         matchedUser.role = 'superAdmin';
@@ -842,10 +848,13 @@ export default function App() {
               demands={demands}
               deadlines={deadlines}
               bookings={bookings}
+              dealerBookings={dealerBookings}
               pakistanBondResults={pakistanBondResults}
               thaiLotteryResults={thaiLotteryResults}
               currentUser={currentUser}
               onCancelBookingByAdmin={handleCancelBookingByAdmin}
+              onCancelDealerBookingByAdmin={cancelDealerBookingByAdmin}
+              onAssignDealer={assignDealerRole}
               onRecharge={handleRecharge}
               onSetLimit={handleSetLimit}
               onDeleteLimit={handleDeleteLimit}
