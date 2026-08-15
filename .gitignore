@@ -14,3 +14,21 @@ android/key.properties
 *.jks
 *.keystore
 key.properties
+
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Firebase/Auth exports and temporary configs
+*auth*.json
+firebase-applet-config.json
+mastermind-web-config.json
+.firebaserc.backup
+
+# Temporary/corrupt build artifacts
+*.corrupt
+
+# Build/dependency output
+node_modules/
+dist/
