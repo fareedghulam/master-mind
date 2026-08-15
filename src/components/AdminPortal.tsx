@@ -1,5 +1,5 @@
 import React, { useState, useEffect, FormEvent } from 'react';
-import { User, NumberLimit, Demand, DrawDeadline, Booking, DealerBooking, PakistanBondResult, ThaiLotteryResult, AllResultType, DrawCategory } from '../types';
+import { User, AdminRole, NumberLimit, Demand, DrawDeadline, Booking, DealerBooking, PakistanBondResult, ThaiLotteryResult, AllResultType, DrawCategory } from '../types';
 import { ShieldCheck, UserCheck, Sparkles, Clock, History, Building2 } from 'lucide-react';
 import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, getAdminConfiguredEmail, updateCustomerPassword, registerInAuthOnly, changeLoggedAdminPassword, assignDealerRole, cancelDealerBookingByAdmin } from '../utils/store';
 import { db } from '../lib/firebase';
@@ -153,7 +153,7 @@ export default function AdminPortal({
   const [newAdminPhone, setNewAdminPhone] = useState('');
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [newAdminPassword, setNewAdminPassword] = useState('');
-  const [newAdminRole, setNewAdminRole] = useState<'superAdmin' | 'dataEntryAdmin'>('dataEntryAdmin');
+  const [newAdminRole, setNewAdminRole] = useState<'superAdmin' | 'dataEntryAdmin' | 'dealer'>('dataEntryAdmin');
   const [adminManageError, setAdminManageError] = useState('');
   const [adminManageSuccess, setAdminManageSuccess] = useState('');
 
@@ -532,14 +532,15 @@ export default function AdminPortal({
         throw new Error('ایڈمن لاگ ان بنانے میں ناکامی (Failed to create auth user)');
       }
 
+      const isDealerCreation = newAdminRole === 'dealer';
       const newAdminDoc = {
         uid,
         email: emailClean,
         name: newAdminName.trim(),
         phone: newAdminPhone.trim(),
-        city: 'Enterprise HQ',
+        city: isDealerCreation ? 'Authorized Dealer' : 'Enterprise HQ',
         balance: 0,
-        isAdmin: true,
+        isAdmin: !isDealerCreation,
         role: newAdminRole,
         active: true,
         lastLogin: null
@@ -547,7 +548,11 @@ export default function AdminPortal({
 
       await setDoc(doc(db, 'users', uid), newAdminDoc);
 
-      setAdminManageSuccess(`کامیاب: نیا ایڈمن ${newAdminName} کامیابی سے بنا دیا گیا ہے اور لاگ ان کے لیے تیار ہے۔`);
+      setAdminManageSuccess(
+        isDealerCreation
+          ? `کامیاب: نیا مجاز ڈیلر ${newAdminName} کامیابی سے بنا دیا گیا ہے اور لاگ ان کے لیے تیار ہے۔`
+          : `کامیاب: نیا ایڈمن ${newAdminName} کامیابی سے بنا دیا گیا ہے اور لاگ ان کے لیے تیار ہے۔`
+      );
       setNewAdminName('');
       setNewAdminPhone('');
       setNewAdminEmail('');
@@ -613,7 +618,7 @@ export default function AdminPortal({
     }
   };
 
-  const handleChangeAdminRole = async (email: string, roleToSet: 'superAdmin' | 'dataEntryAdmin') => {
+  const handleChangeAdminRole = async (email: string, roleToSet: AdminRole) => {
     const emailClean = email.toLowerCase().trim();
     const mainOwnerEmail = getAdminConfiguredEmail().toLowerCase().trim();
     if (emailClean === mainOwnerEmail || emailClean === currentUser?.email?.toLowerCase().trim()) {
@@ -627,15 +632,26 @@ export default function AdminPortal({
     try {
       const cached = users.find(u => (u.email || '').toLowerCase() === emailClean);
       if (!cached || !cached.uid) {
-        throw new Error('ایڈمن کا UID نہیں ملا۔ (Admin UID not found.)');
+        throw new Error('صارف کا UID نہیں ملا۔ (User UID not found.)');
       }
+      const isDealer = roleToSet === 'dealer';
+      const isCustomer = roleToSet === 'customer';
       await setDoc(doc(db, 'users', cached.uid), {
-        role: roleToSet
+        role: roleToSet,
+        isAdmin: (!isDealer && !isCustomer)
       }, { merge: true });
-      setAdminManageSuccess(`ایڈمن رول کامیابی سے تبدیل کر کے ${roleToSet === 'superAdmin' ? 'Super Admin' : 'Data Entry Admin'} کر دیا گیا ہے۔`);
+      
+      const roleLabel = roleToSet === 'superAdmin' 
+        ? 'Super Admin' 
+        : roleToSet === 'dataEntryAdmin' 
+        ? 'Data Entry Admin' 
+        : roleToSet === 'dealer' 
+        ? 'Authorized Dealer' 
+        : 'Customer';
+      setAdminManageSuccess(`رول کامیابی سے تبدیل کر کے ${roleLabel} کر دیا گیا ہے۔`);
     } catch (err: any) {
-      console.error("Change admin role error:", err);
-      setAdminManageError(err?.message || 'ایڈمن کا رول تبدیل کرنے میں خرابی پیش آئی۔');
+      console.error("Change role error:", err);
+      setAdminManageError(err?.message || 'رول تبدیل کرنے میں خرابی پیش آئی۔');
     }
   };
 

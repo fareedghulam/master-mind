@@ -116,8 +116,8 @@ export const AdminManagementTab: React.FC<AdminManagementTabProps> = ({
           </div>
 
           <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-2">
-            <div className="flex gap-4 items-center">
-              <span className="text-slate-600 text-xs font-semibold font-sans">انتخابِ عہدہ (Admin Role):</span>
+            <div className="flex flex-wrap gap-4 items-center">
+              <span className="text-slate-600 text-xs font-semibold font-sans">انتخابِ عہدہ (Role):</span>
               <label className="inline-flex items-center gap-1 cursor-pointer">
                 <input
                   type="radio"
@@ -138,6 +138,16 @@ export const AdminManagementTab: React.FC<AdminManagementTabProps> = ({
                 />
                 <span className="text-xs text-slate-700 font-semibold font-sans">سپر ایڈمن (Super Admin)</span>
               </label>
+              <label className="inline-flex items-center gap-1 cursor-pointer">
+                <input
+                  type="radio"
+                  name="adminRole"
+                  checked={newAdminRole === 'dealer'}
+                  onChange={() => setNewAdminRole('dealer')}
+                  className="text-amber-500 focus:ring-amber-500"
+                />
+                <span className="text-xs text-amber-900 font-bold font-sans bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">مجاز ڈیلر (Dealer)</span>
+              </label>
             </div>
 
             <button
@@ -145,7 +155,7 @@ export const AdminManagementTab: React.FC<AdminManagementTabProps> = ({
               className="bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold py-2.5 px-6 rounded-2xl text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md w-full sm:w-auto"
             >
               <Plus className="w-4 h-4" />
-              <span className="font-sans font-bold">نیا ایڈمن رجسٹر کریں (Register Admin)</span>
+              <span className="font-sans font-bold">نیا ایڈمن / ڈیلر رجسٹر کریں (Register Account)</span>
             </button>
           </div>
         </form>
