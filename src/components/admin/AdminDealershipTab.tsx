@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { User, DealerBooking, DrawCategory } from '../../types';
+import { generateDealerBookingsPDF } from '../../utils/pdfGenerator';
 import { 
   Building2, 
   Users, 
@@ -13,7 +14,8 @@ import {
   CheckCircle2, 
   AlertCircle,
   Hash,
-  Award
+  Award,
+  FileText
 } from 'lucide-react';
 
 interface AdminDealershipTabProps {
@@ -128,6 +130,33 @@ export const AdminDealershipTab: React.FC<AdminDealershipTabProps> = ({
     pakistan_bond: 'پاکستان پرائز بانڈ',
     thailand_lottery: 'تھائی لینڈ لاٹری'
   };
+
+    const handleDealerBookingsPDF = () => {
+      const label =
+        categoryFilter === 'all'
+          ? 'All_Dealer_Bookings'
+          : categoryNameMap[categoryFilter];
+
+      const result = generateDealerBookingsPDF(
+        label,
+        filteredBookings,
+        categoryFilter === 'all' ? 'all' : 'category',
+        label
+      );
+
+      if (result.success) {
+        setStatusMessage({
+          type: 'success',
+          text: 'ڈیلر بکنگز کی PDF رپورٹ کامیابی سے تیار کر دی گئی ہے۔'
+        });
+      } else {
+        setStatusMessage({
+          type: 'error',
+          text: result.error || 'ڈیلر بکنگز کی PDF بنانے میں ناکامی ہوئی۔'
+        });
+      }
+    };
+
 
   return (
     <div className="space-y-6">
@@ -332,6 +361,16 @@ export const AdminDealershipTab: React.FC<AdminDealershipTabProps> = ({
                   />
                   <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
                 </div>
+                  <button
+                    type="button"
+                    onClick={handleDealerBookingsPDF}
+                    disabled={filteredBookings.length === 0}
+                    className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-3 rounded-2xl transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-xs whitespace-nowrap"
+                    title="Dealer Bookings PDF"
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>PDF رپورٹ</span>
+                  </button>
               </div>
             </div>
 

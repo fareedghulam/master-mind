@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Booking, DrawCategory } from '../types';
+import { Booking, DealerBooking, DrawCategory } from '../types';
 
 /**
  * Universal safe PDF saver that handles standard browser downloads,
@@ -350,6 +350,184 @@ export function generateDrawHistoryPDF(
   } catch (err: any) {
     console.error('Failed to generate draw history PDF:', err);
     return { success: false, error: err?.message || 'ہسٹری پی ڈی ایف بنانے میں خرابی پیش آئی۔' };
+  }
+}
+
+
+export function generateDealerBookingsPDF(
+  reportTitle: string,
+  bookings: DealerBooking[],
+  filterType: 'category' | 'all',
+  filterValueLabel?: string
+): { success: boolean; error?: string } {
+  try {
+    const doc = new jsPDF() as any;
+    const safeTitle = reportTitle || 'Dealer_Bookings';
+    const safeBookings = Array.isArray(bookings) ? bookings : [];
+
+    doc.setFillColor(15, 23, 42);
+    doc.rect(0, 0, 210, 35, 'F');
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('MASTERMIND QURESHI ENTERPRISE', 105, 14, { align: 'center' });
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(
+      `DEALER BOOKINGS REPORT - ${safeTitle.toUpperCase()}`,
+      105,
+      24,
+      { align: 'center' }
+    );
+
+    const totalFirst = safeBookings.reduce(
+      (sum, b) => sum + (Number(b.firstAmount) || 0), 0
+    );
+    const totalSecond = safeBookings.reduce(
+      (sum, b) => sum + (Number(b.secondAmount) || 0), 0
+    );
+    const grandTotal = totalFirst + totalSecond;
+
+    doc.setFillColor(248, 250, 252);
+    doc.rect(10, 40, 190, 30, 'F');
+    doc.setDrawColor(226, 232, 240);
+    doc.rect(10, 40, 190, 30);
+
+    doc.setTextColor(15, 23, 42);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text('DEALER BOOKING REPORT METRICS', 15, 47);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    doc.text(
+      `Filter: ${(filterType || 'ALL').toUpperCase()} ${filterValueLabel ? `(${filterValueLabel})` : ''}`,
+      15,
+      55
+    );
+    doc.text(`Total Dealer Bookings: ${safeBookings.length}`, 15, 62);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 110, 55);
+    doc.text(`Grand Total: Rs. ${grandTotal.toLocaleString()}`, 110, 62);
+
+    const categoryMap: Record<string, string> = {
+      pakistan_bond: 'Pakistan Prize Bond',
+      thailand_lottery: 'Thailand Lottery'
+    };
+
+    const tableRows = safeBookings.map((b, idx) => {
+      const drawInfo = [
+        b.bondValue
+          ? (b.bondValue.startsWith('Rs') ? b.bondValue : `Rs. ${b.bondValue}`)
+          : '',
+        b.drawNumber ? `Draw #${b.drawNumber}` : '',
+        b.drawCity || '',
+        b.drawDate || ''
+      ].filter(Boolean).join(' | ') || categoryMap[b.category] || b.category;
+
+      const firstAmt = Number(b.firstAmount) || 0;
+      const secondAmt = Number(b.secondAmount) || 0;
+
+      return [
+        idx + 1,
+        b.dealerName || '--',
+        b.dealerEmail || '--',
+        categoryMap[b.category] || b.category || '--',
+        drawInfo,
+        b.number || '--',
+        `Rs. ${firstAmt.toLocaleString()}`,
+        `Rs. ${secondAmt.toLocaleString()}`,
+        `Rs. ${(firstAmt + secondAmt).toLocaleString()}`,
+        b.timestamp ? new Date(b.timestamp).toLocaleString() : '--'
+      ];
+    });
+
+    tableRows.push([
+      'Total',
+      '--',
+      '--',
+      '--',
+      '--',
+      '--',
+      `Rs. ${totalFirst.toLocaleString()}`,
+      `Rs. ${totalSecond.toLocaleString()}`,
+      `Rs. ${grandTotal.toLocaleString()}`,
+      '--'
+    ]);
+
+    autoTable(doc, {
+      startY: 76,
+      head: [[
+        'Sr #',
+        'Dealer Name',
+        'Dealer Email',
+        'Category',
+        'Draw / Bond Details',
+        'Number',
+        '1st',
+        '2nd',
+        'Total',
+        'Date / Time'
+      ]],
+      body: tableRows,
+      theme: 'striped',
+      headStyles: {
+        fillColor: [15, 23, 42],
+        fontStyle: 'bold'
+      },
+      styles: {
+        fontSize: 6.5,
+        cellPadding: 2,
+        font: 'helvetica'
+      },
+      columnStyles: {
+        0: { cellWidth: 9 },
+        1: { cellWidth: 24 },
+        2: { cellWidth: 32 },
+        3: { cellWidth: 22 },
+        4: { cellWidth: 34 },
+        5: { cellWidth: 16 },
+        6: { cellWidth: 17 },
+        7: { cellWidth: 17 },
+        8: { cellWidth: 18 },
+        9: { cellWidth: 27 }
+      },
+      didParseCell: function(data: any) {
+        if (data.row.index === safeBookings.length) {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.textColor = [15, 23, 42];
+          if (data.column.index === 8) {
+            data.cell.styles.fillColor = [252, 211, 77];
+          }
+        }
+      }
+    });
+
+    const finalY = doc.lastAutoTable
+      ? doc.lastAutoTable.finalY || 150
+      : 150;
+
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184);
+    doc.text(
+      'MasterMind Qureshi Enterprise - Official Dealer Bookings Record',
+      105,
+      finalY + 12,
+      { align: 'center' }
+    );
+
+    const cleanTitle = safeTitle.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename =
+      `Dealer_Bookings_${cleanTitle}_${new Date().toISOString().split('T')[0]}.pdf`;
+
+    return savePdfDocument(doc, filename);
+  } catch (err: any) {
+    console.error('Failed to generate dealer bookings PDF:', err);
+    return {
+      success: false,
+      error: err?.message || 'ڈیلر بکنگ رپورٹ بنانے میں خرابی پیش آئی۔'
+    };
   }
 }
 
