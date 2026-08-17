@@ -1,9 +1,9 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { getAuth, setPersistence, browserLocalPersistence } from 'firebase/auth';
 
 export const firebaseConfig = {
-  apiKey: "AIzaSyAdxB4gKa6AB9mrOuE6PeQGzbUVUtXKBKs",
+  apiKey: "AIzaSyAx59hRoNxWI7a4iQtIaPkOGftFW1EMmfc",
   authDomain: "master-mind-qureshi-enterprise.firebaseapp.com",
   projectId: "master-mind-qureshi-enterprise",
   storageBucket: "master-mind-qureshi-enterprise.firebasestorage.app",
@@ -12,8 +12,15 @@ export const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, "ai-studio-mastermindquresh-ff3983e2-8998-40ba-9564-0a2763001795");
+export const db = getFirestore(app);
 export const auth = getAuth(app);
+
+// Explicitly persist normal Firebase Auth sessions across app restarts.
+// Admin/Data-Entry sessions are separately blocked by the startup security guard
+// unless they were authorized by a fresh login in the current app session.
+setPersistence(auth, browserLocalPersistence).catch((error) => {
+  console.error('[FirebaseAuth] Failed to configure local persistence:', error);
+});
 
 async function testConnection() {
   try {

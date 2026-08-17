@@ -336,9 +336,15 @@ export default function App() {
 
       let uid = '';
       try {
+        // SECURITY: Mark this as an explicit login attempt.
+        // This allows a freshly authenticated Admin/Data-Entry user
+        // while blocking an old persisted Admin session at startup.
+        sessionStorage.setItem('mqe_explicit_admin_login', 'true');
+
         const cred = await signInWithEmailAndPassword(auth, emailToAuth.toLowerCase().trim(), passwordInput);
         uid = cred.user.uid;
       } catch (err: any) {
+        sessionStorage.removeItem('mqe_explicit_admin_login');
         console.error("Firebase Auth sign in failed:", err);
         if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found') {
           return { success: false, error: 'ای میل/موبائل نمبر یا پاس ورڈ درست نہیں ہے۔ (Incorrect email/phone or password.)' };
@@ -381,9 +387,14 @@ export default function App() {
             };
           }
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Failed to load/migrate user profile:", err);
-        return { success: false, error: 'پروفائل لوڈ کرنے میں ناکامی۔' };
+        console.error("PROFILE FIRESTORE ERROR CODE:", err?.code);
+        console.error("PROFILE FIRESTORE ERROR MESSAGE:", err?.message);
+        return {
+          success: false,
+          error: `پروفائل لوڈ کرنے میں ناکامی۔ [${err?.code || 'unknown'}] ${err?.message || ''}`
+        };
       }
 
       const emailLowerMatched = (matchedUser.email || emailToAuth || '').toLowerCase().trim();
@@ -425,9 +436,6 @@ export default function App() {
         return { success: false, error: 'آپ کا ایڈمن اکاؤنٹ غیر فعال کر دیا گیا ہے۔ برائے مہربانی سپر ایڈمن سے رابطہ کریں۔ (Your admin account is deactivated. Please contact Super Admin.)' };
       }
 
-      if (matchedUser.isAdmin) {
-        sessionStorage.setItem('admin_verified', 'true');
-      }
 
       const isProfileComplete = matchedUser.profileCompleted === true || (Boolean(matchedUser.name?.trim()) && Boolean(matchedUser.phone?.trim()) && Boolean(matchedUser.city?.trim()));
       matchedUser.profileCompleted = isProfileComplete;
@@ -817,6 +825,7 @@ export default function App() {
             <BookingPage
               user={currentUser}
               bookings={bookings}
+              dealerBookings={dealerBookings}
               limits={limits}
               demands={demands}
               deadlines={deadlines}
@@ -831,6 +840,7 @@ export default function App() {
             <BookingPage
               user={currentUser}
               bookings={bookings}
+              dealerBookings={dealerBookings}
               limits={limits}
               demands={demands}
               deadlines={deadlines}

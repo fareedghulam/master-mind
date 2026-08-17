@@ -32,3 +32,5 @@ mastermind-web-config.json
 # Build/dependency output
 node_modules/
 dist/
+
+.firebase/

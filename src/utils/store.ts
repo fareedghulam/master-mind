@@ -191,9 +191,30 @@ export function initializeStore() {
         const isSuper = userProfile && (userProfile.role === 'superAdmin' || userProfile.role === 'admin');
         const isDataEntry = userProfile && userProfile.role === 'dataEntryAdmin';
         
-        if (isSuper || isDataEntry) {
-          sessionStorage.setItem('admin_verified', 'true');
+    if (isSuper || isDataEntry) {
+      // SECURITY: Only allow Admin/Data-Entry sessions that were
+      // explicitly authorized by a fresh login in this app session.
+      const explicitAdminLogin =
+        sessionStorage.getItem('mqe_explicit_admin_login') === 'true';
+
+      if (!explicitAdminLogin) {
+        console.log('[Security] Persisted Admin/Data-Entry session detected. Signing out.');
+        sessionStorage.removeItem('admin_verified');
+        try {
+          localStorage.removeItem('mqe_cached_user_profile');
+        } catch (e) {
+          // Ignore localStorage errors
         }
+        await signOut(auth).catch((e) => {
+          console.error('[Security] Failed to clear persisted admin session:', e);
+        });
+        notifyListeners();
+        return;
+      }
+
+      // Fresh explicit Admin login is allowed.
+      sessionStorage.removeItem('mqe_explicit_admin_login');
+    }
       }
     } else {
       sessionStorage.removeItem('admin_verified');
@@ -272,11 +293,19 @@ export function initializeStore() {
 
   // Active single-user document listener for real-time customer profile & balance sync
   let activeUserUnsub: (() => void) | null = null;
-  onAuthStateChanged(auth, (firebaseUser) => {
+  let activeDealerBookingsUnsub: (() => void) | null = null;
+  onAuthStateChanged(auth, async (firebaseUser) => {
     if (activeUserUnsub) {
       activeUserUnsub();
       activeUserUnsub = null;
     }
+
+      if (activeDealerBookingsUnsub) {
+        activeDealerBookingsUnsub();
+        activeDealerBookingsUnsub = null;
+      }
+
+      cachedDealerBookings = [];
 
     if (firebaseUser) {
       const uid = firebaseUser.uid;
@@ -287,6 +316,67 @@ export function initializeStore() {
 
       const userDocRef = doc(db, 'users', uid);
       
+
+
+      // SECURITY: dealerBookings are never globally subscribed.
+      // Dealer -> only own bookings.
+      // Admin/Data Entry -> all dealer bookings.
+      const syncDealerBookingsListener = (roleData: User) => {
+        if (activeDealerBookingsUnsub) {
+          activeDealerBookingsUnsub();
+          activeDealerBookingsUnsub = null;
+        }
+
+        cachedDealerBookings = [];
+
+        const role = roleData.role;
+        const isDealer = role === 'dealer';
+        const isDealerAdmin =
+          role === 'superAdmin' ||
+          role === 'admin' ||
+          role === 'dataEntryAdmin' ||
+          isSuperAdminEmail ||
+          isDataEntryEmail ||
+          roleData.isAdmin === true;
+
+        if (!isDealer && !isDealerAdmin) {
+          notifyListeners();
+          return;
+        }
+
+        const dealerBookingsRef = isDealer
+          ? query(
+              collection(db, 'dealerBookings'),
+              where('dealerId', '==', uid)
+            )
+          : collection(db, 'dealerBookings');
+
+        activeDealerBookingsUnsub = onSnapshot(
+          dealerBookingsRef,
+          (snapshot) => {
+            const list = snapshot.docs.map(
+              doc => doc.data() as DealerBooking
+            );
+
+            cachedDealerBookings = list.sort(
+              (a, b) =>
+                new Date(b.timestamp).getTime() -
+                new Date(a.timestamp).getTime()
+            );
+
+            notifyListeners();
+          },
+          (err) => {
+            console.error(
+              `[DealerBookings] Listener failed for ${uid}:`,
+              err
+            );
+            cachedDealerBookings = [];
+            notifyListeners();
+          }
+        );
+      };
+
       activeUserUnsub = onSnapshot(userDocRef, (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data() as User;
@@ -310,7 +400,13 @@ export function initializeStore() {
           } else {
             userObj.isAdmin = data.isAdmin || false;
             userObj.role = data.role || 'customer';
+
           }
+
+            // SECURITY: Start the dealerBookings listener only after
+            // the user's complete role/admin status has been resolved.
+            syncDealerBookingsListener(userObj);
+
 
           const isComplete = data.profileCompleted === true || (Boolean(userObj.name?.trim()) && Boolean(userObj.phone?.trim()) && Boolean(userObj.city?.trim()));
           userObj.profileCompleted = isComplete;
@@ -344,18 +440,6 @@ export function initializeStore() {
     } else {
       const list = snapshot.docs.map(doc => doc.data() as Booking);
       cachedBookings = list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      notifyListeners();
-    }
-  });
-
-  // 2.5. Listen to dealerBookings
-  onSnapshot(collection(db, 'dealerBookings'), (snapshot) => {
-    if (snapshot.empty) {
-      cachedDealerBookings = [];
-      notifyListeners();
-    } else {
-      const list = snapshot.docs.map(doc => doc.data() as DealerBooking);
-      cachedDealerBookings = list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       notifyListeners();
     }
   });
@@ -622,20 +706,9 @@ export function getLoggedInUser(): User | null {
 export function setLoggedInUser(emailOrUid: string) {
   const clean = emailOrUid.toLowerCase().trim();
   const user = cachedUsers.find((u) => (u.email || '').toLowerCase() === clean || u.uid === emailOrUid);
-  const isSuper = user && (user.role === 'superAdmin' || user.role === 'admin');
-  const isDataEntry = user && (user.role === 'dataEntryAdmin');
-
-  if (user && (user.isAdmin || isSuper || isDataEntry)) {
-    sessionStorage.setItem('admin_verified', 'true');
-  } else {
-    // Also support fallback for default emails to sync sessions
-    const isDefaultSuper = clean === 'mastermaind.qureshi110@gmail.com';
-    const isDefaultDataEntry = clean === 'fareed.ghulam@gmail.com';
-    if (isDefaultSuper || isDefaultDataEntry) {
-      sessionStorage.setItem('admin_verified', 'true');
-    }
-  }
-  notifyListeners();
+    // Admin authentication is handled by Firebase Auth.
+    // Legacy admin session flags are no longer used as authentication.
+    notifyListeners();
 }
 
 export function logout() {
@@ -822,6 +895,12 @@ export async function signInWithGoogle(): Promise<{ success: boolean; user?: Use
 
   try {
     const provider = new GoogleAuthProvider();
+
+    // SECURITY: Mark Google authentication as an explicit login attempt.
+    // This allows a freshly authenticated Admin/Data-Entry user through
+    // the startup session guard.
+    sessionStorage.setItem('mqe_explicit_admin_login', 'true');
+
     const result = await signInWithPopup(auth, provider);
     const firebaseUser = result.user;
     if (!firebaseUser || !firebaseUser.email) {
@@ -880,6 +959,7 @@ export async function signInWithGoogle(): Promise<{ success: boolean; user?: Use
     notifyListeners();
     return { success: true, user: userProfile, isNewOrIncomplete };
   } catch (err: any) {
+    sessionStorage.removeItem('mqe_explicit_admin_login');
     console.error("Google sign in error:", err);
     if (err && err.code === 'auth/popup-closed-by-user') {
       return { success: false, error: 'گوگل لاگ ان منسوخ کر دیا گیا ہے۔' };
@@ -1539,6 +1619,8 @@ export async function cancelBooking(bookingId: string): Promise<{ success: boole
   const userRef = doc(db, 'users', cached.uid);
   const bookingRef = doc(db, 'bookings', bookingId);
   const refundAmount = booking.firstAmount + booking.secondAmount;
+  const refundTxId = 'refund-' + bookingId;
+  const refundTxRef = doc(db, 'transactions', refundTxId);
 
   try {
     const result = await runTransaction(db, async (transaction) => {
@@ -1546,13 +1628,34 @@ export async function cancelBooking(bookingId: string): Promise<{ success: boole
       if (!bookingDoc.exists()) {
         throw new Error('یہ بکنگ پہلے ہی منسوخ ہو چکی ہے۔');
       }
+
       const userDoc = await transaction.get(userRef);
-      if (userDoc.exists()) {
-        const userData = userDoc.data() as User;
-        transaction.update(userRef, {
-          balance: userData.balance + refundAmount
-        });
+      if (!userDoc.exists()) {
+        throw new Error('کسٹمر کا والٹ ریکارڈ موجود نہیں ہے۔');
       }
+
+      const userData = userDoc.data() as User;
+
+      const refundTx: Transaction = {
+        id: refundTxId,
+        userId: cached.uid!,
+        userEmail: userEmail,
+        userName: userData.name || cached.name || 'صارف',
+        type: 'refund',
+        amount: refundAmount,
+        date: new Date().toISOString(),
+        status: 'approved',
+        bookingId: bookingId,
+        note: `بکنگ #${bookingId} کی منسوخی پر والٹ ریفنڈ`
+      };
+
+      transaction.set(refundTxRef, refundTx);
+
+      transaction.update(userRef, {
+        balance: userData.balance + refundAmount,
+        lastRefundBookingId: bookingId
+      });
+
       transaction.delete(bookingRef);
       return { success: true };
     });
@@ -1580,6 +1683,8 @@ export async function cancelBookingByAdmin(bookingId: string): Promise<{ success
   const userRef = doc(db, 'users', cached.uid);
   const bookingRef = doc(db, 'bookings', bookingId);
   const refundAmount = booking.firstAmount + booking.secondAmount;
+  const refundTxId = 'refund-' + bookingId;
+  const refundTxRef = doc(db, 'transactions', refundTxId);
 
   try {
     const result = await runTransaction(db, async (transaction) => {
@@ -1587,13 +1692,34 @@ export async function cancelBookingByAdmin(bookingId: string): Promise<{ success
       if (!bookingDoc.exists()) {
         throw new Error('یہ بکنگ پہلے ہی منسوخ ہو چکی ہے۔');
       }
+
       const userDoc = await transaction.get(userRef);
-      if (userDoc.exists()) {
-        const userData = userDoc.data() as User;
-        transaction.update(userRef, {
-          balance: userData.balance + refundAmount
-        });
+      if (!userDoc.exists()) {
+        throw new Error('کسٹمر کا والٹ ریکارڈ موجود نہیں ہے۔');
       }
+
+      const userData = userDoc.data() as User;
+
+      const refundTx: Transaction = {
+        id: refundTxId,
+        userId: cached.uid!,
+        userEmail: userEmail,
+        userName: userData.name || cached.name || 'صارف',
+        type: 'refund',
+        amount: refundAmount,
+        date: new Date().toISOString(),
+        status: 'approved',
+        bookingId: bookingId,
+        note: `ایڈمن کی جانب سے بکنگ #${bookingId} کی منسوخی پر والٹ ریفنڈ`
+      };
+
+      transaction.set(refundTxRef, refundTx);
+
+      transaction.update(userRef, {
+        balance: userData.balance + refundAmount,
+        lastRefundBookingId: bookingId
+      });
+
       transaction.delete(bookingRef);
       return { success: true };
     });
@@ -1676,22 +1802,30 @@ export async function addDemand(
     return { success: false, error: 'آپ کے والٹ میں کافی رقم موجود نہیں ہے' };
   }
 
-  const demandId = 'demand-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
-  const newDemand: Demand = {
-    id: demandId,
-    userEmail: normalizedEmail,
-    category,
-    number,
-    firstAmount,
-    secondAmount,
-    timestamp: new Date().toISOString(),
-    status: 'pending',
-    ...(drawId && { drawId }),
-    ...(bondValue && { bondValue }),
-    ...(drawNumber && { drawNumber }),
-    ...(drawCity && { drawCity }),
-    ...(drawDate && { drawDate })
-  };
+    const demandId = 'demand-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+
+    // Capture dealer identity at Demand creation time.
+    const isDealer = user.role === 'dealer';
+
+    const newDemand: Demand = {
+      id: demandId,
+      userEmail: normalizedEmail,
+      ...(isDealer && { requesterRole: 'dealer' as const }),
+      ...(isDealer && user.uid && { dealerId: user.uid }),
+      ...(isDealer && { dealerEmail: user.email || normalizedEmail }),
+      ...(isDealer && { dealerName: user.name || 'ڈیلر' }),
+      category,
+      number,
+      firstAmount,
+      secondAmount,
+      timestamp: new Date().toISOString(),
+      status: 'pending',
+      ...(drawId && { drawId }),
+      ...(bondValue && { bondValue }),
+      ...(drawNumber && { drawNumber }),
+      ...(drawCity && { drawCity }),
+      ...(drawDate && { drawDate })
+    };
 
   try {
     await setDoc(doc(db, 'demands', demandId), newDemand);
@@ -1701,71 +1835,253 @@ export async function addDemand(
   }
 }
 
-export async function approveDemand(demandId: string): Promise<{ success: boolean; error?: string }> {
+export async function approveDemand(
+  demandId: string
+): Promise<{ success: boolean; error?: string }> {
   const online = await checkInternetConnection();
   if (!online) {
     return { success: false, error: 'NO_INTERNET' };
   }
 
   const demand = cachedDemands.find(d => d.id === demandId);
-  if (!demand) return { success: false, error: 'ڈیمانڈ ریکارڈ نہیں ملا' };
+
+  if (!demand) {
+    return { success: false, error: 'ڈیمانڈ ریکارڈ نہیں ملا' };
+  }
 
   if (demand.status !== 'pending') {
-    return { success: false, error: 'یہ ڈیمانڈ پہلے ہی عمل میں لائی جا چکی ہے' };
+    return {
+      success: false,
+      error: 'یہ ڈیمانڈ پہلے ہی عمل میں لائی جا چکی ہے'
+    };
   }
 
   const userEmail = demand.userEmail.toLowerCase().trim();
-  const cached = cachedUsers.find(u => u.email.toLowerCase() === userEmail);
-  if (!cached || !cached.uid) {
-    return { success: false, error: 'کسٹمر ریکارڈ (یا یو آئی ڈی) نہیں ملا۔' };
+
+  const cached = cachedUsers.find(
+    u => u.email && u.email.toLowerCase().trim() === userEmail
+  );
+
+  if (!cached?.uid) {
+    return {
+      success: false,
+      error: 'صارف کا ریکارڈ (یا یو آئی ڈی) نہیں ملا۔'
+    };
   }
+
+  /*
+   * IMPORTANT:
+   * The requester role is captured when the Demand is created.
+   * Do not guess the destination collection from the email at
+   * approval time. Legacy demands without requesterRole are
+   * resolved from the current cached user role.
+   */
+  const requesterRole: 'customer' | 'dealer' =
+    demand.requesterRole ||
+    (cached.role === 'dealer' ? 'dealer' : 'customer');
+
+  const isDealer = requesterRole === 'dealer';
+
   const userRef = doc(db, 'users', cached.uid);
-  const bookingId = 'booking-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
-  const bookingRef = doc(db, 'bookings', bookingId);
+  const bookingId =
+    (isDealer ? 'dlr-booking-' : 'booking-') +
+    Date.now() +
+    '-' +
+    Math.floor(Math.random() * 1000);
+
+  const bookingCollection = isDealer ? 'dealerBookings' : 'bookings';
+  const bookingRef = doc(db, bookingCollection, bookingId);
   const demandRef = doc(db, 'demands', demandId);
-  const totalCost = demand.firstAmount + demand.secondAmount;
+    // Deterministic ledger ID: Firestore rules verify this exact
+    // transaction against the approved booking.
+    const txId = 'tx-booking-' + bookingId;
+    const txRef = doc(db, 'transactions', txId);
 
   try {
     const result = await runTransaction(db, async (transaction) => {
+      /*
+       * READ ALL DOCUMENTS FIRST.
+       * Firestore transactions require reads to happen before writes.
+       */
+      const demandDoc = await transaction.get(demandRef);
+
+      if (!demandDoc.exists()) {
+        throw new Error('ڈیمانڈ ریکارڈ نہیں ملا');
+      }
+
+      const currentDemand = demandDoc.data() as Demand;
+
+      if (currentDemand.status !== 'pending') {
+        throw new Error('یہ ڈیمانڈ پہلے ہی عمل میں لائی جا چکی ہے');
+      }
+
       const userDoc = await transaction.get(userRef);
+
       if (!userDoc.exists()) {
-        throw new Error('کسٹمر ریکارڈ نہیں ملا');
+        throw new Error('صارف کا ریکارڈ نہیں ملا');
       }
+
       const userData = userDoc.data() as User;
+      const currentBalance = userData.balance ?? 0;
 
-      if (userData.balance < totalCost) {
-        throw new Error('کسٹمر کے والٹ میں کافی رقم موجود نہیں ہے');
+      const totalCost =
+        (currentDemand.firstAmount || 0) +
+        (currentDemand.secondAmount || 0);
+
+      if (totalCost <= 0) {
+        throw new Error('ڈیمانڈ کی رقم درست نہیں ہے');
       }
 
-      const newBooking: Booking = {
-        id: bookingId,
-        userEmail: demand.userEmail,
-        category: demand.category,
-        number: demand.number,
-        firstAmount: demand.firstAmount,
-        secondAmount: demand.secondAmount,
-        timestamp: new Date().toISOString(),
-        ...(demand.drawId && { drawId: demand.drawId }),
-        ...(demand.bondValue && { bondValue: demand.bondValue }),
-        ...(demand.drawNumber && { drawNumber: demand.drawNumber }),
-        ...(demand.drawCity && { drawCity: demand.drawCity }),
-        ...(demand.drawDate && { drawDate: demand.drawDate })
+      if (currentBalance < totalCost) {
+        throw new Error('صارف کے والٹ میں کافی رقم موجود نہیں ہے');
+      }
+
+      /*
+       * Create the booking that belongs to this approved Demand.
+       */
+      if (isDealer) {
+        const dealerBooking: DealerBooking = {
+          id: bookingId,
+          dealerId: cached.uid,
+          dealerEmail:
+            userData.email ||
+            currentDemand.dealerEmail ||
+            userEmail,
+          dealerName:
+            userData.name ||
+            currentDemand.dealerName ||
+            cached.name ||
+            'ڈیلر',
+          category: currentDemand.category,
+          number: currentDemand.number,
+          firstAmount: currentDemand.firstAmount,
+          secondAmount: currentDemand.secondAmount,
+          timestamp: new Date().toISOString(),
+          ...(currentDemand.drawId && {
+            drawId: currentDemand.drawId
+          }),
+          ...(currentDemand.bondValue && {
+            bondValue: currentDemand.bondValue
+          }),
+          ...(currentDemand.drawNumber && {
+            drawNumber: currentDemand.drawNumber
+          }),
+          ...(currentDemand.drawCity && {
+            drawCity: currentDemand.drawCity
+          }),
+          ...(currentDemand.drawDate && {
+            drawDate: currentDemand.drawDate
+          })
+        };
+
+        transaction.set(bookingRef, dealerBooking);
+      } else {
+        const customerBooking: Booking = {
+          id: bookingId,
+          userEmail: currentDemand.userEmail,
+          category: currentDemand.category,
+          number: currentDemand.number,
+          firstAmount: currentDemand.firstAmount,
+          secondAmount: currentDemand.secondAmount,
+          timestamp: new Date().toISOString(),
+          ...(currentDemand.drawId && {
+            drawId: currentDemand.drawId
+          }),
+          ...(currentDemand.bondValue && {
+            bondValue: currentDemand.bondValue
+          }),
+          ...(currentDemand.drawNumber && {
+            drawNumber: currentDemand.drawNumber
+          }),
+          ...(currentDemand.drawCity && {
+            drawCity: currentDemand.drawCity
+          }),
+          ...(currentDemand.drawDate && {
+            drawDate: currentDemand.drawDate
+          })
+        };
+
+        transaction.set(bookingRef, customerBooking);
+      }
+
+      /*
+       * FINANCIAL LEDGER:
+       * Every approved Demand now gets an explicit booking_deduction
+       * transaction tied to the exact booking created above.
+       */
+      const categoryLabelMap: Record<DrawCategory, string> = {
+        pakistan_bond: 'پاکستان پرائز بانڈ',
+        thailand_lottery: 'تھائی لینڈ لاٹری'
       };
 
-      transaction.set(bookingRef, newBooking);
+      const tx: Transaction = {
+        id: txId,
+        userId: cached.uid,
+        userEmail:
+          userData.email ||
+          currentDemand.userEmail ||
+          userEmail,
+        userName:
+          userData.name ||
+          cached.name ||
+          (isDealer ? 'ڈیلر' : 'صارف'),
+        type: 'booking_deduction',
+        amount: totalCost,
+        date: new Date().toISOString(),
+        status: 'approved',
+        bookingId: bookingId,
+        note:
+          `${categoryLabelMap[currentDemand.category] || currentDemand.category} ` +
+          `نمبر #${currentDemand.number} ` +
+          `${isDealer ? 'ڈیلر ' : ''}بکنگ ڈیمانڈ منظوری کٹوتی`
+      };
+
+      transaction.set(txRef, tx);
+
+      /*
+       * Wallet deduction is part of the SAME atomic transaction.
+       */
       transaction.update(userRef, {
-        balance: userData.balance - totalCost
-      });
+          balance: currentBalance - totalCost,
+          lastBookingId: bookingId
+        });
+
+      /*
+       * Demand approval is part of the SAME atomic transaction.
+       */
       transaction.update(demandRef, {
         status: 'approved'
       });
 
       return { success: true };
     });
+
+    if (result.success) {
+      cached.balance =
+        (cached.balance || 0) -
+        ((demand.firstAmount || 0) + (demand.secondAmount || 0));
+
+      /*
+       * Keep local demand cache consistent with Firestore.
+       */
+      demand.status = 'approved';
+
+      notifyListeners();
+    }
+
     return result;
   } catch (err: any) {
-    console.error("Approve demand transaction failed:", err);
-    return { success: false, error: err.message || 'ڈیمانڈ منظور کرنے کے دوران غلطی پیش آئی۔' };
+    console.error(
+      'Approve demand transaction failed:',
+      err
+    );
+
+    return {
+      success: false,
+      error:
+        err.message ||
+        'ڈیمانڈ منظور کرنے کے دوران غلطی پیش آئی۔'
+    };
   }
 }
 

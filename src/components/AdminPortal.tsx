@@ -884,6 +884,7 @@ export default function AdminPortal({
       {activeAdminTab === 'users_finance' && isSuper && (
         <AdminUsersFinanceTab
           users={users}
+          dealerBookings={dealerBookings || []}
           rechargeError={rechargeError}
           rechargeSuccess={rechargeSuccess}
           rechargeEmail={rechargeEmail}

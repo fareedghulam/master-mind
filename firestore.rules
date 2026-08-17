@@ -66,7 +66,26 @@ service cloud.firestore {
         && data.firstAmount is number
         && data.secondAmount is number
         && data.timestamp is string
-        && (data.status == 'pending' || data.status == 'approved' || data.status == 'rejected');
+        && (data.status == 'pending' || data.status == 'approved' || data.status == 'rejected')
+        // Dealer fields are optional for customer Demands,
+        // but mandatory and type-safe when requesterRole is dealer.
+        && (!data.keys().hasAny(['requesterRole']) || data.requesterRole == 'customer' || data.requesterRole == 'dealer')
+        && (
+          !data.keys().hasAny(['requesterRole'])
+          || data.requesterRole == 'customer'
+          || (
+            data.requesterRole == 'dealer'
+            && data.keys().hasAll(['dealerId', 'dealerEmail', 'dealerName'])
+            && data.dealerId is string
+            && data.dealerId.size() > 0
+            && data.dealerEmail is string
+            && data.dealerName is string
+            && data.dealerName.size() < 150
+          )
+        )
+        && (!data.keys().hasAny(['dealerId']) || data.dealerId is string)
+        && (!data.keys().hasAny(['dealerEmail']) || data.dealerEmail is string)
+        && (!data.keys().hasAny(['dealerName']) || data.dealerName is string);
     }
 
     // Helper to validate DrawDeadline
@@ -123,27 +142,107 @@ service cloud.firestore {
     match /users/{uid} {
       // Fully migrated to Firebase Auth UID architecture
       allow read: if isAdmin() || (request.auth != null && request.auth.uid == uid);
+
       allow create: if isValidId(uid) && (
         isSuperAdmin() || (
-          request.auth != null && 
+          request.auth != null &&
           request.auth.uid == uid &&
           request.resource.data.balance == 0 &&
           (!('isAdmin' in request.resource.data) || request.resource.data.isAdmin == false) &&
           (!('role' in request.resource.data) || request.resource.data.role == 'customer')
         )
       ) && isValidUser(request.resource.data);
+
       allow update: if isValidId(uid) && (
-        isSuperAdmin() || (
-          request.auth != null && 
-          request.auth.uid == uid &&
+        isSuperAdmin() ||
+
+        // Admin refund: only an atomic refund tied to a deleted booking.
+        (
+          isAdmin() &&
+          request.resource.data.balance > resource.data.balance &&
+          request.resource.data.lastRefundBookingId is string &&
+          request.resource.data.lastRefundBookingId.size() > 0 &&
+          getAfter(/databases/$(database)/documents/transactions/$("refund-" + request.resource.data.lastRefundBookingId)).data.type == 'refund' &&
+          getAfter(/databases/$(database)/documents/transactions/$("refund-" + request.resource.data.lastRefundBookingId)).data.userId == uid &&
+          getAfter(/databases/$(database)/documents/transactions/$("refund-" + request.resource.data.lastRefundBookingId)).data.bookingId == request.resource.data.lastRefundBookingId &&
+          getAfter(/databases/$(database)/documents/transactions/$("refund-" + request.resource.data.lastRefundBookingId)).data.amount ==
+            request.resource.data.balance - resource.data.balance &&
+          !existsAfter(/databases/$(database)/documents/bookings/$(request.resource.data.lastRefundBookingId)) &&
           isValidUser(request.resource.data) &&
-          // Customer Balance Security: balance cannot go negative, and customer can only reduce balance (booking deduction)
-          request.resource.data.balance >= 0 &&
-          request.resource.data.balance <= resource.data.balance &&
-          // Privilege Escalation Prevention: customer cannot alter isAdmin or role
           (!('isAdmin' in resource.data) || request.resource.data.isAdmin == resource.data.isAdmin) &&
           (!('role' in resource.data) || request.resource.data.role == resource.data.role) &&
-          // Email Security: customer cannot change account email directly in Firestore
+          (!('email' in resource.data) || request.resource.data.email == resource.data.email)
+        ) ||
+
+        // Admin booking deduction:
+        // Wallet decrease, booking creation and ledger entry must
+        // happen in the SAME atomic transaction.
+        (
+          isAdmin() &&
+          request.resource.data.balance < resource.data.balance &&
+          request.resource.data.balance >= 0 &&
+          request.resource.data.lastBookingId is string &&
+          request.resource.data.lastBookingId.size() > 0 &&
+          isValidUser(request.resource.data) &&
+
+          (!('isAdmin' in resource.data) || request.resource.data.isAdmin == resource.data.isAdmin) &&
+          (!('role' in resource.data) || request.resource.data.role == resource.data.role) &&
+          (!('email' in resource.data) || request.resource.data.email == resource.data.email) &&
+
+          // Exact ledger entry created in the same transaction.
+          getAfter(
+            /databases/$(database)/documents/transactions/$("tx-booking-" + request.resource.data.lastBookingId)
+          ).data.type == 'booking_deduction' &&
+
+          getAfter(
+            /databases/$(database)/documents/transactions/$("tx-booking-" + request.resource.data.lastBookingId)
+          ).data.userId == uid &&
+
+          getAfter(
+            /databases/$(database)/documents/transactions/$("tx-booking-" + request.resource.data.lastBookingId)
+          ).data.bookingId == request.resource.data.lastBookingId &&
+
+          getAfter(
+            /databases/$(database)/documents/transactions/$("tx-booking-" + request.resource.data.lastBookingId)
+          ).data.amount ==
+            resource.data.balance - request.resource.data.balance &&
+
+          getAfter(
+            /databases/$(database)/documents/transactions/$("tx-booking-" + request.resource.data.lastBookingId)
+          ).data.status == 'approved' &&
+
+          // Matching customer booking OR dealer booking must exist
+          // after the atomic transaction.
+          (
+            (
+              existsAfter(
+                /databases/$(database)/documents/bookings/$(request.resource.data.lastBookingId)
+              ) &&
+              getAfter(
+                /databases/$(database)/documents/bookings/$(request.resource.data.lastBookingId)
+              ).data.userEmail.lower() == request.resource.data.email.lower()
+            )
+            ||
+            (
+              existsAfter(
+                /databases/$(database)/documents/dealerBookings/$(request.resource.data.lastBookingId)
+              ) &&
+              getAfter(
+                /databases/$(database)/documents/dealerBookings/$(request.resource.data.lastBookingId)
+              ).data.dealerId == uid
+            )
+          )
+        ) ||
+
+        // Normal customer operation: balance can only decrease.
+        (
+          request.auth != null &&
+          request.auth.uid == uid &&
+          isValidUser(request.resource.data) &&
+          request.resource.data.balance <= resource.data.balance &&
+          request.resource.data.balance >= 0 &&
+          (!('isAdmin' in resource.data) || request.resource.data.isAdmin == resource.data.isAdmin) &&
+          (!('role' in resource.data) || request.resource.data.role == resource.data.role) &&
           (!('email' in resource.data) || request.resource.data.email == resource.data.email)
         )
       );
@@ -173,22 +272,33 @@ service cloud.firestore {
           resource.data.dealerEmail.lower() == request.auth.token.email.lower()
         )
       );
-      allow create: if isValidId(bookingId) && isValidDealerBooking(request.resource.data) && (
-        isAdmin() || (
-          request.auth != null && (
-            request.resource.data.dealerId == request.auth.uid ||
-            request.resource.data.dealerEmail.lower() == request.auth.token.email.lower()
+        // Dealer bookings may only be created by an authenticated
+        // Firebase account whose server-side user role is actually dealer.
+        // UID, dealer email and authenticated email must all match.
+        allow create: if isValidId(bookingId)
+          && isValidDealerBooking(request.resource.data)
+          && (
+            isAdmin()
+            || (
+              request.auth != null
+              && request.resource.data.dealerId == request.auth.uid
+              && request.resource.data.dealerEmail.lower() == request.auth.token.email.lower()
+              && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+              && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'dealer'
+            )
+          );
+        // Only Admin or the actual Dealer owner may modify/remove
+        // a Dealer Booking. Dealer ownership is verified server-side.
+        allow update, delete: if isValidId(bookingId) && (
+          isAdmin()
+          || (
+            request.auth != null
+            && resource.data.dealerId == request.auth.uid
+            && resource.data.dealerEmail.lower() == request.auth.token.email.lower()
+            && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'dealer'
           )
-        )
-      );
-      allow update, delete: if isValidId(bookingId) && (
-        isAdmin() || (
-          request.auth != null && (
-            resource.data.dealerId == request.auth.uid ||
-            resource.data.dealerEmail.lower() == request.auth.token.email.lower()
-          )
-        )
-      );
+        );
     }
 
     match /limits/{limitId} {
@@ -200,17 +310,35 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isValidId(demandId) && isValidDemand(request.resource.data) && (
         isAdmin() || (
-          request.auth != null && 
-          request.resource.data.userEmail.lower() == request.auth.token.email.lower()
+          request.auth != null && (
+            // Customer Demand
+            (
+              (!request.resource.data.keys().hasAny(['requesterRole']) ||
+               request.resource.data.requesterRole == 'customer') &&
+              request.resource.data.userEmail.lower() ==
+                request.auth.token.email.lower()
+            ) ||
+            // Dealer Demand
+            (
+              request.resource.data.requesterRole == 'dealer' &&
+              request.resource.data.dealerId == request.auth.uid &&
+              request.resource.data.dealerEmail.lower() ==
+                request.auth.token.email.lower() &&
+              request.resource.data.userEmail.lower() ==
+                request.auth.token.email.lower() &&
+              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'dealer'
+            )
+          )
         )
       );
-      allow update: if isValidId(demandId) && isValidDemand(request.resource.data) && (
-        isAdmin() || (
-          request.auth != null && 
-          resource.data.userEmail.lower() == request.auth.token.email.lower() &&
-          request.resource.data.status == resource.data.status
-        )
-      );
+      // Demand records are controlled by Admin after creation.
+      // Customers/Dealers must not be able to modify the Demand payload.
+      // This prevents Dealer identity or financial fields from being altered
+      // while keeping Admin approval/rejection available.
+      allow update: if isValidId(demandId) &&
+        isValidDemand(request.resource.data) &&
+        isAdmin();
       allow delete: if isValidId(demandId) && isAdmin();
     }
 
@@ -224,14 +352,55 @@ service cloud.firestore {
         resource.data.userEmail.lower() == request.auth.token.email.lower() ||
         resource.data.userId == request.auth.uid
       ));
-      allow create: if isValidId(txId) && isValidTransaction(request.resource.data) && (
-        isAdmin() || (
-          request.auth != null && (
-            request.resource.data.userEmail.lower() == request.auth.token.email.lower() ||
-            request.resource.data.userId == request.auth.uid
+
+      allow create: if isValidId(txId) &&
+        isValidTransaction(request.resource.data) && (
+          isAdmin() ||
+
+          (
+            request.auth != null &&
+            request.resource.data.userId == request.auth.uid &&
+            request.resource.data.userEmail.lower() == request.auth.token.email.lower() &&
+
+            (
+              // Customer booking deduction.
+              (
+                request.resource.data.type == 'booking_deduction' &&
+                request.resource.data.amount > 0
+              ) ||
+
+              // Customer refund.
+              // Must be the exact refund document for an existing
+              // booking owned by this customer, and the booking must
+              // be deleted in the same atomic transaction.
+              (
+                request.resource.data.type == 'refund' &&
+                txId == 'refund-' + request.resource.data.bookingId &&
+                request.resource.data.bookingId is string &&
+                request.resource.data.bookingId.size() > 0 &&
+                request.resource.data.amount > 0 &&
+                request.resource.data.status == 'approved' &&
+
+                get(
+                  /databases/$(database)/documents/bookings/$(request.resource.data.bookingId)
+                ).data.userEmail.lower() == request.auth.token.email.lower() &&
+
+                request.resource.data.amount ==
+                  get(
+                    /databases/$(database)/documents/bookings/$(request.resource.data.bookingId)
+                  ).data.firstAmount +
+                  get(
+                    /databases/$(database)/documents/bookings/$(request.resource.data.bookingId)
+                  ).data.secondAmount &&
+
+                !existsAfter(
+                  /databases/$(database)/documents/bookings/$(request.resource.data.bookingId)
+                )
+              )
+            )
           )
-        )
-      );
+        );
+
       allow update: if isValidId(txId) && isAdmin();
       allow delete: if isSuperAdmin();
     }

@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { User } from '../../types';
+import { User, DealerBooking } from '../../types';
 import { MessageCircle, ShieldCheck, UserCheck, Search } from 'lucide-react';
 import { getAdminConfiguredEmail } from '../../utils/store';
 
 interface AdminUsersFinanceTabProps {
   users: User[];
+  dealerBookings: DealerBooking[];
   whatsappError: string;
   whatsappSuccess: string;
   whatsappVal: string;
@@ -36,6 +37,7 @@ interface AdminUsersFinanceTabProps {
 
 export const AdminUsersFinanceTab: React.FC<AdminUsersFinanceTabProps> = ({
   users,
+  dealerBookings,
   whatsappError,
   whatsappSuccess,
   whatsappVal,
@@ -74,20 +76,83 @@ export const AdminUsersFinanceTab: React.FC<AdminUsersFinanceTabProps> = ({
         </h4>
 
         <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
-          {users.map((u) => (
-            <div 
-              key={u.email || u.uid} 
-              className="flex justify-between items-center bg-slate-50 p-3 rounded-2xl text-xs border border-slate-100"
-            >
-              <span className="font-mono text-emerald-700 font-bold bg-emerald-50 px-3 py-1 rounded-xl">
-                Rs. {(u.balance ?? 0).toLocaleString()}
-              </span>
-              <div className="text-right">
-                <span className="font-semibold block text-slate-800">{u.name} {u.isAdmin && '(ایڈمن)'}</span>
-                <span className="text-[10px] text-slate-400 font-mono">{u.email || 'ای میل کے بغیر'} {u.phone ? `| ${u.phone}` : ''}</span>
+          {users.map((u) => {
+            const userEmail = (u.email || '').toLowerCase().trim();
+
+            const userDealerBookings = (dealerBookings || []).filter(
+              (b) =>
+                (b.dealerId && u.uid && b.dealerId === u.uid) ||
+                (b.dealerEmail || '').toLowerCase().trim() === userEmail
+            );
+
+            return (
+              <div
+                key={u.email || u.uid}
+                className="bg-slate-50 p-3 rounded-2xl text-xs border border-slate-100"
+              >
+                <div className="flex justify-between items-center">
+                  <span className="font-mono text-emerald-700 font-bold bg-emerald-50 px-3 py-1 rounded-xl">
+                    Rs. {(u.balance ?? 0).toLocaleString()}
+                  </span>
+
+                  <div className="text-right">
+                    <span className="font-semibold block text-slate-800">
+                      {u.name} {u.isAdmin && '(ایڈمن)'} {u.role === 'dealer' && '(ڈیلر)'}
+                    </span>
+
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {u.email || 'ای میل کے بغیر'} {u.phone ? `| ${u.phone}` : ''}
+                    </span>
+                  </div>
+                </div>
+
+                {u.role === 'dealer' && (
+                  <div className="mt-3 pt-3 border-t border-slate-200 text-right">
+                    <div className="font-bold text-slate-700 mb-2">
+                      ڈیلر کی بکنگز ({userDealerBookings.length})
+                    </div>
+
+                    {userDealerBookings.length > 0 ? (
+                      <div className="space-y-1">
+                        {userDealerBookings.map((b) => (
+                          <div
+                            key={b.id}
+                            className="bg-white rounded-xl px-3 py-2 border border-slate-100"
+                          >
+                            <div className="flex justify-between items-center gap-2">
+                              <span className="font-mono font-bold text-indigo-700">
+                                #{b.number}
+                              </span>
+
+                              <span className="text-[10px] text-slate-500">
+                                فرسٹ: Rs. {(b.firstAmount || 0).toLocaleString()}
+                                {' | '}
+                                سیکنڈ: Rs. {(b.secondAmount || 0).toLocaleString()}
+                              </span>
+                            </div>
+
+                            <div className="text-[10px] text-slate-400 mt-1">
+                              {b.category === 'pakistan_bond'
+                                ? 'پاکستان پرائز بانڈ'
+                                : b.category === 'thailand_lottery'
+                                  ? 'تھائی لینڈ لاٹری'
+                                  : b.category}
+                              {b.drawNumber ? ` | ڈرا #${b.drawNumber}` : ''}
+                              {b.drawDate ? ` | ${b.drawDate}` : ''}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-slate-400">
+                        ابھی کوئی ڈیلر بکنگ موجود نہیں
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

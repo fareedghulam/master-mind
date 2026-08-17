@@ -1,5 +1,5 @@
 import React, { useState, useEffect, FormEvent } from 'react';
-import { User, Booking, NumberLimit, Demand, DrawDeadline, DrawCategory } from '../types';
+import { User, Booking, DealerBooking, NumberLimit, Demand, DrawDeadline, DrawCategory } from '../types';
 import { generateBookingPDF } from '../utils/pdfGenerator';
 import { BookingDrawHeader } from './booking/BookingDrawHeader';
 import { BookingFormSection } from './booking/BookingFormSection';
@@ -8,6 +8,7 @@ import { BookingsAndDemandsTables } from './booking/BookingsAndDemandsTables';
 interface BookingPageProps {
   user: User;
   bookings: Booking[];
+  dealerBookings?: DealerBooking[];
   limits: NumberLimit[];
   demands?: Demand[];
   deadlines?: DrawDeadline[];
@@ -20,6 +21,7 @@ interface BookingPageProps {
 export default function BookingPage({
   user,
   bookings,
+  dealerBookings = [],
   limits,
   demands = [],
   deadlines = [],
@@ -140,8 +142,19 @@ export default function BookingPage({
   const userEmailLower = (user?.email || '').toLowerCase();
   
   // Filter bookings and demands for current active customer view
-  const filterBookings = (bookings || []).filter(b => {
-    if (!b || (b.userEmail || '').toLowerCase() !== userEmailLower) return false;
+  const sourceBookings: Booking[] = user.role === 'dealer'
+    ? (dealerBookings || [])
+        .filter((b: DealerBooking) => b.dealerId === user.uid)
+        .map((b: DealerBooking) => ({
+          ...b,
+          userEmail: b.dealerEmail,
+          userName: b.dealerName,
+        } as Booking))
+    : (bookings || []);
+
+  const filterBookings = sourceBookings.filter(b => {
+    if (!b) return false;
+    if (user.role !== 'dealer' && (b.userEmail || '').toLowerCase() !== userEmailLower) return false;
     if (category === 'unified') {
       return selectedDrawId ? (b.drawId === selectedDrawId || b.category === activeDraw?.category) : true;
     }

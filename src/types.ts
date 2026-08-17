@@ -64,6 +64,10 @@ export interface NumberLimit {
 export interface Demand {
   id: string;
   userEmail: string;
+  requesterRole?: 'customer' | 'dealer';
+  dealerId?: string;
+  dealerEmail?: string;
+  dealerName?: string;
   category: DrawCategory;
   number: string;
   firstAmount: number;
@@ -136,6 +140,7 @@ export interface Transaction {
   note?: string;
   paymentMethod?: string;
   accountDetails?: string;
+  bookingId?: string;
 }
 
 export type AllResultType = PakistanBondResult | ThaiLotteryResult;
