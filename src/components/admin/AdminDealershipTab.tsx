@@ -131,13 +131,13 @@ export const AdminDealershipTab: React.FC<AdminDealershipTabProps> = ({
     thailand_lottery: 'تھائی لینڈ لاٹری'
   };
 
-    const handleDealerBookingsPDF = () => {
+    const handleDealerBookingsPDF = async () => {
       const label =
         categoryFilter === 'all'
           ? 'All_Dealer_Bookings'
           : categoryNameMap[categoryFilter];
 
-      const result = generateDealerBookingsPDF(
+      const result = await generateDealerBookingsPDF(
         label,
         filteredBookings,
         categoryFilter === 'all' ? 'all' : 'category',

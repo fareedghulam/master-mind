@@ -1,70 +1,103 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { registerPlugin, Capacitor } from '@capacitor/core';
 import { Booking, DealerBooking, DrawCategory } from '../types';
+
+interface DownloadPdfPlugin {
+  save(options: { filename: string; data: string }): Promise<{
+    success: boolean;
+    filename: string;
+    location: string;
+  }>;
+}
+
+const DownloadPdf = registerPlugin<DownloadPdfPlugin>('DownloadPdf');
 
 /**
  * Universal safe PDF saver that handles standard browser downloads,
  * Android WebView environments, Blob creation, and mobile fallbacks.
  */
-function savePdfDocument(doc: any, filename: string): { success: boolean; error?: string } {
+async function savePdfDocument(
+  doc: any,
+  filename: string
+): Promise<{ success: boolean; error?: string }> {
   try {
-    const cleanFilename = (filename || 'Document.pdf').replace(/[^a-zA-Z0-9._-]/g, '_');
-    
-    // 1. Try native jsPDF save method
-    if (typeof doc.save === 'function') {
-      try {
-        doc.save(cleanFilename);
-      } catch (saveErr) {
-        console.warn('[savePdfDocument] jsPDF doc.save threw error, attempting fallback:', saveErr);
-      }
+    const cleanFilename = (filename || 'Document.pdf')
+      .replace(/[^a-zA-Z0-9._-]/g, '_');
+
+    // Android Capacitor:
+    // Save directly into the public Android Download folder
+    // through MediaStore. No legacy storage permission is required
+    // on Android 10+.
+    if (
+      Capacitor.isNativePlatform() &&
+      Capacitor.getPlatform() === 'android'
+    ) {
+      const dataUri = doc.output('datauristring');
+      const base64 = dataUri.split(',')[1];
+
+      await DownloadPdf.save({
+        filename: cleanFilename,
+        data: base64,
+      });
+
+      console.info(
+        `[savePdfDocument] PDF saved to Android Download: ${cleanFilename}`
+      );
+
+      return { success: true };
     }
 
-    // 2. Fallback / Universal blob anchor for WebView and mobile browsers
-    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
-      try {
-        const blob = doc.output('blob');
-        if (blob) {
-          const blobUrl = window.URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = blobUrl;
-          link.download = cleanFilename;
-          link.target = '_blank';
-          document.body.appendChild(link);
-          link.click();
-          setTimeout(() => {
-            try {
-              document.body.removeChild(link);
-              window.URL.revokeObjectURL(blobUrl);
-            } catch (cleanupErr) {
-              // Ignore DOM cleanup error
-            }
-          }, 1500);
-        }
-      } catch (blobErr) {
-        console.warn('[savePdfDocument] Blob creation failed, attempting dataurl fallback:', blobErr);
+    // Browser/PWA fallback.
+    if (
+      typeof window !== 'undefined' &&
+      typeof document !== 'undefined'
+    ) {
+      const blob = doc.output('blob');
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+
+      link.href = blobUrl;
+      link.download = cleanFilename;
+      document.body.appendChild(link);
+      link.click();
+
+      setTimeout(() => {
         try {
-          doc.output('dataurlnewwindow');
-        } catch (dataurlErr) {
-          console.error('[savePdfDocument] All PDF export mechanisms failed:', dataurlErr);
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(blobUrl);
+        } catch {
+          // Ignore browser cleanup errors.
         }
-      }
+      }, 1500);
+
+      return { success: true };
     }
 
-    return { success: true };
+    return {
+      success: false,
+      error: 'پی ڈی ایف محفوظ کرنے کے لیے مناسب اسٹوریج دستیاب نہیں ہے۔',
+    };
   } catch (err: any) {
-    console.error('[savePdfDocument] Unhandled exception during PDF export:', err);
-    return { success: false, error: err?.message || 'پی ڈی ایف فائل محفوظ کرنے میں ناکامی ہوئی۔' };
+    console.error('[savePdfDocument] PDF export failed:', err);
+
+    return {
+      success: false,
+      error:
+        err?.message ||
+        'پی ڈی ایف فائل Download فولڈر میں محفوظ کرنے میں ناکامی ہوئی۔',
+    };
   }
 }
 
-export function generateBookingPDF(
+export async function generateBookingPDF(
   customerName: string,
   customerEmail: string,
   customerPhone: string,
   customerCity: string,
   bookings: Booking[],
   category: DrawCategory | 'unified' | string
-): { success: boolean; error?: string } {
+): Promise<{ success: boolean; error?: string }> {
   try {
     const doc = new jsPDF() as any;
 
@@ -226,7 +259,7 @@ export function generateBookingPDF(
     // Save the PDF
     const cleanCustomerName = safeName.replace(/[^a-zA-Z0-9_-]/g, '_');
     const filename = `${safeCategory}_${cleanCustomerName}_${new Date().toISOString().split('T')[0]}.pdf`;
-    return savePdfDocument(doc, filename);
+    return await savePdfDocument(doc, filename);
   } catch (err: any) {
     console.error('Failed to generate booking PDF:', err);
     return { success: false, error: err?.message || 'بکنگ پی ڈی ایف بنانے میں خرابی پیش آئی۔' };
@@ -263,10 +296,10 @@ function translateDrawNo(drawNo: string): string {
   return drawNo.replace(/ڈرا نمبر/g, 'Draw No.');
 }
 
-export function generateDrawHistoryPDF(
+export async function generateDrawHistoryPDF(
   draws: any[],
   category: 'all' | 'pakistan_bond' | 'thailand_lottery'
-): { success: boolean; error?: string } {
+): Promise<{ success: boolean; error?: string }> {
   try {
     const doc = new jsPDF() as any;
     const safeCategory = category || 'all';
@@ -346,7 +379,7 @@ export function generateDrawHistoryPDF(
 
     // Save the PDF
     const filename = `${safeCategory}_history_record_${new Date().toISOString().split('T')[0]}.pdf`;
-    return savePdfDocument(doc, filename);
+    return await savePdfDocument(doc, filename);
   } catch (err: any) {
     console.error('Failed to generate draw history PDF:', err);
     return { success: false, error: err?.message || 'ہسٹری پی ڈی ایف بنانے میں خرابی پیش آئی۔' };
@@ -354,12 +387,12 @@ export function generateDrawHistoryPDF(
 }
 
 
-export function generateDealerBookingsPDF(
+export async function generateDealerBookingsPDF(
   reportTitle: string,
   bookings: DealerBooking[],
   filterType: 'category' | 'all',
   filterValueLabel?: string
-): { success: boolean; error?: string } {
+): Promise<{ success: boolean; error?: string }> {
   try {
     const doc = new jsPDF() as any;
     const safeTitle = reportTitle || 'Dealer_Bookings';
@@ -521,7 +554,7 @@ export function generateDealerBookingsPDF(
     const filename =
       `Dealer_Bookings_${cleanTitle}_${new Date().toISOString().split('T')[0]}.pdf`;
 
-    return savePdfDocument(doc, filename);
+    return await savePdfDocument(doc, filename);
   } catch (err: any) {
     console.error('Failed to generate dealer bookings PDF:', err);
     return {
@@ -531,12 +564,12 @@ export function generateDealerBookingsPDF(
   }
 }
 
-export function generateAdminBookingsPDF(
+export async function generateAdminBookingsPDF(
   reportTitle: string,
   bookings: Booking[],
   filterType: 'draw' | 'date' | 'all',
   filterValueLabel?: string
-): { success: boolean; error?: string } {
+): Promise<{ success: boolean; error?: string }> {
   try {
     const doc = new jsPDF() as any;
     const safeTitle = reportTitle || 'All_Bookings';
@@ -653,7 +686,7 @@ export function generateAdminBookingsPDF(
 
     const cleanTitle = safeTitle.replace(/[^a-zA-Z0-9_-]/g, '_');
     const filename = `Admin_Bookings_${cleanTitle}_${new Date().toISOString().split('T')[0]}.pdf`;
-    return savePdfDocument(doc, filename);
+    return await savePdfDocument(doc, filename);
   } catch (err: any) {
     console.error('Failed to generate admin bookings PDF:', err);
     return { success: false, error: err?.message || 'ایڈمن بکنگ رپورٹ بنانے میں خرابی پیش آئی۔' };

@@ -75,7 +75,7 @@ export const AdminDemandsBookingsTab: React.FC<AdminDemandsBookingsTabProps> = (
     }).sort((a, b) => safeGetTime(b.timestamp) - safeGetTime(a.timestamp));
   };
 
-  const handleExportPDF = (filterType: 'draw' | 'date' | 'all') => {
+  const handleExportPDF = async (filterType: 'draw' | 'date' | 'all') => {
     const listToExport = getFilteredBookings();
     if (listToExport.length === 0) {
       setPdfStatus({ text: 'ایکسپورٹ کے لئے لسٹ میں کوئی بکنگ موجود نہیں ہے۔', isError: true });
@@ -87,7 +87,7 @@ export const AdminDemandsBookingsTab: React.FC<AdminDemandsBookingsTabProps> = (
       : filterType === 'draw' 
         ? `Category_${categoryFilter}` 
         : 'All_Bookings';
-    const res = generateAdminBookingsPDF(title, listToExport, filterType, dateFilter !== 'all' ? dateFilter : categoryFilter);
+    const res = await generateAdminBookingsPDF(title, listToExport, filterType, dateFilter !== 'all' ? dateFilter : categoryFilter);
     if (res.success) {
       setPdfStatus({ text: 'ایڈمن پی ڈی ایف رپورٹ کامیابی سے تیار اور ڈاؤن لوڈ کر دی گئی ہے!', isError: false });
       setTimeout(() => setPdfStatus(null), 4000);

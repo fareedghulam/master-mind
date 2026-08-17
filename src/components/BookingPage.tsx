@@ -296,12 +296,12 @@ export default function BookingPage({
     }
   };
 
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
     if (filterBookings.length === 0) {
       setErrorStatus('پی ڈی ایف ڈاؤن لوڈ کرنے کے لئے لسٹ میں نمبر ہونا لازمی ہے۔');
       return;
     }
-    const res = generateBookingPDF(
+    const res = await generateBookingPDF(
       user.name || '',
       user.email || '',
       user.phone || '',

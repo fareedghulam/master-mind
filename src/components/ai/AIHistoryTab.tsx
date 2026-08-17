@@ -20,13 +20,13 @@ export const AIHistoryTab: React.FC<AIHistoryTabProps> = ({
 }) => {
   const [statusMsg, setStatusMsg] = React.useState<{ text: string; isError?: boolean } | null>(null);
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!filteredHistory || filteredHistory.length === 0) {
       setStatusMsg({ text: 'کوئی ریکارڈ موجود نہیں ہے۔', isError: true });
       setTimeout(() => setStatusMsg(null), 4000);
       return;
     }
-    const res = generateDrawHistoryPDF(filteredHistory, historyCategory);
+    const res = await generateDrawHistoryPDF(filteredHistory, historyCategory);
     if (res.success) {
       setStatusMsg({ text: 'نتائج پی ڈی ایف رپورٹ کامیابی سے تیار کر دی گئی ہے!', isError: false });
       setTimeout(() => setStatusMsg(null), 4000);
