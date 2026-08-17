@@ -57,6 +57,10 @@ export const AdminDealershipTab: React.FC<AdminDealershipTabProps> = ({
   // Filtered dealer bookings
   const filteredBookings = useMemo(() => {
     return dealerBookings.filter(b => {
+      // Archived dealer bookings belong to completed/old draws
+      // and must not appear in the active Dealer Bookings list.
+      if (b.isArchived === true) return false;
+
       const matchCategory = categoryFilter === 'all' || b.category === categoryFilter;
       const q = bookingSearchQuery.trim().toLowerCase();
       const matchSearch = !q || 

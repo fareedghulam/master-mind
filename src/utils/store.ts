@@ -2203,7 +2203,21 @@ export async function autoCleanOldDrawData(category: 'pakistan_bond' | 'thailand
     }
     console.log(`Archived ${bookingsSnapshot.size} bookings for category ${category}`);
 
-    // 2. Archive demands of this draw/category
+    // 2. Archive dealer bookings of this draw/category
+    // DealerBooking already contains drawId and isArchived.
+    const dealerBookingsRef = collection(db, 'dealerBookings');
+    const dealerBookingsQuery = targetDrawId
+      ? query(dealerBookingsRef, where('drawId', '==', targetDrawId))
+      : query(dealerBookingsRef, where('category', '==', category));
+    const dealerBookingsSnapshot = await getDocs(dealerBookingsQuery);
+
+    for (const d of dealerBookingsSnapshot.docs) {
+      await updateDoc(doc(db, 'dealerBookings', d.id), { isArchived: true });
+    }
+
+    console.log(`Archived ${dealerBookingsSnapshot.size} dealer bookings for category ${category}`);
+
+    // 3. Archive demands of this draw/category
     const demandsRef = collection(db, 'demands');
     const demandsQuery = targetDrawId
       ? query(demandsRef, where('drawId', '==', targetDrawId))
@@ -2214,7 +2228,7 @@ export async function autoCleanOldDrawData(category: 'pakistan_bond' | 'thailand
       await updateDoc(doc(db, 'demands', d.id), { isArchived: true });
     }
 
-    // 3. Archive number limits of this draw/category
+    // 4. Archive number limits of this draw/category
     const limitsRef = collection(db, 'limits');
     const limitsQuery = targetDrawId
       ? query(limitsRef, where('drawId', '==', targetDrawId))
@@ -2225,7 +2239,7 @@ export async function autoCleanOldDrawData(category: 'pakistan_bond' | 'thailand
       await updateDoc(doc(db, 'limits', d.id), { isArchived: true });
     }
 
-    // 4. Mark draw/deadline status as result_announced and isArchived: true
+    // 5. Mark draw/deadline status as result_announced and isArchived: true
     if (targetDrawId) {
       const deadlineRef = doc(db, 'deadlines', targetDrawId);
       await updateDoc(deadlineRef, { status: 'result_announced', isArchived: true });
@@ -2239,6 +2253,7 @@ export async function autoCleanOldDrawData(category: 'pakistan_bond' | 'thailand
     }
   } catch (err) {
     console.error("Auto archiving of completed draw data failed:", err);
+    throw err;
   }
 }
 
