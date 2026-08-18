@@ -28,7 +28,6 @@ import {
   signInWithPopup
 } from 'firebase/auth';
 import { pakistanBondDraws } from './pakistanBondData';
-import { thaiHistoricalDraws } from './thaiLotteryData';
 
 import { registerInAuthOnly as registerInAuthOnlyService, sendPasswordResetLink as sendPasswordResetLinkService } from '../services/userService';
 
@@ -544,44 +543,13 @@ export function initializeStore() {
     }
   });
 
-  // 8. Listen to thaiLotteryResults (with auto-migration)
+  // 8. Listen to thaiLotteryResults
   onSnapshot(collection(db, 'thaiLotteryResults'), (snapshot) => {
-    if (snapshot.empty) {
-      if (isLoggedUserAdminOrSuper() || isLoggedUserDataEntry()) {
-        console.log("Migrating Thai Lottery results to Firestore...");
-        if (thaiHistoricalDraws && thaiHistoricalDraws.length > 0) {
-          thaiHistoricalDraws.forEach(async (draw) => {
-            const firstPrize = draw.firstPrize || '';
-            const last2Digits = firstPrize.length >= 2 ? firstPrize.substring(firstPrize.length - 2) : '';
-            const front3Digits = firstPrize.length >= 3 ? firstPrize.substring(0, 3) : '';
-            const back3Digits = firstPrize.length >= 3 ? firstPrize.substring(firstPrize.length - 3) : '';
-            
-            const resultDoc: ThaiLotteryResult = {
-              id: draw.id,
-              category: 'thailand_lottery',
-              drawNo: draw.drawNo,
-              date: draw.date,
-              city: draw.city || 'بنکاک',
-              firstPrize: draw.firstPrize,
-              secondPrizes: draw.secondPrizes || [],
-              last2Digits,
-              front3Digits,
-              back3Digits
-            };
-            try {
-              await setDoc(doc(db, 'thaiLotteryResults', draw.id), resultDoc);
-            } catch (e) {
-              console.error("Failed to migrate thaiLotteryResult doc:", e);
-            }
-          });
-        }
-      }
-    } else {
-      cachedThaiLotteryResults = snapshot.docs.map(doc => doc.data() as ThaiLotteryResult);
-      notifyListeners();
-    }
+    cachedThaiLotteryResults = snapshot.docs.map(
+      doc => doc.data() as ThaiLotteryResult
+    );
+    notifyListeners();
   });
-
 }
 
 export function getSupportWhatsAppNumber(): string {
