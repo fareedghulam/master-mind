@@ -336,6 +336,29 @@ export default function AdminPortal({
           : `thai-${Date.now()}`)
       : editingResultId;
 
+    // Link result to the exact configured draw.
+    const normalizeDrawValue = (v: string | undefined) =>
+      (v || '').replace(/[^0-9]/g, '');
+
+    const matchedDeadline = deadlines.find(d => {
+      if (d.category !== resCategory) return false;
+
+      if (resCategory === 'pakistan_bond') {
+        return (
+          normalizeDrawValue(d.nextPrizeBondValue) === normalizeDrawValue(resBondValue) &&
+          (!d.nextDrawNumber ||
+            normalizeDrawValue(d.nextDrawNumber) === normalizeDrawValue(resDrawNoOnly))
+        );
+      }
+
+      return (
+        !d.nextDrawNumber ||
+        normalizeDrawValue(d.nextDrawNumber) === normalizeDrawValue(resDrawNo)
+      );
+    });
+
+    const resultDrawId = matchedDeadline?.drawId || matchedDeadline?.id;
+
     let resultDoc: AllResultType;
     if (resCategory === 'pakistan_bond') {
       const formattedBondVal = resBondValue.toLowerCase().startsWith('rs.') ? resBondValue : `Rs. ${resBondValue}`;
@@ -348,7 +371,8 @@ export default function AdminPortal({
         date: resDate,
         city: resCity,
         firstPrize: resFirstPrize,
-        secondPrizes: secondsArray
+        secondPrizes: secondsArray,
+        ...(resultDrawId ? { drawId: resultDrawId } : {})
       };
     } else {
       resultDoc = {
@@ -361,7 +385,8 @@ export default function AdminPortal({
         secondPrizes: secondsArray,
         last2Digits: resLast2Digits,
         front3Digits: resFront3Digits,
-        back3Digits: resBack3Digits
+        back3Digits: resBack3Digits,
+        ...(resultDrawId ? { drawId: resultDrawId } : {})
       };
     }
 

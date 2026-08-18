@@ -368,47 +368,45 @@ export const AdminLimitsDeadlinesTab: React.FC<AdminLimitsDeadlinesTabProps> = (
             </div>
 
             {deadlineCategory === 'pakistan_bond' && (
-              <>
-                <div>
-                  <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                    انعامی بانڈ مالیت (Prize Bond Value) *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="مثال: Rs. 200 یا Rs. 750"
-                    value={nextPrizeBondValue}
-                    onChange={(e) => setNextPrizeBondValue(e.target.value)}
-                    className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                    ڈرا شہر (Draw City)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="مثال: لاہور"
-                    value={nextDrawCity}
-                    onChange={(e) => setNextDrawCity(e.target.value)}
-                    className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                    ڈرا نمبر (Draw Number)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="مثال: 95"
-                    value={nextDrawNumber}
-                    onChange={(e) => setNextDrawNumber(e.target.value)}
-                    className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-                  />
-                </div>
-              </>
+              <div>
+                <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
+                  انعامی بانڈ مالیت (Prize Bond Value) *
+                </label>
+                <input
+                  type="text"
+                  placeholder="مثال: Rs. 200 یا Rs. 750"
+                  value={nextPrizeBondValue}
+                  onChange={(e) => setNextPrizeBondValue(e.target.value)}
+                  className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
+                />
+              </div>
             )}
+
+            <div>
+              <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
+                ڈرا شہر (Draw City)
+              </label>
+              <input
+                type="text"
+                placeholder="مثال: لاہور / Bangkok"
+                value={nextDrawCity}
+                onChange={(e) => setNextDrawCity(e.target.value)}
+                className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
+                ڈرا نمبر (Draw Number)
+              </label>
+              <input
+                type="text"
+                placeholder="مثال: 95 / 123"
+                value={nextDrawNumber}
+                onChange={(e) => setNextDrawNumber(e.target.value)}
+                className="w-full text-right bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
+              />
+            </div>
 
             <div>
               <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
