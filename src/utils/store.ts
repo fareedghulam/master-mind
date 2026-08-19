@@ -2116,7 +2116,7 @@ export async function setDrawDeadline(
     deadlineIso,
     titleUrdu,
     status,
-    bookingStatusUrdu: bookingStatusUrdu || (status === 'closed' ? 'بکنگ بند ہے' : 'بکنگ کھول گئی'),
+    bookingStatusUrdu: bookingStatusUrdu || (status === 'closed' || status === 'result_announced' ? 'بکنگ بند ہے' : 'بکنگ کھول گئی'),
     ...(nextPrizeBondValue !== undefined && { nextPrizeBondValue }),
     ...(nextDrawCity !== undefined && { nextDrawCity }),
     ...(nextDrawNumber !== undefined && { nextDrawNumber }),
@@ -2207,18 +2207,61 @@ export async function autoCleanOldDrawData(category: 'pakistan_bond' | 'thailand
       await updateDoc(doc(db, 'limits', d.id), { isArchived: true });
     }
 
-    // 5. Mark draw/deadline status as result_announced and isArchived: true
+    // 5. Mark draw/deadline as result_announced.
+    // IMPORTANT: Keep the deadline document visible so Admin can see
+    // the final Result Announced state. Only bookings/demands/limits
+    // are archived above.
     if (targetDrawId) {
       const deadlineRef = doc(db, 'deadlines', targetDrawId);
-      await updateDoc(deadlineRef, { status: 'result_announced', isArchived: true });
+      await updateDoc(deadlineRef, {
+        status: 'result_announced',
+        bookingStatusUrdu: 'بکنگ بند ہے',
+        isArchived: false
+      });
+
+      const idx = cachedDeadlines.findIndex(
+        d => (d.id || d.drawId || d.category) === targetDrawId
+      );
+
+      if (idx !== -1) {
+        cachedDeadlines[idx] = {
+          ...cachedDeadlines[idx],
+          status: 'result_announced',
+          bookingStatusUrdu: 'بکنگ بند ہے',
+          isArchived: false
+        };
+      }
     } else {
       const deadlinesRef = collection(db, 'deadlines');
-      const deadlinesQuery = query(deadlinesRef, where('category', '==', category));
+      const deadlinesQuery = query(
+        deadlinesRef,
+        where('category', '==', category)
+      );
       const deadlinesSnapshot = await getDocs(deadlinesQuery);
+
       for (const d of deadlinesSnapshot.docs) {
-        await updateDoc(doc(db, 'deadlines', d.id), { status: 'result_announced', isArchived: true });
+        await updateDoc(doc(db, 'deadlines', d.id), {
+          status: 'result_announced',
+          bookingStatusUrdu: 'بکنگ بند ہے',
+          isArchived: false
+        });
+
+        const idx = cachedDeadlines.findIndex(
+          cached => cached.id === d.id
+        );
+
+        if (idx !== -1) {
+          cachedDeadlines[idx] = {
+            ...cachedDeadlines[idx],
+            status: 'result_announced',
+            bookingStatusUrdu: 'بکنگ بند ہے',
+            isArchived: false
+          };
+        }
       }
     }
+
+    notifyListeners();
   } catch (err) {
     console.error("Auto archiving of completed draw data failed:", err);
     throw err;

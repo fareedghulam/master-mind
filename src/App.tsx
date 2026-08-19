@@ -203,7 +203,7 @@ export default function App() {
     category: DrawCategory,
     deadlineIso: string,
     titleUrdu: string,
-    status: 'open' | 'closed',
+    status: 'open' | 'closed' | 'result_announced',
     nextPrizeBondValue?: string,
     nextDrawCity?: string,
     nextDrawNumber?: string,

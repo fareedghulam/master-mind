@@ -34,3 +34,10 @@ node_modules/
 dist/
 
 .firebase/
+android/.gradle/
+android/app/build/
+android/build/
+.gradle/
+*.p12
+*.pem
+*.key
