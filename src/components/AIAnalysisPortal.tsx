@@ -1,13 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import { 
-  Sparkles, TrendingUp, History, MessageSquare, LayoutGrid, Calculator
+  Sparkles, TrendingUp, History, MessageSquare, LayoutGrid, Calculator, Coins
 } from 'lucide-react';
 import { User, Booking, PakistanBondResult, ThaiLotteryResult } from '../types';
 import { AIGeneratorTab } from './ai/AIGeneratorTab';
 import { AIChartsTab } from './ai/AIChartsTab';
 import { AICityAnalysisTab } from './ai/AICityAnalysisTab';
+import { AIBondAnalysisTab } from './ai/AIBondAnalysisTab';
 import { AIHistoryTab } from './ai/AIHistoryTab';
 import { AIChatbotTab } from './ai/AIChatbotTab';
+import { normalizeDrawBondValue } from '../utils/bondAnalysisUtils';
 
 interface AIAnalysisPortalProps {
   user: User;
@@ -26,7 +28,7 @@ export default function AIAnalysisPortal({
   onAddBooking,
   onAddDemand
 }: AIAnalysisPortalProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'generator' | 'charts' | 'cityAnalysis' | 'history' | 'chatbot'>('generator');
+  const [activeSubTab, setActiveSubTab] = useState<'generator' | 'charts' | 'bondAnalysis' | 'cityAnalysis' | 'history' | 'chatbot'>('bondAnalysis');
 
   // Generator states
   const [genCategory, setGenCategory] = useState<'pakistan_bond' | 'thailand_lottery'>('pakistan_bond');
@@ -54,6 +56,11 @@ export default function AIAnalysisPortal({
   // History search state
   const [historySearchQuery, setHistorySearchQuery] = useState('');
   const [historyCategory, setHistoryCategory] = useState<'all' | 'pakistan_bond' | 'thailand_lottery'>('all');
+  const [historyBondValue, setHistoryBondValue] = useState<string>('all');
+  const [historyCity, setHistoryCity] = useState<string>('all');
+
+  // City analysis bond filter
+  const [selectedCityBond, setSelectedCityBond] = useState<string>('all');
 
   // Historical draw results database
   const historicalDraws = useMemo(() => [
@@ -403,16 +410,24 @@ export default function AIAnalysisPortal({
     }, 1000);
   };
 
-  // Filtered History
+  // Filtered History with Bond Value and City filters
   const filteredHistory = useMemo(() => historicalDraws.filter(draw => {
     const matchesCategory = historyCategory === 'all' || draw.category === historyCategory;
+    const matchesBond = 
+      historyCategory === 'thailand_lottery' ||
+      historyBondValue === 'all' ||
+      normalizeDrawBondValue(draw) === historyBondValue;
+    const matchesCity = 
+      historyCategory === 'thailand_lottery' ||
+      historyCity === 'all' ||
+      draw.city === historyCity;
     const matchesSearch = 
       draw.drawNo.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
       draw.firstPrize.includes(historySearchQuery) ||
       draw.city.includes(historySearchQuery) ||
       draw.secondPrizes.some(p => p.includes(historySearchQuery));
-    return matchesCategory && matchesSearch;
-  }), [historicalDraws, historyCategory, historySearchQuery]);
+    return matchesCategory && matchesBond && matchesCity && matchesSearch;
+  }), [historicalDraws, historyCategory, historyBondValue, historyCity, historySearchQuery]);
 
   return (
     <div className="bg-slate-900 text-slate-100 rounded-3xl p-4 sm:p-8 shadow-xl border border-slate-800 font-sans max-w-4xl mx-auto text-right">
@@ -440,27 +455,15 @@ export default function AIAnalysisPortal({
       {/* Navigation Buttons for Internal Modules */}
       <div className="flex flex-row-reverse flex-wrap gap-2 mb-6 border-b border-slate-800 pb-4">
         <button
-          onClick={() => setActiveSubTab('generator')}
+          onClick={() => setActiveSubTab('bondAnalysis')}
           className={`flex items-center gap-1.5 text-xs font-bold py-2.5 px-3.5 rounded-xl transition-all cursor-pointer ${
-            activeSubTab === 'generator'
+            activeSubTab === 'bondAnalysis'
               ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
               : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white'
           }`}
         >
-          <Calculator className="w-4 h-4" />
-          <span>لکی جنریٹر (Generator)</span>
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('charts')}
-          className={`flex items-center gap-1.5 text-xs font-bold py-2.5 px-3.5 rounded-xl transition-all cursor-pointer ${
-            activeSubTab === 'charts'
-              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
-              : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white'
-          }`}
-        >
-          <TrendingUp className="w-4 h-4" />
-          <span>فریکوئنسی چارٹس (Charts)</span>
+          <Coins className="w-4 h-4" />
+          <span>بانڈ ویلیو تجزیہ (Bond Value)</span>
         </button>
 
         <button
@@ -488,6 +491,30 @@ export default function AIAnalysisPortal({
         </button>
 
         <button
+          onClick={() => setActiveSubTab('charts')}
+          className={`flex items-center gap-1.5 text-xs font-bold py-2.5 px-3.5 rounded-xl transition-all cursor-pointer ${
+            activeSubTab === 'charts'
+              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
+              : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white'
+          }`}
+        >
+          <TrendingUp className="w-4 h-4" />
+          <span>فریکوئنسی چارٹس (Charts)</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('generator')}
+          className={`flex items-center gap-1.5 text-xs font-bold py-2.5 px-3.5 rounded-xl transition-all cursor-pointer ${
+            activeSubTab === 'generator'
+              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
+              : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white'
+          }`}
+        >
+          <Calculator className="w-4 h-4" />
+          <span>لکی جنریٹر (Generator)</span>
+        </button>
+
+        <button
           onClick={() => setActiveSubTab('chatbot')}
           className={`flex items-center gap-1.5 text-xs font-bold py-2.5 px-3.5 rounded-xl transition-all cursor-pointer ${
             activeSubTab === 'chatbot'
@@ -502,6 +529,52 @@ export default function AIAnalysisPortal({
 
       {/* Module Content Displays */}
       <div>
+        {activeSubTab === 'bondAnalysis' && (
+          <AIBondAnalysisTab
+            allBondResults={pakistanBondResults}
+          />
+        )}
+
+        {activeSubTab === 'cityAnalysis' && (
+          <AICityAnalysisTab
+            pkCities={pkCities}
+            selectedCity={selectedCity}
+            setSelectedCity={setSelectedCity}
+            cityAnalysisData={cityAnalysisData}
+            citySubTab={citySubTab}
+            setCitySubTab={setCitySubTab}
+            cityAnalysisType={cityAnalysisType}
+            setCityAnalysisType={setCityAnalysisType}
+            allBondResults={pakistanBondResults}
+            selectedCityBond={selectedCityBond}
+            setSelectedCityBond={setSelectedCityBond}
+          />
+        )}
+
+        {activeSubTab === 'history' && (
+          <AIHistoryTab
+            historySearchQuery={historySearchQuery}
+            setHistorySearchQuery={setHistorySearchQuery}
+            historyCategory={historyCategory}
+            setHistoryCategory={setHistoryCategory}
+            historyBondValue={historyBondValue}
+            setHistoryBondValue={setHistoryBondValue}
+            historyCity={historyCity}
+            setHistoryCity={setHistoryCity}
+            filteredHistory={filteredHistory}
+          />
+        )}
+
+        {activeSubTab === 'charts' && (
+          <AIChartsTab
+            analysisCategory={analysisCategory}
+            setAnalysisCategory={setAnalysisCategory}
+            analysisType={analysisType}
+            setAnalysisType={setAnalysisType}
+            analysisData={analysisData}
+          />
+        )}
+
         {activeSubTab === 'generator' && (
           <AIGeneratorTab
             genCategory={genCategory}
@@ -520,39 +593,6 @@ export default function AIAnalysisPortal({
             bookingStatus={bookingStatus}
             handleGenerate={handleGenerate}
             handleQuickBook={handleQuickBook}
-          />
-        )}
-
-        {activeSubTab === 'charts' && (
-          <AIChartsTab
-            analysisCategory={analysisCategory}
-            setAnalysisCategory={setAnalysisCategory}
-            analysisType={analysisType}
-            setAnalysisType={setAnalysisType}
-            analysisData={analysisData}
-          />
-        )}
-
-        {activeSubTab === 'cityAnalysis' && (
-          <AICityAnalysisTab
-            pkCities={pkCities}
-            selectedCity={selectedCity}
-            setSelectedCity={setSelectedCity}
-            cityAnalysisData={cityAnalysisData}
-            citySubTab={citySubTab}
-            setCitySubTab={setCitySubTab}
-            cityAnalysisType={cityAnalysisType}
-            setCityAnalysisType={setCityAnalysisType}
-          />
-        )}
-
-        {activeSubTab === 'history' && (
-          <AIHistoryTab
-            historySearchQuery={historySearchQuery}
-            setHistorySearchQuery={setHistorySearchQuery}
-            historyCategory={historyCategory}
-            setHistoryCategory={setHistoryCategory}
-            filteredHistory={filteredHistory}
           />
         )}
 

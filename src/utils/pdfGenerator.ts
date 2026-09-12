@@ -298,7 +298,8 @@ function translateDrawNo(drawNo: string): string {
 
 export async function generateDrawHistoryPDF(
   draws: any[],
-  category: 'all' | 'pakistan_bond' | 'thailand_lottery'
+  category: 'all' | 'pakistan_bond' | 'thailand_lottery',
+  filterDetails?: { bondValue?: string; city?: string }
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const doc = new jsPDF() as any;
@@ -306,7 +307,9 @@ export async function generateDrawHistoryPDF(
     const safeDraws = Array.isArray(draws) ? draws : [];
 
     let titleEnglish = 'HISTORICAL DRAW RESULTS RECORD';
-    if (safeCategory === 'pakistan_bond') {
+    if (filterDetails?.bondValue && filterDetails.bondValue !== 'all') {
+      titleEnglish = `PRIZE BOND ${filterDetails.bondValue.toUpperCase()} DRAW RECORD`;
+    } else if (safeCategory === 'pakistan_bond') {
       titleEnglish = 'PAKISTAN PRIZE BOND DRAW HISTORY';
     } else if (safeCategory === 'thailand_lottery') {
       titleEnglish = 'THAILAND LOTTERY DRAW HISTORY';
@@ -327,9 +330,9 @@ export async function generateDrawHistoryPDF(
 
     // Filter Information Box
     doc.setFillColor(248, 250, 252);
-    doc.rect(10, 42, 190, 24, 'F');
+    doc.rect(10, 42, 190, 26, 'F');
     doc.setDrawColor(226, 232, 240);
-    doc.rect(10, 42, 190, 24);
+    doc.rect(10, 42, 190, 26);
 
     doc.setTextColor(15, 23, 42);
     doc.setFontSize(9);
@@ -338,10 +341,15 @@ export async function generateDrawHistoryPDF(
 
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(71, 85, 105);
-    doc.text(`Category: ${safeCategory === 'all' ? 'All Records' : safeCategory === 'pakistan_bond' ? 'Pakistan Prize Bond' : 'Thailand Lottery'}`, 15, 55);
-    doc.text(`Total Records: ${safeDraws.length}`, 15, 61);
+    
+    const catLabel = safeCategory === 'all' ? 'All Records' : safeCategory === 'pakistan_bond' ? 'Pakistan Prize Bond' : 'Thailand Lottery';
+    const bondLabel = filterDetails?.bondValue && filterDetails.bondValue !== 'all' ? ` | Bond: ${filterDetails.bondValue}` : '';
+    const cityLabel = filterDetails?.city && filterDetails.city !== 'all' ? ` | City: ${translateCity(filterDetails.city)}` : '';
+    
+    doc.text(`Scope: ${catLabel}${bondLabel}${cityLabel}`, 15, 55);
+    doc.text(`Total Records: ${safeDraws.length}`, 15, 62);
     doc.text(`Generated Date: ${new Date().toLocaleString()}`, 110, 55);
-    doc.text('Authorized: MasterMind Qureshi AI Portal', 110, 61);
+    doc.text('Authorized: MasterMind Qureshi AI Portal', 110, 62);
 
     // Table header
     const tableRows = safeDraws.map((d, index) => [
