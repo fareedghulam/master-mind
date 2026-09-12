@@ -210,3 +210,51 @@ export function computeAnalysisStats(draws: PakistanBondResult[]): BondAnalysisS
     firstPrizeEvens: firstPrizeEven,
   };
 }
+
+/**
+ * Normalizes manual date input strings like '15-05-2015', '15/05/2015', '2015/05/15'
+ * into canonical 'YYYY-MM-DD' format.
+ */
+export function normalizeDateInput(val: string): string {
+  if (!val) return '';
+  const trimmed = val.trim();
+  // If format is YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+  const ymdMatch = trimmed.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (ymdMatch) {
+    const y = ymdMatch[1];
+    const m = ymdMatch[2].padStart(2, '0');
+    const d = ymdMatch[3].padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  // If format is DD-MM-YYYY or DD/MM/YYYY or DD.MM.YYYY
+  const dmyMatch = trimmed.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+  if (dmyMatch) {
+    const d = dmyMatch[1].padStart(2, '0');
+    const m = dmyMatch[2].padStart(2, '0');
+    const y = dmyMatch[3];
+    return `${y}-${m}-${d}`;
+  }
+  return trimmed;
+}
+
+/**
+ * Returns a human-friendly Urdu date preview for user confirmation (e.g., '15 مئی 2015')
+ */
+export function formatUrduDatePreview(dStr: string): string | null {
+  if (!dStr) return null;
+  const norm = normalizeDateInput(dStr);
+  const parts = norm.split('-');
+  if (parts.length === 3 && parts[0].length === 4) {
+    const monthsUrdu = [
+      'جنوری', 'فروری', 'مارچ', 'اپریل', 'مئی', 'جون', 
+      'جولائی', 'اگست', 'ستمبر', 'اکتوبر', 'نومبر', 'دسمبر'
+    ];
+    const y = parts[0];
+    const m = parseInt(parts[1], 10);
+    const d = parseInt(parts[2], 10);
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+      return `${d} ${monthsUrdu[m - 1]} ${y}`;
+    }
+  }
+  return null;
+}

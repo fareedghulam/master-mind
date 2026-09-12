@@ -4,6 +4,7 @@ import { ShieldCheck, UserCheck, Sparkles, Clock, History, Building2 } from 'luc
 import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, getAdminConfiguredEmail, updateCustomerPassword, registerInAuthOnly, changeLoggedAdminPassword, assignDealerRole, cancelDealerBookingByAdmin } from '../utils/store';
 import { db } from '../lib/firebase';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { normalizeDateInput } from '../utils/bondAnalysisUtils';
 
 import { AdminDemandsBookingsTab } from './admin/AdminDemandsBookingsTab';
 import { AdminUsersFinanceTab } from './admin/AdminUsersFinanceTab';
@@ -358,6 +359,7 @@ export default function AdminPortal({
     });
 
     const resultDrawId = matchedDeadline?.drawId || matchedDeadline?.id;
+    const finalDate = normalizeDateInput(resDate) || resDate.trim();
 
     let resultDoc: AllResultType;
     if (resCategory === 'pakistan_bond') {
@@ -368,7 +370,7 @@ export default function AdminPortal({
         bondValue: formattedBondVal,
         drawNoOnly: resDrawNoOnly,
         drawNo: resDrawNo || `ڈرا نمبر ${resDrawNoOnly} (بانڈ ${formattedBondVal})`,
-        date: resDate,
+        date: finalDate,
         city: resCity,
         firstPrize: resFirstPrize,
         secondPrizes: secondsArray,
@@ -379,7 +381,7 @@ export default function AdminPortal({
         id: generatedId,
         category: 'thailand_lottery',
         drawNo: resDrawNo,
-        date: resDate,
+        date: finalDate,
         city: resCity,
         firstPrize: resFirstPrize,
         secondPrizes: secondsArray,

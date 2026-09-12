@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { PakistanBondResult, ThaiLotteryResult, DrawCategory } from '../../types';
-import { History, Plus, X, Search } from 'lucide-react';
+import { History, Plus, X, Search, Calendar, Edit3, Check } from 'lucide-react';
+import { normalizeDateInput, formatUrduDatePreview } from '../../utils/bondAnalysisUtils';
 
 interface AdminResultsTabProps {
   pakistanBondResults: PakistanBondResult[];
@@ -83,6 +84,9 @@ export const AdminResultsTab: React.FC<AdminResultsTabProps> = ({
   handleEditClick,
   handleDeleteClick
 }) => {
+  const [isManualDate, setIsManualDate] = useState(true);
+  const urduDatePreview = formatUrduDatePreview(resDate);
+
   return (
     <div id="module-result-management" className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md space-y-6 text-right">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-3 border-b border-slate-100">
@@ -163,17 +167,95 @@ export const AdminResultsTab: React.FC<AdminResultsTabProps> = ({
                 </select>
               </div>
 
-              {/* Date Picker */}
-              <div>
-                <label className="block text-slate-600 font-semibold mb-1 text-right">ڈرا کی تاریخ (Draw Date) *</label>
-                <input
-                  id="result-form-date"
-                  type="date"
-                  value={resDate}
-                  onChange={(e) => setResDate(e.target.value)}
-                  required
-                  className="w-full text-right bg-white border border-slate-200 rounded-xl py-2 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
-                />
+              {/* Date Input - Manual text typing by default to enter old results instantly without calendar popup */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setIsManualDate(!isManualDate)}
+                    className="text-[11px] text-amber-600 hover:text-amber-700 font-medium flex items-center gap-1 cursor-pointer transition-colors bg-amber-50 hover:bg-amber-100/80 px-2 py-0.5 rounded-lg border border-amber-200/60"
+                  >
+                    {isManualDate ? (
+                      <>
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span>کلینڈر کھولیں</span>
+                      </>
+                    ) : (
+                      <>
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>مینول لکھیں (Manual)</span>
+                      </>
+                    )}
+                  </button>
+                  <label className="block text-slate-600 font-semibold text-right">
+                    ڈرا کی تاریخ (Draw Date) *
+                  </label>
+                </div>
+
+                {isManualDate ? (
+                  <div className="space-y-1.5">
+                    <input
+                      id="result-form-date"
+                      type="text"
+                      dir="ltr"
+                      placeholder="YYYY-MM-DD (مثلاً: 2015-05-15 یا 15-05-2015)"
+                      value={resDate}
+                      onChange={(e) => setResDate(e.target.value)}
+                      onBlur={() => {
+                        const normalized = normalizeDateInput(resDate);
+                        if (normalized && normalized !== resDate) {
+                          setResDate(normalized);
+                        }
+                      }}
+                      required
+                      className="w-full text-center font-mono font-bold tracking-wider bg-white border border-slate-200 rounded-xl py-2 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm text-slate-800 shadow-inner"
+                    />
+
+                    {/* Urdu confirmation badge */}
+                    {urduDatePreview && (
+                      <div className="flex items-center justify-between text-[11px] px-2.5 py-1 bg-emerald-50 border border-emerald-150 rounded-lg text-emerald-800">
+                        <span className="font-mono font-bold text-emerald-700" dir="ltr">
+                          {normalizeDateInput(resDate)}
+                        </span>
+                        <span className="font-medium flex items-center gap-1">
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>تاریخ: <strong>{urduDatePreview}</strong></span>
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Quick helper shortcuts */}
+                    <div className="flex items-center justify-between gap-1 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const today = new Date().toISOString().split('T')[0];
+                          setResDate(today);
+                        }}
+                        className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md font-medium cursor-pointer transition-colors border border-slate-200"
+                      >
+                        آج کی تاریخ (Today)
+                      </button>
+                      <span className="text-[10px] text-slate-400">
+                        براہ راست کی بورڈ سے لکھیں (کلینڈر نہیں کھلے گا)
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <input
+                      id="result-form-date-picker"
+                      type="date"
+                      value={resDate}
+                      onChange={(e) => setResDate(e.target.value)}
+                      required
+                      className="w-full text-right bg-white border border-slate-200 rounded-xl py-2 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans text-sm"
+                    />
+                    <p className="text-[10px] text-slate-400 text-right">
+                      کلینڈر سے تاریخ کا انتخاب کریں
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* City */}
