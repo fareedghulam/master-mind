@@ -94,7 +94,7 @@ service cloud.firestore {
         && (data.category == 'pakistan_bond' || data.category == 'thailand_lottery' || data.category == 'dubai_draw' || data.category == 'zee_music_draw')
         && data.titleUrdu is string
         && data.deadlineIso is string
-        && (data.status == 'open' || data.status == 'closed');
+        && (data.status == 'open' || data.status == 'closed' || data.status == 'result_announced');
     }
 
     // Helper to validate Settings

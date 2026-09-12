@@ -2216,7 +2216,7 @@ export async function autoCleanOldDrawData(category: 'pakistan_bond' | 'thailand
       await updateDoc(deadlineRef, {
         status: 'result_announced',
         bookingStatusUrdu: 'بکنگ بند ہے',
-        isArchived: false
+        isArchived: true
       });
 
       const idx = cachedDeadlines.findIndex(
@@ -2228,7 +2228,7 @@ export async function autoCleanOldDrawData(category: 'pakistan_bond' | 'thailand
           ...cachedDeadlines[idx],
           status: 'result_announced',
           bookingStatusUrdu: 'بکنگ بند ہے',
-          isArchived: false
+          isArchived: true
         };
       }
     } else {
@@ -2243,7 +2243,7 @@ export async function autoCleanOldDrawData(category: 'pakistan_bond' | 'thailand
         await updateDoc(doc(db, 'deadlines', d.id), {
           status: 'result_announced',
           bookingStatusUrdu: 'بکنگ بند ہے',
-          isArchived: false
+          isArchived: true
         });
 
         const idx = cachedDeadlines.findIndex(
@@ -2255,7 +2255,7 @@ export async function autoCleanOldDrawData(category: 'pakistan_bond' | 'thailand
             ...cachedDeadlines[idx],
             status: 'result_announced',
             bookingStatusUrdu: 'بکنگ بند ہے',
-            isArchived: false
+            isArchived: true
           };
         }
       }
