@@ -431,10 +431,15 @@ export const AdminLimitsDeadlinesTab: React.FC<AdminLimitsDeadlinesTabProps> = (
         </form>
 
         {/* Display active deadlines */}
-        <div className="pt-4 border-t border-slate-100">
-          <h5 className="text-xs font-bold text-slate-700 mb-3">موجودہ فعال بکنگ ڈیڈلائنز کی حیثیت ({deadlines.length})</h5>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {deadlines.map((d) => {
+        {(() => {
+          const activeDeadlines = deadlines.filter(
+            d => d.status !== 'result_announced' && !d.isArchived
+          );
+          return (
+            <div className="pt-4 border-t border-slate-100">
+              <h5 className="text-xs font-bold text-slate-700 mb-3">موجودہ فعال بکنگ ڈیڈلائنز کی حیثیت ({activeDeadlines.length})</h5>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {activeDeadlines.map((d) => {
               const drawKey = d.id || `${d.category}-${d.nextPrizeBondValue || ''}`;
               return (
                 <div key={drawKey} className="p-4 bg-slate-50 rounded-2xl border border-slate-150 space-y-2 flex flex-col justify-between shadow-sm">
@@ -606,6 +611,8 @@ export const AdminLimitsDeadlinesTab: React.FC<AdminLimitsDeadlinesTabProps> = (
             })}
           </div>
         </div>
+          );
+        })()}
       </div>
     </div>
   );

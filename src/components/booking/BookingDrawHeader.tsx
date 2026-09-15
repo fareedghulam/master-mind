@@ -7,6 +7,7 @@ interface BookingDrawHeaderProps {
   pageTitleUrdu: string;
   pageTitleEnglish: string;
   isTimeUp: boolean;
+  isManuallyClosed: boolean;
   activeDraw: DrawDeadline | undefined;
   pakDraws: DrawDeadline[];
   availableDraws?: DrawDeadline[];
@@ -23,6 +24,7 @@ export const BookingDrawHeader: React.FC<BookingDrawHeaderProps> = ({
   pageTitleUrdu,
   pageTitleEnglish,
   isTimeUp,
+  isManuallyClosed,
   activeDraw,
   pakDraws,
   availableDraws = [],
@@ -89,7 +91,11 @@ export const BookingDrawHeader: React.FC<BookingDrawHeaderProps> = ({
             </p>
             <div className="text-xs">
               {isTimeUp ? (
-                <span className="text-red-600 font-bold block mt-1">بکنگ کا وقت پورا ہو گیا ہے، اس لئے اب کوئی نئی بکنگ یا ڈیمانڈ قبول نہیں کی جا رہی۔</span>
+                <span className="text-red-600 font-bold block mt-1">
+                  {isManuallyClosed
+                    ? 'عارضی طور پر بکنگ بند کی گئی ہے'
+                    : 'بکنگ کا وقت پورا ہو گیا ہے، اس لئے اب کوئی نئی بکنگ یا ڈیمانڈ قبول نہیں کی جا رہی۔'}
+                </span>
               ) : (
                 <span className="text-emerald-700 font-semibold flex items-center justify-center md:justify-end gap-1 block mt-1">
                   <Clock className="w-3.5 h-3.5 inline text-emerald-600" />

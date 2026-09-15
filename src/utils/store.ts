@@ -2207,30 +2207,15 @@ export async function autoCleanOldDrawData(category: 'pakistan_bond' | 'thailand
       await updateDoc(doc(db, 'limits', d.id), { isArchived: true });
     }
 
-    // 5. Mark draw/deadline as result_announced.
-    // IMPORTANT: Keep the deadline document visible so Admin can see
-    // the final Result Announced state. Only bookings/demands/limits
-    // are archived above.
+    // 5. Remove the completed draw deadline.
+    // Bookings/demands/limits are archived above; the deadline itself
+    // is deleted so completed draws no longer appear as active deadlines.
     if (targetDrawId) {
       const deadlineRef = doc(db, 'deadlines', targetDrawId);
-      await updateDoc(deadlineRef, {
-        status: 'result_announced',
-        bookingStatusUrdu: 'بکنگ بند ہے',
-        isArchived: true
-      });
-
-      const idx = cachedDeadlines.findIndex(
-        d => (d.id || d.drawId || d.category) === targetDrawId
+      await deleteDoc(deadlineRef);
+      cachedDeadlines = cachedDeadlines.filter(
+        d => d.id !== targetDrawId && d.drawId !== targetDrawId
       );
-
-      if (idx !== -1) {
-        cachedDeadlines[idx] = {
-          ...cachedDeadlines[idx],
-          status: 'result_announced',
-          bookingStatusUrdu: 'بکنگ بند ہے',
-          isArchived: true
-        };
-      }
     } else {
       const deadlinesRef = collection(db, 'deadlines');
       const deadlinesQuery = query(
@@ -2240,25 +2225,12 @@ export async function autoCleanOldDrawData(category: 'pakistan_bond' | 'thailand
       const deadlinesSnapshot = await getDocs(deadlinesQuery);
 
       for (const d of deadlinesSnapshot.docs) {
-        await updateDoc(doc(db, 'deadlines', d.id), {
-          status: 'result_announced',
-          bookingStatusUrdu: 'بکنگ بند ہے',
-          isArchived: true
-        });
-
-        const idx = cachedDeadlines.findIndex(
-          cached => cached.id === d.id
-        );
-
-        if (idx !== -1) {
-          cachedDeadlines[idx] = {
-            ...cachedDeadlines[idx],
-            status: 'result_announced',
-            bookingStatusUrdu: 'بکنگ بند ہے',
-            isArchived: true
-          };
-        }
+        await deleteDoc(doc(db, 'deadlines', d.id));
       }
+
+      cachedDeadlines = cachedDeadlines.filter(
+        d => d.category !== category
+      );
     }
 
     notifyListeners();

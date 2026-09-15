@@ -74,7 +74,8 @@ export default function BookingPage({
         : new Date(activeDraw.deadlineIso).getTime()) 
     : 0;
   const deadlineTime = isNaN(rawDeadlineTime) ? 0 : rawDeadlineTime;
-  const isTimeUp = (activeDraw?.status === 'closed') || (activeDraw?.bookingStatusUrdu === 'بکنگ بند ہے') || (deadlineTime > 0 && timeTicker >= deadlineTime);
+  const isManuallyClosed = (activeDraw?.status === 'closed') || (activeDraw?.bookingStatusUrdu === 'بکنگ بند ہے');
+  const isTimeUp = isManuallyClosed || (deadlineTime > 0 && timeTicker >= deadlineTime);
 
   const getRemainingTimeString = () => {
     if (activeDraw?.status === 'closed') return 'بکنگ بند ہے (Closed)';
@@ -323,6 +324,7 @@ export default function BookingPage({
         pageTitleUrdu={pageTitleUrdu}
         pageTitleEnglish={pageTitleEnglish}
         isTimeUp={isTimeUp}
+        isManuallyClosed={isManuallyClosed}
         activeDraw={activeDraw}
         pakDraws={pakDraws}
         availableDraws={categoryDraws}
