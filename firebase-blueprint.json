@@ -83,7 +83,7 @@
         "category": { "type": "string", "enum": ["pakistan_bond", "thailand_lottery"], "description": "Category" },
         "titleUrdu": { "type": "string", "description": "Urdu message showing status or title" },
         "deadlineIso": { "type": "string", "description": "ISO format date-time string" },
-        "status": { "type": "string", "enum": ["open", "closed"], "description": "Draw status" }
+        "status": { "type": "string", "enum": ["open", "closed", "result_announced"], "description": "Draw status" }
       },
       "required": ["category", "titleUrdu", "deadlineIso", "status"]
     },

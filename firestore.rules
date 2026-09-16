@@ -344,7 +344,8 @@ service cloud.firestore {
 
     match /deadlines/{category} {
       allow read: if true;
-      allow write: if isValidId(category) && isValidDeadline(request.resource.data) && isAdmin();
+      allow create, update: if isValidId(category) && isValidDeadline(request.resource.data) && isAdmin();
+      allow delete: if isValidId(category) && isAdmin();
     }
 
     match /transactions/{txId} {

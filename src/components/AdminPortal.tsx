@@ -255,6 +255,7 @@ export default function AdminPortal({
   const [resultFormOpen, setResultFormOpen] = useState(false);
   const [resultFormMode, setResultFormMode] = useState<'add' | 'edit'>('add');
   const [editingResultId, setEditingResultId] = useState('');
+  const [editingResultDrawId, setEditingResultDrawId] = useState<string | undefined>(undefined);
 
   // Result Form fields
   const [resCategory, setResCategory] = useState<'pakistan_bond' | 'thailand_lottery'>('pakistan_bond');
@@ -303,6 +304,7 @@ export default function AdminPortal({
     setResFront3Digits('');
     setResBack3Digits('');
     setEditingResultId('');
+    setEditingResultDrawId(undefined);
   };
 
   const handleSaveResult = async (e: FormEvent) => {
@@ -358,7 +360,7 @@ export default function AdminPortal({
       );
     });
 
-    const resultDrawId = matchedDeadline?.drawId || matchedDeadline?.id;
+    const resultDrawId = matchedDeadline?.drawId || matchedDeadline?.id || (resultFormMode === 'edit' ? editingResultDrawId : undefined);
     const finalDate = normalizeDateInput(resDate) || resDate.trim();
 
     let resultDoc: AllResultType;
@@ -410,6 +412,7 @@ export default function AdminPortal({
     setResultError('');
     setResultFormMode('edit');
     setEditingResultId(draw.id);
+    setEditingResultDrawId(draw.drawId);
     setResCategory(draw.category);
     setResDate(draw.date);
     setResCity(draw.city);
