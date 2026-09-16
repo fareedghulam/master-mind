@@ -1,12 +1,5 @@
 import { User } from '../types';
-import { db, auth, firebaseConfig } from '../lib/firebase';
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  getDocFromServer,
-  getDocs
-} from 'firebase/firestore';
+import { auth, firebaseConfig } from '../lib/firebase';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { 
   getAuth,

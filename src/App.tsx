@@ -39,7 +39,7 @@ import {
 } from './utils/store';
 import { User, Booking, DealerBooking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult, DrawCategory } from './types';
 import { db, auth } from './lib/firebase';
-import { doc, getDocFromServer, collection, query, where, getDocsFromServer, setDoc, deleteDoc } from 'firebase/firestore';
+import { ref, get, set, update, remove } from 'firebase/database';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import DashboardHeader from './components/DashboardHeader';
 import RegistrationForm from './components/RegistrationForm';
@@ -319,11 +319,15 @@ export default function App() {
         emailToAuth = idLower;
       } else {
         try {
-          const q = query(collection(db, 'users'), where('phone', '==', identifier.trim()));
-          const querySnapshot = await getDocsFromServer(q);
-          if (!querySnapshot.empty) {
-            const data = querySnapshot.docs[0].data() as User;
-            emailToAuth = data.email;
+          const usersSnap = await get(ref(db, 'users'));
+          if (usersSnap.exists()) {
+            const allUsers = usersSnap.val();
+            for (const key in allUsers) {
+              if (allUsers[key]?.phone?.trim() === identifier.trim()) {
+                emailToAuth = allUsers[key]?.email;
+                break;
+              }
+            }
           }
         } catch (err) {
           console.error("Secure login phone query failed:", err);
@@ -357,29 +361,28 @@ export default function App() {
       let matchedUser: User | null = null;
       try {
         // [UID-Migration] Step 1: Query the primary users/{uid} document for the signed-in user
-        const userDocRef = doc(db, 'users', uid);
-        const userDoc = await getDocFromServer(userDocRef);
-        if (userDoc.exists()) {
-          matchedUser = userDoc.data() as User;
+        const userSnap = await get(ref(db, `users/${uid}`));
+        if (userSnap.exists()) {
+          matchedUser = userSnap.val() as User;
           console.log(`[UID-Migration] Found existing modern UID-based user record for: ${emailToAuth}`);
         } else {
           // [UID-Migration] Step 2: Fallback to the legacy users/{email} document
-          const legacyDocRef = doc(db, 'users', emailToAuth.toLowerCase().trim());
-          const legacyDoc = await getDocFromServer(legacyDocRef);
-          if (legacyDoc.exists()) {
-            const legacyData = legacyDoc.data() as User;
+          const cleanEmailKey = emailToAuth.toLowerCase().trim().replace(/[.#$\[\]]/g, '_');
+          const legacySnap = await get(ref(db, `users/${cleanEmailKey}`));
+          if (legacySnap.exists()) {
+            const legacyData = legacySnap.val() as User;
             matchedUser = {
               ...legacyData,
               uid: uid // Attach modern auth UID securely
             };
             // [UID-Migration] Step 3: Automatically migrate data to the new users/{uid} document
-            await setDoc(userDocRef, matchedUser);
+            await set(ref(db, `users/${uid}`), matchedUser);
             // [UID-Migration] Step 4: Securely delete the legacy email-based document after successful migration
-            await deleteDoc(legacyDocRef);
+            await remove(ref(db, `users/${cleanEmailKey}`));
             console.log(`[UID-Migration] Successfully migrated legacy user profile for ${emailToAuth} to users/{uid}`);
           } else {
-            // Step 5: Profile not found in Firestore - SECURITY ENFORCEMENT:
-            // Do NOT auto-create fake customer profiles for authenticated accounts without a Firestore record.
+            // Step 5: Profile not found in database - SECURITY ENFORCEMENT:
+            // Do NOT auto-create fake customer profiles for authenticated accounts without a database record.
             await signOut(auth);
             return { 
               success: false, 
@@ -389,8 +392,8 @@ export default function App() {
         }
       } catch (err: any) {
         console.error("Failed to load/migrate user profile:", err);
-        console.error("PROFILE FIRESTORE ERROR CODE:", err?.code);
-        console.error("PROFILE FIRESTORE ERROR MESSAGE:", err?.message);
+        console.error("PROFILE RTDB ERROR CODE:", err?.code);
+        console.error("PROFILE RTDB ERROR MESSAGE:", err?.message);
         return {
           success: false,
           error: `پروفائل لوڈ کرنے میں ناکامی۔ [${err?.code || 'unknown'}] ${err?.message || ''}`
@@ -419,16 +422,16 @@ export default function App() {
         matchedUser.isAdmin = false;
       }
 
-      // Sync Firestore document role & isAdmin status securely
+      // Sync RTDB node role & isAdmin status securely
       try {
-        await setDoc(doc(db, 'users', uid), {
+        await update(ref(db, `users/${uid}`), {
           role: matchedUser.role,
           isAdmin: matchedUser.isAdmin,
           email: emailLowerMatched,
           lastLogin: new Date().toISOString()
-        }, { merge: true });
+        });
       } catch (updateErr) {
-        console.error("Failed to sync admin profile role in Firestore:", updateErr);
+        console.error("Failed to sync admin profile role in RTDB:", updateErr);
       }
 
       if (matchedUser.isAdmin && matchedUser.active === false) {

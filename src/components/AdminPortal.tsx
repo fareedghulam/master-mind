@@ -3,7 +3,7 @@ import { User, AdminRole, NumberLimit, Demand, DrawDeadline, Booking, DealerBook
 import { ShieldCheck, UserCheck, Sparkles, Clock, History, Building2 } from 'lucide-react';
 import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, getAdminConfiguredEmail, updateCustomerPassword, registerInAuthOnly, changeLoggedAdminPassword, assignDealerRole, cancelDealerBookingByAdmin } from '../utils/store';
 import { db } from '../lib/firebase';
-import { doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { ref, set, update, remove } from 'firebase/database';
 import { normalizeDateInput } from '../utils/bondAnalysisUtils';
 
 import { AdminDemandsBookingsTab } from './admin/AdminDemandsBookingsTab';
@@ -360,7 +360,9 @@ export default function AdminPortal({
       );
     });
 
-    const resultDrawId = matchedDeadline?.drawId || matchedDeadline?.id || (resultFormMode === 'edit' ? editingResultDrawId : undefined);
+    const resultDrawId = resultFormMode === 'edit' 
+      ? editingResultDrawId 
+      : (matchedDeadline?.drawId || matchedDeadline?.id);
     const finalDate = normalizeDateInput(resDate) || resDate.trim();
 
     let resultDoc: AllResultType;
@@ -576,7 +578,7 @@ export default function AdminPortal({
         lastLogin: null
       };
 
-      await setDoc(doc(db, 'users', uid), newAdminDoc);
+      await set(ref(db, `users/${uid}`), newAdminDoc);
 
       setAdminManageSuccess(
         isDealerCreation
@@ -613,7 +615,7 @@ export default function AdminPortal({
       if (!cached || !cached.uid) {
         throw new Error('ایڈمن کا UID نہیں ملا۔ (Admin UID not found.)');
       }
-      await deleteDoc(doc(db, 'users', cached.uid));
+      await remove(ref(db, `users/${cached.uid}`));
       setAdminManageSuccess(`کامیاب: ایڈمن (${email}) کا ریکارڈ کامیابی سے حذف کر دیا گیا ہے۔`);
     } catch (err: any) {
       console.error("Delete admin error:", err);
@@ -638,9 +640,9 @@ export default function AdminPortal({
       if (!cached || !cached.uid) {
         throw new Error('ایڈمن کا UID نہیں ملا۔ (Admin UID not found.)');
       }
-      await setDoc(doc(db, 'users', cached.uid), {
+      await update(ref(db, `users/${cached.uid}`), {
         active: !isDeactivating
-      }, { merge: true });
+      });
       setAdminManageSuccess(`ایڈمن اکاؤنٹ کامیابی سے ${!isDeactivating ? 'فعال (Activate)' : 'غیر فعال (Deactivate)'} کر دیا گیا ہے۔`);
     } catch (err: any) {
       console.error("Toggle active status error:", err);
@@ -666,10 +668,10 @@ export default function AdminPortal({
       }
       const isDealer = roleToSet === 'dealer';
       const isCustomer = roleToSet === 'customer';
-      await setDoc(doc(db, 'users', cached.uid), {
+      await update(ref(db, `users/${cached.uid}`), {
         role: roleToSet,
         isAdmin: (!isDealer && !isCustomer)
-      }, { merge: true });
+      });
       
       const roleLabel = roleToSet === 'superAdmin' 
         ? 'Super Admin' 

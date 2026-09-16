@@ -1,18 +1,13 @@
 import { User, Booking, DealerBooking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult, AllResultType, DrawCategory, Transaction } from '../types';
 import { db, auth, firebaseConfig } from '../lib/firebase';
 import { 
-  collection, 
-  doc, 
-  setDoc, 
-  updateDoc,
-  deleteDoc, 
-  onSnapshot,
-  runTransaction,
-  getDocFromServer,
-  getDocs,
-  query,
-  where
-} from 'firebase/firestore';
+  ref,
+  set,
+  update,
+  remove,
+  onValue,
+  get
+} from 'firebase/database';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { 
   getAuth,
@@ -172,15 +167,13 @@ export function initializeStore() {
       const email = firebaseUser.email;
       const uid = firebaseUser.uid;
       if (email) {
-        const normalized = email.toLowerCase().trim();
         // Look up user role dynamically
         let userProfile = cachedUsers.find(u => u.uid === uid);
         if (!userProfile) {
           try {
-            const docRef = doc(db, 'users', uid);
-            const userDoc = await getDocFromServer(docRef);
-            if (userDoc.exists()) {
-              userProfile = userDoc.data() as User;
+            const userSnap = await get(ref(db, `users/${uid}`));
+            if (userSnap.exists()) {
+              userProfile = userSnap.val() as User;
             }
           } catch (e) {
             console.error("Failed to fetch user role on auth state change:", e);
@@ -222,14 +215,14 @@ export function initializeStore() {
   });
 
   // 1. Listen to users
-  onSnapshot(collection(db, 'users'), (snapshot) => {
-    if (snapshot.empty) {
+  onValue(ref(db, 'users'), (snapshot) => {
+    const val = snapshot.val();
+    if (!val) {
       cachedUsers = [];
       notifyListeners();
     } else {
-      const tempUsers = snapshot.docs.map(doc => {
-        const data = doc.data() as User;
-        const uid = doc.id;
+      const tempUsers = Object.keys(val).map(uid => {
+        const data = val[uid] as User;
         const mappedUser: User = {
           ...data,
           uid: data.uid || uid,
@@ -287,7 +280,7 @@ export function initializeStore() {
     }
   }, (error) => {
     // Non-admin users cannot read all users; single user document listener handles their profile
-    console.log("[UsersCollection] Collection listener restricted for non-admin user (using document listener):", error.message);
+    console.log("[UsersCollection] RTDB users listener restricted for non-admin user (using document listener):", error.message);
   });
 
   // Active single-user document listener for real-time customer profile & balance sync
@@ -313,11 +306,7 @@ export function initializeStore() {
       const isSuperAdminEmail = emailLower === 'mastermaind.qureshi110@gmail.com';
       const isDataEntryEmail = emailLower === 'fareed.ghulam@gmail.com';
 
-      const userDocRef = doc(db, 'users', uid);
-      
-
-
-      // SECURITY: dealerBookings are never globally subscribed.
+      // SECURITY: dealerBookings are never globally subscribed for non-admins.
       // Dealer -> only own bookings.
       // Admin/Data Entry -> all dealer bookings.
       const syncDealerBookingsListener = (roleData: User) => {
@@ -343,21 +332,19 @@ export function initializeStore() {
           return;
         }
 
-        const dealerBookingsRef = isDealer
-          ? query(
-              collection(db, 'dealerBookings'),
-              where('dealerId', '==', uid)
-            )
-          : collection(db, 'dealerBookings');
-
-        activeDealerBookingsUnsub = onSnapshot(
-          dealerBookingsRef,
+        activeDealerBookingsUnsub = onValue(
+          ref(db, 'dealerBookings'),
           (snapshot) => {
-            const list = snapshot.docs.map(
-              doc => doc.data() as DealerBooking
-            );
+            const val = snapshot.val();
+            const list: DealerBooking[] = val
+              ? Object.keys(val).map(k => ({ ...val[k], id: val[k].id || k }))
+              : [];
 
-            cachedDealerBookings = list.sort(
+            const filtered = isDealer
+              ? list.filter(b => b.dealerId === uid)
+              : list;
+
+            cachedDealerBookings = filtered.sort(
               (a, b) =>
                 new Date(b.timestamp).getTime() -
                 new Date(a.timestamp).getTime()
@@ -376,9 +363,9 @@ export function initializeStore() {
         );
       };
 
-      activeUserUnsub = onSnapshot(userDocRef, (docSnap) => {
+      activeUserUnsub = onValue(ref(db, `users/${uid}`), (docSnap) => {
         if (docSnap.exists()) {
-          const data = docSnap.data() as User;
+          const data = docSnap.val() as User;
           const userObj: User = {
             ...data,
             uid: data.uid || uid,
@@ -399,13 +386,11 @@ export function initializeStore() {
           } else {
             userObj.isAdmin = data.isAdmin || false;
             userObj.role = data.role || 'customer';
-
           }
 
             // SECURITY: Start the dealerBookings listener only after
             // the user's complete role/admin status has been resolved.
             syncDealerBookingsListener(userObj);
-
 
           const isComplete = data.profileCompleted === true || (Boolean(userObj.name?.trim()) && Boolean(userObj.phone?.trim()) && Boolean(userObj.city?.trim()));
           userObj.profileCompleted = isComplete;
@@ -432,59 +417,69 @@ export function initializeStore() {
   });
 
   // 2. Listen to bookings
-  onSnapshot(collection(db, 'bookings'), (snapshot) => {
-    if (snapshot.empty) {
+  onValue(ref(db, 'bookings'), (snapshot) => {
+    const val = snapshot.val();
+    if (!val) {
       cachedBookings = [];
-      notifyListeners();
     } else {
-      const list = snapshot.docs.map(doc => doc.data() as Booking);
+      const list: Booking[] = Object.keys(val).map(k => ({ ...val[k], id: val[k].id || k }));
       cachedBookings = list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      notifyListeners();
     }
+    notifyListeners();
   });
 
   // 3. Listen to limits
-  onSnapshot(collection(db, 'limits'), (snapshot) => {
-    if (snapshot.empty) {
+  onValue(ref(db, 'limits'), (snapshot) => {
+    const val = snapshot.val();
+    if (!val) {
       cachedLimits = [];
-      notifyListeners();
     } else {
-      cachedLimits = snapshot.docs.map(doc => doc.data() as NumberLimit);
-      notifyListeners();
+      cachedLimits = Object.keys(val).map(k => ({ ...val[k], id: val[k].id || k }));
     }
+    notifyListeners();
   });
 
   // 4. Listen to demands
-  onSnapshot(collection(db, 'demands'), (snapshot) => {
-    const list = snapshot.docs.map(doc => doc.data() as Demand);
-    cachedDemands = list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  onValue(ref(db, 'demands'), (snapshot) => {
+    const val = snapshot.val();
+    if (!val) {
+      cachedDemands = [];
+    } else {
+      const list: Demand[] = Object.keys(val).map(k => ({ ...val[k], id: val[k].id || k }));
+      cachedDemands = list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    }
     notifyListeners();
   });
 
   // 5. Listen to deadlines
-  onSnapshot(collection(db, 'deadlines'), (snapshot) => {
-    if (snapshot.empty) {
+  onValue(ref(db, 'deadlines'), (snapshot) => {
+    const val = snapshot.val();
+    if (!val) {
       cachedDeadlines = [];
-      notifyListeners();
     } else {
-      cachedDeadlines = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as DrawDeadline) }));
-      notifyListeners();
+      cachedDeadlines = Object.keys(val).map(k => ({ id: k, ...val[k] }));
     }
+    notifyListeners();
   });
 
   // 5.5. Listen to transactions
-  onSnapshot(collection(db, 'transactions'), (snapshot) => {
-    const list = snapshot.docs.map(doc => doc.data() as Transaction);
-    cachedTransactions = list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  onValue(ref(db, 'transactions'), (snapshot) => {
+    const val = snapshot.val();
+    if (!val) {
+      cachedTransactions = [];
+    } else {
+      const list: Transaction[] = Object.keys(val).map(k => ({ ...val[k], id: val[k].id || k }));
+      cachedTransactions = list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }
     notifyListeners();
   });
 
   // 6. Listen to settings/general
-  onSnapshot(doc(db, 'settings', 'general'), async (snapshot) => {
+  onValue(ref(db, 'settings/general'), async (snapshot) => {
     if (!snapshot.exists()) {
       if (isLoggedUserAdminOrSuper()) {
         try {
-          await setDoc(doc(db, 'settings', 'general'), {
+          await set(ref(db, 'settings/general'), {
             adminEmail: 'mastermaind.qureshi110@gmail.com',
             whatsappNumber: '923453090146'
           });
@@ -493,7 +488,7 @@ export function initializeStore() {
         }
       }
     } else {
-      const data = snapshot.data();
+      const data = snapshot.val();
       const adminEmail = data?.adminEmail || 'mastermaind.qureshi110@gmail.com';
       cachedAdminEmail = adminEmail;
       cachedSupportWhatsApp = data?.whatsappNumber || '923453090146';
@@ -502,13 +497,15 @@ export function initializeStore() {
   });
 
   // 7. Listen to pakistanBondResults (with auto-migration)
-  onSnapshot(collection(db, 'pakistanBondResults'), (snapshot) => {
-    if (snapshot.empty) {
+  onValue(ref(db, 'pakistanBondResults'), (snapshot) => {
+    const val = snapshot.val();
+    if (!val) {
       if (isLoggedUserAdminOrSuper() || isLoggedUserDataEntry()) {
-        console.log("Migrating Pakistan Bond results to Firestore...");
+        console.log("Migrating Pakistan Bond results to RTDB...");
         // Ensure historical data is available
         if (pakistanBondDraws && pakistanBondDraws.length > 0) {
-          pakistanBondDraws.forEach(async (draw) => {
+          const updates: Record<string, any> = {};
+          pakistanBondDraws.forEach((draw) => {
             let bondValue = "Rs. 200";
             let drawNoOnly = "";
             
@@ -529,25 +526,27 @@ export function initializeStore() {
               firstPrize: draw.firstPrize,
               secondPrizes: draw.secondPrizes
             };
-            try {
-              await setDoc(doc(db, 'pakistanBondResults', draw.id), resultDoc);
-            } catch (e) {
-              console.error("Failed to migrate pakistanBondResult doc:", e);
-            }
+            updates[`pakistanBondResults/${draw.id}`] = resultDoc;
           });
+          update(ref(db), updates).catch(e => console.error("Failed to migrate pakistanBondResult docs:", e));
         }
       }
     } else {
-      cachedPakistanBondResults = snapshot.docs.map(doc => doc.data() as PakistanBondResult);
+      cachedPakistanBondResults = Object.keys(val).map(k => ({ ...val[k], id: val[k].id || k }));
       notifyListeners();
     }
   });
 
   // 8. Listen to thaiLotteryResults
-  onSnapshot(collection(db, 'thaiLotteryResults'), (snapshot) => {
-    cachedThaiLotteryResults = snapshot.docs.map(
-      doc => doc.data() as ThaiLotteryResult
-    );
+  onValue(ref(db, 'thaiLotteryResults'), (snapshot) => {
+    const val = snapshot.val();
+    if (!val) {
+      cachedThaiLotteryResults = [];
+    } else {
+      cachedThaiLotteryResults = Object.keys(val).map(
+        k => ({ ...val[k], id: val[k].id || k }) as ThaiLotteryResult
+      );
+    }
     notifyListeners();
   });
 }
@@ -561,10 +560,10 @@ export function setSupportWhatsAppNumber(num: string) {
   if (cleaned.startsWith('03')) {
     cleaned = '92' + cleaned.substring(1);
   }
-  setDoc(doc(db, 'settings', 'general'), {
+  update(ref(db, 'settings/general'), {
     adminEmail: cachedAdminEmail,
     whatsappNumber: cleaned
-  }, { merge: true });
+  });
 }
 
 export function getUsers(): User[] {
@@ -572,6 +571,7 @@ export function getUsers(): User[] {
 }
 
 export function saveUsers(users: User[]) {
+  const updates: Record<string, any> = {};
   users.forEach(u => {
     let targetUid = u.uid;
     if (!targetUid) {
@@ -579,11 +579,14 @@ export function saveUsers(users: User[]) {
       targetUid = cached?.uid;
     }
     if (targetUid) {
-      setDoc(doc(db, 'users', targetUid), { ...u, uid: targetUid });
+      updates[`users/${targetUid}`] = { ...u, uid: targetUid };
     } else {
       console.warn("Skipping save for user without UID:", u.email);
     }
   });
+  if (Object.keys(updates).length > 0) {
+    update(ref(db), updates);
+  }
 }
 
 export function getBookings(): Booking[] {
@@ -591,9 +594,13 @@ export function getBookings(): Booking[] {
 }
 
 export function saveBookings(bookings: Booking[]) {
+  const updates: Record<string, any> = {};
   bookings.forEach(b => {
-    setDoc(doc(db, 'bookings', b.id), b);
+    updates[`bookings/${b.id}`] = b;
   });
+  if (Object.keys(updates).length > 0) {
+    update(ref(db), updates);
+  }
 }
 
 export function getDealerBookings(): DealerBooking[] {
@@ -601,9 +608,13 @@ export function getDealerBookings(): DealerBooking[] {
 }
 
 export function saveDealerBookings(bookings: DealerBooking[]) {
+  const updates: Record<string, any> = {};
   bookings.forEach(b => {
-    setDoc(doc(db, 'dealerBookings', b.id), b);
+    updates[`dealerBookings/${b.id}`] = b;
   });
+  if (Object.keys(updates).length > 0) {
+    update(ref(db), updates);
+  }
 }
 
 export function getNumberLimits(): NumberLimit[] {
@@ -611,9 +622,13 @@ export function getNumberLimits(): NumberLimit[] {
 }
 
 export function saveNumberLimits(limits: NumberLimit[]) {
+  const updates: Record<string, any> = {};
   limits.forEach(l => {
-    setDoc(doc(db, 'limits', l.id), l);
+    updates[`limits/${l.id}`] = l;
   });
+  if (Object.keys(updates).length > 0) {
+    update(ref(db), updates);
+  }
 }
 
 export function getLoggedInUser(): User | null {
@@ -697,15 +712,14 @@ export function getAdminConfiguredEmail(): string {
 export function setAdminConfiguredEmail(email: string) {
   const normalizedEmail = email.trim().toLowerCase();
   
-  setDoc(doc(db, 'settings', 'general'), {
+  update(ref(db, 'settings/general'), {
     adminEmail: normalizedEmail,
     whatsappNumber: cachedSupportWhatsApp
-  }, { merge: true });
+  });
   
   const user = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
   if (user && user.uid) {
-    setDoc(doc(db, 'users', user.uid), {
-      ...user,
+    update(ref(db, `users/${user.uid}`), {
       isAdmin: true,
       role: 'admin'
     });
@@ -732,11 +746,11 @@ export async function updateUserPassword(email: string, passwordInput: string): 
       const cached = cachedUsers.find(u => u.email.toLowerCase() === em);
       if (cached?.uid) {
         // Store profile updates only, DO NOT store plain-text passwords
-        await setDoc(doc(db, 'users', cached.uid), {
+        await update(ref(db, `users/${cached.uid}`), {
           isAdmin: true
-        }, { merge: true });
+        });
       } else {
-        console.warn(`Could not update admin role in Firestore for ${em} because no UID was found.`);
+        console.warn(`Could not update admin role in RTDB for ${em} because no UID was found.`);
       }
     }
     return true;
@@ -792,11 +806,11 @@ export async function updateCustomerPassword(email: string, passwordInput: strin
     const cached = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
     if (cached?.uid) {
       // Profile metadata merge only, DO NOT store plain-text passwords
-      await setDoc(doc(db, 'users', cached.uid), {
+      await update(ref(db, `users/${cached.uid}`), {
         email: normalizedEmail
-      }, { merge: true });
+      });
     } else {
-      console.warn(`Could not update customer metadata in Firestore for ${normalizedEmail} because no UID was found.`);
+      console.warn(`Could not update customer metadata in RTDB for ${normalizedEmail} because no UID was found.`);
     }
     return true;
   } catch (e: any) {
@@ -831,8 +845,8 @@ export async function registerUser(name: string, phone: string, city: string, em
       profileCompleted: true
     };
 
-    // Write profile information to Firestore with UID key
-    await setDoc(doc(db, 'users', uid), newUser);
+    // Write profile information to RTDB with UID key
+    await set(ref(db, `users/${uid}`), newUser);
 
     // Update in-memory cachedUsers list instantly
     const existingIdx = cachedUsers.findIndex(u => u.uid === uid || u.email.toLowerCase() === normalizedEmail);
@@ -879,14 +893,14 @@ export async function signInWithGoogle(): Promise<{ success: boolean; user?: Use
     const email = firebaseUser.email.toLowerCase().trim();
     const photoURL = firebaseUser.photoURL || '';
 
-    const userRef = doc(db, 'users', uid);
-    const userDoc = await getDocFromServer(userRef);
+    const userRef = ref(db, `users/${uid}`);
+    const userSnap = await get(userRef);
 
     let userProfile: User;
     let isNewOrIncomplete = false;
 
-    if (userDoc.exists()) {
-      const data = userDoc.data() as User;
+    if (userSnap.exists()) {
+      const data = userSnap.val() as User;
       const isComplete = data.profileCompleted === true || (Boolean(data.phone?.trim()) && Boolean(data.city?.trim()));
       userProfile = {
         ...data,
@@ -896,7 +910,7 @@ export async function signInWithGoogle(): Promise<{ success: boolean; user?: Use
         profileCompleted: isComplete
       };
       if (photoURL && data.photoURL !== photoURL) {
-        await setDoc(userRef, { photoURL }, { merge: true });
+        await update(userRef, { photoURL });
       }
       if (!isComplete) {
         isNewOrIncomplete = true;
@@ -915,7 +929,7 @@ export async function signInWithGoogle(): Promise<{ success: boolean; user?: Use
         role: isAdmin ? 'admin' : 'customer',
         profileCompleted: false
       };
-      await setDoc(userRef, userProfile);
+      await set(userRef, userProfile);
       isNewOrIncomplete = true;
     }
 
@@ -981,7 +995,7 @@ export async function requestRecharge(
   };
 
   try {
-    await setDoc(doc(db, 'transactions', txId), tx);
+    await set(ref(db, `transactions/${txId}`), tx);
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message || 'درخواست بھیجنے میں غلطی پیش آئی۔' };
@@ -1027,7 +1041,7 @@ export async function requestWithdrawal(
   };
 
   try {
-    await setDoc(doc(db, 'transactions', txId), tx);
+    await set(ref(db, `transactions/${txId}`), tx);
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message || 'درخواست بھیجنے میں غلطی پیش آئی۔' };
@@ -1050,29 +1064,27 @@ export async function approveTransaction(transactionId: string): Promise<{ succe
     return { success: false, error: 'صارف کا UID نہیں ملا۔' };
   }
 
-  const userRef = doc(db, 'users', cachedUser.uid);
-  const txRef = doc(db, 'transactions', transactionId);
-
   try {
-    await runTransaction(db, async (transaction) => {
-      const userDoc = await transaction.get(userRef);
-      if (!userDoc.exists()) throw new Error('صارف ریکارڈ موجود نہیں ہے');
+    const userSnap = await get(ref(db, `users/${cachedUser.uid}`));
+    if (!userSnap.exists()) throw new Error('صارف ریکارڈ موجود نہیں ہے');
 
-      const userData = userDoc.data() as User;
-      let newBalance = userData.balance;
+    const userData = userSnap.val() as User;
+    let newBalance = userData.balance || 0;
 
-      if (tx.type === 'recharge') {
-        newBalance = userData.balance + tx.amount;
-      } else if (tx.type === 'withdrawal') {
-        if (userData.balance < tx.amount) {
-          throw new Error('صارف کے پاس کافی بیلنس نہیں ہے');
-        }
-        newBalance = userData.balance - tx.amount;
+    if (tx.type === 'recharge') {
+      newBalance = (userData.balance || 0) + tx.amount;
+    } else if (tx.type === 'withdrawal') {
+      if ((userData.balance || 0) < tx.amount) {
+        throw new Error('صارف کے پاس کافی بیلنس نہیں ہے');
       }
+      newBalance = (userData.balance || 0) - tx.amount;
+    }
 
-      transaction.update(userRef, { balance: newBalance });
-      transaction.update(txRef, { status: 'approved' });
-    });
+    const updates: Record<string, any> = {};
+    updates[`users/${cachedUser.uid}/balance`] = newBalance;
+    updates[`transactions/${transactionId}/status`] = 'approved';
+
+    await update(ref(db), updates);
 
     return { success: true };
   } catch (err: any) {
@@ -1089,9 +1101,9 @@ export async function rejectTransaction(transactionId: string): Promise<{ succes
   if (!tx) return { success: false, error: 'ٹرانزیکشن نہیں ملی۔' };
 
   try {
-    await setDoc(doc(db, 'transactions', transactionId), {
+    await update(ref(db, `transactions/${transactionId}`), {
       status: 'rejected'
-    }, { merge: true });
+    });
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message || 'رد کرنے کے دوران غلطی پیش آئی۔' };
@@ -1142,7 +1154,6 @@ export async function updateUserProfile(
   }
 
   try {
-    const userRef = doc(db, 'users', uid);
     const existingUser = cachedUsers.find(u => u.uid === uid);
     const userEmail = existingUser?.email || auth.currentUser?.email || '';
 
@@ -1158,7 +1169,7 @@ export async function updateUserProfile(
       updatePayload.photoURL = photoURL;
     }
 
-    await setDoc(userRef, updatePayload, { merge: true });
+    await update(ref(db, `users/${uid}`), updatePayload);
 
     // Instantly sync local memory state and notify listeners
     if (existingUser) {
@@ -1199,7 +1210,7 @@ export async function updateUserProfile(
       message: 'آپ کی پروفائل کامیابی سے اپ ڈیٹ ہو گئی ہے۔'
     };
   } catch (error: any) {
-    console.error('Error updating user profile in Firestore:', error);
+    console.error('Error updating user profile in RTDB:', error);
     return {
       success: false,
       message: 'پروفائل اپ ڈیٹ کرتے وقت ایک خطاء پیش آئی: ' + (error?.message || 'نامعلوم غلطی')
@@ -1227,36 +1238,24 @@ export async function rechargeWallet(
   let targetName = cached?.name || 'صارف';
   let targetBalance = cached?.balance || 0;
 
-  // 2. Fallback: Query Firestore directly for users collection if not found in memory
+  // 2. Fallback: Query RTDB directly for users if not found in memory
   if (!targetUid) {
     try {
-      const q = query(collection(db, 'users'), where('email', '==', normalizedEmail));
-      const querySnap = await getDocs(q);
-      if (!querySnap.empty) {
-        const userDoc = querySnap.docs[0];
-        const data = userDoc.data() as User;
-        targetUid = data.uid || userDoc.id;
-        targetName = data.name || 'صارف';
-        targetBalance = data.balance || 0;
+      const usersSnap = await get(ref(db, 'users'));
+      if (usersSnap.exists()) {
+        const usersVal = usersSnap.val();
+        for (const k of Object.keys(usersVal)) {
+          const u = usersVal[k] as User;
+          if ((u.email || '').toLowerCase().trim() === normalizedEmail) {
+            targetUid = u.uid || k;
+            targetName = u.name || 'صارف';
+            targetBalance = u.balance || 0;
+            break;
+          }
+        }
       }
     } catch (err) {
-      console.error("[rechargeWallet] Firestore user query failed:", err);
-    }
-  }
-
-  // 3. Fallback: Try document with normalizedEmail as key
-  if (!targetUid) {
-    try {
-      const emailDocRef = doc(db, 'users', normalizedEmail);
-      const emailDocSnap = await getDocFromServer(emailDocRef);
-      if (emailDocSnap.exists()) {
-        const data = emailDocSnap.data() as User;
-        targetUid = data.uid || normalizedEmail;
-        targetName = data.name || 'صارف';
-        targetBalance = data.balance || 0;
-      }
-    } catch (err) {
-      // Ignore
+      console.error("[rechargeWallet] RTDB user query failed:", err);
     }
   }
 
@@ -1273,44 +1272,41 @@ export async function rechargeWallet(
     };
   }
   
-  const userRef = doc(db, 'users', targetUid);
   const txId = 'tx-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
-  const txRef = doc(db, 'transactions', txId);
 
   try {
-    await runTransaction(db, async (transaction) => {
-      const userDoc = await transaction.get(userRef);
-      if (!userDoc.exists()) {
-        throw new Error('کسٹمر کا اکاؤنٹ Firestore میں نہیں ملا۔');
-      }
-      const user = userDoc.data() as User;
-      const currentBal = user.balance ?? 0;
+    const userSnap = await get(ref(db, `users/${targetUid}`));
+    if (!userSnap.exists()) {
+      throw new Error('کسٹمر کا اکاؤنٹ نہیں ملا۔');
+    }
+    const user = userSnap.val() as User;
+    const currentBal = user.balance ?? 0;
 
-      if (amount < 0 && (currentBal + amount < 0)) {
-        throw new Error(`کسٹمر کا بیلنس منفی نہیں ہو سکتا۔ موجودہ بیلنس: Rs. ${currentBal.toLocaleString()}`);
-      }
+    if (amount < 0 && (currentBal + amount < 0)) {
+      throw new Error(`کسٹمر کا بیلنس منفی نہیں ہو سکتا۔ موجودہ بیلنس: Rs. ${currentBal.toLocaleString()}`);
+    }
 
-      const newBal = currentBal + amount;
-      transaction.update(userRef, {
-        balance: newBal
-      });
+    const newBal = currentBal + amount;
+    const defaultNote = amount >= 0 ? 'ایڈمن کی جانب سے والٹ ریچارج' : 'ایڈمن کی جانب سے والٹ سے کٹوتی';
 
-      const defaultNote = amount >= 0 ? 'ایڈمن کی جانب سے والٹ ریچارج' : 'ایڈمن کی جانب سے والٹ سے کٹوتی';
+    const tx: Transaction = {
+      id: txId,
+      userId: targetUid!,
+      userEmail: normalizedEmail,
+      userName: user.name || targetName,
+      type: amount >= 0 ? 'recharge' : 'withdrawal',
+      amount: Math.abs(amount),
+      date: new Date().toISOString(),
+      status: 'approved',
+      paymentMethod: 'ایڈمن والٹ چارج',
+      note: note && note.trim() ? note.trim() : defaultNote
+    };
 
-      const tx: Transaction = {
-        id: txId,
-        userId: targetUid!,
-        userEmail: normalizedEmail,
-        userName: user.name || targetName,
-        type: amount >= 0 ? 'recharge' : 'withdrawal',
-        amount: Math.abs(amount),
-        date: new Date().toISOString(),
-        status: 'approved',
-        paymentMethod: 'ایڈمن والٹ چارج',
-        note: note && note.trim() ? note.trim() : defaultNote
-      };
-      transaction.set(txRef, tx);
-    });
+    const updates: Record<string, any> = {};
+    updates[`users/${targetUid}/balance`] = newBal;
+    updates[`transactions/${txId}`] = tx;
+
+    await update(ref(db), updates);
 
     if (cached) {
       cached.balance = (cached.balance || 0) + amount;
@@ -1351,104 +1347,98 @@ export async function addBooking(
     return { success: false, error: 'صارف کا ریکارڈ نہیں ملا' };
   }
 
-  const userRef = doc(db, 'users', uid);
   const isDealer = cached?.role === 'dealer';
-  const collectionName = isDealer ? 'dealerBookings' : 'bookings';
+  const collectionPath = isDealer ? 'dealerBookings' : 'bookings';
   const bookingId = (isDealer ? 'dlr-booking-' : 'booking-') + Date.now() + '-' + Math.floor(Math.random() * 1000);
-  const bookingRef = doc(db, collectionName, bookingId);
   const txId = 'tx-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
-  const txRef = doc(db, 'transactions', txId);
   const totalCost = firstAmount + secondAmount;
 
   try {
-    const result = await runTransaction(db, async (transaction) => {
-      const userDoc = await transaction.get(userRef);
-      if (!userDoc.exists()) {
-        throw new Error('صارف کا ریکارڈ نہیں ملا');
+    const userSnap = await get(ref(db, `users/${uid}`));
+    if (!userSnap.exists()) {
+      throw new Error('صارف کا ریکارڈ نہیں ملا');
+    }
+    const userData = userSnap.val() as User;
+    const currentBal = userData.balance ?? 0;
+
+    if (currentBal < totalCost) {
+      throw new Error('آپ کے والٹ میں کافی رقم موجود نہیں ہے');
+    }
+
+    const limit = cachedLimits.find(l => (drawId ? l.drawId === drawId : l.category === category) && l.number === number);
+    if (limit) {
+      if (firstAmount > limit.maxAmount) {
+        throw new Error(`اس نمبر (${number}) کے لئے فرسٹ کی انفرادی حد Rs. ${limit.maxAmount} ہے`);
       }
-      const userData = userDoc.data() as User;
-      const currentBal = userData.balance ?? 0;
-
-      if (currentBal < totalCost) {
-        throw new Error('آپ کے والٹ میں کافی رقم موجود نہیں ہے');
+      if (secondAmount > limit.maxAmount) {
+        throw new Error(`اس نمبر (${number}) کے لئے سیکنڈ کی انفرادی حد Rs. ${limit.maxAmount} ہے`);
       }
+    }
 
-      const limit = cachedLimits.find(l => (drawId ? l.drawId === drawId : l.category === category) && l.number === number);
-      if (limit) {
-        if (firstAmount > limit.maxAmount) {
-          throw new Error(`اس نمبر (${number}) کے لئے فرسٹ کی انفرادی حد Rs. ${limit.maxAmount} ہے`);
-        }
-        if (secondAmount > limit.maxAmount) {
-          throw new Error(`اس نمبر (${number}) کے لئے سیکنڈ کی انفرادی حد Rs. ${limit.maxAmount} ہے`);
-        }
-      }
+    const categoryLabelMap: Record<DrawCategory, string> = {
+      pakistan_bond: 'پاکستان پرائز بانڈ',
+      thailand_lottery: 'تھائی لینڈ لاٹری'
+    };
 
-      const categoryLabelMap: Record<DrawCategory, string> = {
-        pakistan_bond: 'پاکستان پرائز بانڈ',
-        thailand_lottery: 'تھائی لینڈ لاٹری'
-      };
-
-      if (isDealer) {
-        const newDealerBooking: DealerBooking = {
-          id: bookingId,
-          dealerId: uid,
-          dealerEmail: normalizedEmail,
-          dealerName: userData.name || cached?.name || 'ڈیلر',
-          category,
-          number,
-          firstAmount,
-          secondAmount,
-          timestamp: new Date().toISOString(),
-          ...(drawId && { drawId }),
-          ...(bondValue && { bondValue }),
-          ...(drawNumber && { drawNumber }),
-          ...(drawCity && { drawCity }),
-          ...(drawDate && { drawDate })
-        };
-        transaction.set(bookingRef, newDealerBooking);
-      } else {
-        const newBooking: Booking = {
-          id: bookingId,
-          userEmail: normalizedEmail,
-          category,
-          number,
-          firstAmount,
-          secondAmount,
-          timestamp: new Date().toISOString(),
-          ...(drawId && { drawId }),
-          ...(bondValue && { bondValue }),
-          ...(drawNumber && { drawNumber }),
-          ...(drawCity && { drawCity }),
-          ...(drawDate && { drawDate })
-        };
-        transaction.set(bookingRef, newBooking);
-      }
-
-      const tx: Transaction = {
-        id: txId,
-        userId: uid,
+    let newBookingObj: Booking | DealerBooking;
+    if (isDealer) {
+      newBookingObj = {
+        id: bookingId,
+        dealerId: uid,
+        dealerEmail: normalizedEmail,
+        dealerName: userData.name || cached?.name || 'ڈیلر',
+        category,
+        number,
+        firstAmount,
+        secondAmount,
+        timestamp: new Date().toISOString(),
+        ...(drawId && { drawId }),
+        ...(bondValue && { bondValue }),
+        ...(drawNumber && { drawNumber }),
+        ...(drawCity && { drawCity }),
+        ...(drawDate && { drawDate })
+      } as DealerBooking;
+    } else {
+      newBookingObj = {
+        id: bookingId,
         userEmail: normalizedEmail,
-        userName: userData.name || cached?.name || (isDealer ? 'ڈیلر' : 'صارف'),
-        type: 'booking_deduction',
-        amount: totalCost,
-        date: new Date().toISOString(),
-        status: 'approved',
-        note: `${categoryLabelMap[category] || category} نمبر #${number} ${isDealer ? 'ڈیلر ' : ''}بکنگ کٹوتی`
-      };
+        category,
+        number,
+        firstAmount,
+        secondAmount,
+        timestamp: new Date().toISOString(),
+        ...(drawId && { drawId }),
+        ...(bondValue && { bondValue }),
+        ...(drawNumber && { drawNumber }),
+        ...(drawCity && { drawCity }),
+        ...(drawDate && { drawDate })
+      } as Booking;
+    }
 
-      transaction.set(txRef, tx);
-      transaction.update(userRef, {
-        balance: currentBal - totalCost
-      });
+    const tx: Transaction = {
+      id: txId,
+      userId: uid,
+      userEmail: normalizedEmail,
+      userName: userData.name || cached?.name || (isDealer ? 'ڈیلر' : 'صارف'),
+      type: 'booking_deduction',
+      amount: totalCost,
+      date: new Date().toISOString(),
+      status: 'approved',
+      note: `${categoryLabelMap[category] || category} نمبر #${number} ${isDealer ? 'ڈیلر ' : ''}بکنگ کٹوتی`
+    };
 
-      return { success: true };
-    });
+    const updates: Record<string, any> = {};
+    updates[`${collectionPath}/${bookingId}`] = newBookingObj;
+    updates[`transactions/${txId}`] = tx;
+    updates[`users/${uid}/balance`] = currentBal - totalCost;
+
+    await update(ref(db), updates);
 
     if (cached) {
       cached.balance = (cached.balance || 0) - totalCost;
     }
     notifyListeners();
-    return result;
+    return { success: true };
   } catch (err: any) {
     console.error("Booking transaction failed:", err);
     return { success: false, error: err.message || 'بکنگ کے دوران غلطی پیش آئی۔' };
@@ -1472,29 +1462,23 @@ export async function cancelDealerBooking(bookingId: string): Promise<{ success:
   }
 
   const dealerId = booking.dealerId;
-  const userRef = doc(db, 'users', dealerId);
-  const bookingRef = doc(db, 'dealerBookings', bookingId);
   const refundAmount = booking.firstAmount + booking.secondAmount;
 
   try {
-    const result = await runTransaction(db, async (transaction) => {
-      const bookingDoc = await transaction.get(bookingRef);
-      if (!bookingDoc.exists()) {
-        throw new Error('یہ ڈیلر بکنگ پہلے ہی منسوخ ہو چکی ہے۔');
-      }
-      const userDoc = await transaction.get(userRef);
-      if (userDoc.exists()) {
-        const userData = userDoc.data() as User;
-        transaction.update(userRef, {
-          balance: userData.balance + refundAmount
-        });
-      }
-      transaction.delete(bookingRef);
-      return { success: true };
-    });
-    return result;
+    const userSnap = await get(ref(db, `users/${dealerId}`));
+    const userData = userSnap.exists() ? (userSnap.val() as User) : null;
+    const currentBalance = userData?.balance || 0;
+
+    const updates: Record<string, any> = {};
+    updates[`dealerBookings/${bookingId}`] = null;
+    if (userData) {
+      updates[`users/${dealerId}/balance`] = currentBalance + refundAmount;
+    }
+
+    await update(ref(db), updates);
+    return { success: true };
   } catch (err: any) {
-    console.error("Cancel dealer booking transaction failed:", err);
+    console.error("Cancel dealer booking failed:", err);
     return { success: false, error: err.message || 'منسوخی کے دوران غلطی پیش آئی۔' };
   }
 }
@@ -1509,29 +1493,23 @@ export async function cancelDealerBookingByAdmin(bookingId: string): Promise<{ s
   if (!booking) return { success: false, error: 'ڈیلر بکنگ کا ریکارڈ نہیں ملا' };
 
   const dealerId = booking.dealerId;
-  const userRef = doc(db, 'users', dealerId);
-  const bookingRef = doc(db, 'dealerBookings', bookingId);
   const refundAmount = booking.firstAmount + booking.secondAmount;
 
   try {
-    const result = await runTransaction(db, async (transaction) => {
-      const bookingDoc = await transaction.get(bookingRef);
-      if (!bookingDoc.exists()) {
-        throw new Error('یہ ڈیلر بکنگ پہلے ہی منسوخ ہو چکی ہے۔');
-      }
-      const userDoc = await transaction.get(userRef);
-      if (userDoc.exists()) {
-        const userData = userDoc.data() as User;
-        transaction.update(userRef, {
-          balance: userData.balance + refundAmount
-        });
-      }
-      transaction.delete(bookingRef);
-      return { success: true };
-    });
-    return result;
+    const userSnap = await get(ref(db, `users/${dealerId}`));
+    const userData = userSnap.exists() ? (userSnap.val() as User) : null;
+    const currentBalance = userData?.balance || 0;
+
+    const updates: Record<string, any> = {};
+    updates[`dealerBookings/${bookingId}`] = null;
+    if (userData) {
+      updates[`users/${dealerId}/balance`] = currentBalance + refundAmount;
+    }
+
+    await update(ref(db), updates);
+    return { success: true };
   } catch (err: any) {
-    console.error("Admin cancel dealer booking transaction failed:", err);
+    console.error("Admin cancel dealer booking failed:", err);
     return { success: false, error: err.message || 'منسوخی کے دوران غلطی پیش آئی۔' };
   }
 }
@@ -1545,9 +1523,8 @@ export async function assignDealerRole(uid: string, enableDealer: boolean): Prom
   }
 
   try {
-    const userRef = doc(db, 'users', uid);
     const newRole = enableDealer ? 'dealer' : 'customer';
-    await updateDoc(userRef, {
+    await update(ref(db, `users/${uid}`), {
       role: newRole
     });
 
@@ -1584,52 +1561,39 @@ export async function cancelBooking(bookingId: string): Promise<{ success: boole
   if (!cached || !cached.uid) {
     return { success: false, error: 'کسٹمر ریکارڈ (یا یو آئی ڈی) نہیں ملا۔' };
   }
-  const userRef = doc(db, 'users', cached.uid);
-  const bookingRef = doc(db, 'bookings', bookingId);
   const refundAmount = booking.firstAmount + booking.secondAmount;
   const refundTxId = 'refund-' + bookingId;
-  const refundTxRef = doc(db, 'transactions', refundTxId);
 
   try {
-    const result = await runTransaction(db, async (transaction) => {
-      const bookingDoc = await transaction.get(bookingRef);
-      if (!bookingDoc.exists()) {
-        throw new Error('یہ بکنگ پہلے ہی منسوخ ہو چکی ہے۔');
-      }
+    const userSnap = await get(ref(db, `users/${cached.uid}`));
+    if (!userSnap.exists()) {
+      throw new Error('کسٹمر کا والٹ ریکارڈ موجود نہیں ہے۔');
+    }
+    const userData = userSnap.val() as User;
 
-      const userDoc = await transaction.get(userRef);
-      if (!userDoc.exists()) {
-        throw new Error('کسٹمر کا والٹ ریکارڈ موجود نہیں ہے۔');
-      }
+    const refundTx: Transaction = {
+      id: refundTxId,
+      userId: cached.uid!,
+      userEmail: userEmail,
+      userName: userData.name || cached.name || 'صارف',
+      type: 'refund',
+      amount: refundAmount,
+      date: new Date().toISOString(),
+      status: 'approved',
+      bookingId: bookingId,
+      note: `بکنگ #${bookingId} کی منسوخی پر والٹ ریفنڈ`
+    };
 
-      const userData = userDoc.data() as User;
+    const updates: Record<string, any> = {};
+    updates[`transactions/${refundTxId}`] = refundTx;
+    updates[`users/${cached.uid}/balance`] = (userData.balance || 0) + refundAmount;
+    updates[`users/${cached.uid}/lastRefundBookingId`] = bookingId;
+    updates[`bookings/${bookingId}`] = null;
 
-      const refundTx: Transaction = {
-        id: refundTxId,
-        userId: cached.uid!,
-        userEmail: userEmail,
-        userName: userData.name || cached.name || 'صارف',
-        type: 'refund',
-        amount: refundAmount,
-        date: new Date().toISOString(),
-        status: 'approved',
-        bookingId: bookingId,
-        note: `بکنگ #${bookingId} کی منسوخی پر والٹ ریفنڈ`
-      };
-
-      transaction.set(refundTxRef, refundTx);
-
-      transaction.update(userRef, {
-        balance: userData.balance + refundAmount,
-        lastRefundBookingId: bookingId
-      });
-
-      transaction.delete(bookingRef);
-      return { success: true };
-    });
-    return result;
+    await update(ref(db), updates);
+    return { success: true };
   } catch (err: any) {
-    console.error("Cancel booking transaction failed:", err);
+    console.error("Cancel booking failed:", err);
     return { success: false, error: err.message || 'منسوخی کے دوران غلطی پیش آئی۔' };
   }
 }
@@ -1648,52 +1612,39 @@ export async function cancelBookingByAdmin(bookingId: string): Promise<{ success
   if (!cached || !cached.uid) {
     return { success: false, error: 'کسٹمر ریکارڈ (یا یو آئی ڈی) نہیں ملا۔' };
   }
-  const userRef = doc(db, 'users', cached.uid);
-  const bookingRef = doc(db, 'bookings', bookingId);
   const refundAmount = booking.firstAmount + booking.secondAmount;
   const refundTxId = 'refund-' + bookingId;
-  const refundTxRef = doc(db, 'transactions', refundTxId);
 
   try {
-    const result = await runTransaction(db, async (transaction) => {
-      const bookingDoc = await transaction.get(bookingRef);
-      if (!bookingDoc.exists()) {
-        throw new Error('یہ بکنگ پہلے ہی منسوخ ہو چکی ہے۔');
-      }
+    const userSnap = await get(ref(db, `users/${cached.uid}`));
+    if (!userSnap.exists()) {
+      throw new Error('کسٹمر کا والٹ ریکارڈ موجود نہیں ہے۔');
+    }
+    const userData = userSnap.val() as User;
 
-      const userDoc = await transaction.get(userRef);
-      if (!userDoc.exists()) {
-        throw new Error('کسٹمر کا والٹ ریکارڈ موجود نہیں ہے۔');
-      }
+    const refundTx: Transaction = {
+      id: refundTxId,
+      userId: cached.uid!,
+      userEmail: userEmail,
+      userName: userData.name || cached.name || 'صارف',
+      type: 'refund',
+      amount: refundAmount,
+      date: new Date().toISOString(),
+      status: 'approved',
+      bookingId: bookingId,
+      note: `ایڈمن کی جانب سے بکنگ #${bookingId} کی منسوخی پر والٹ ریفنڈ`
+    };
 
-      const userData = userDoc.data() as User;
+    const updates: Record<string, any> = {};
+    updates[`transactions/${refundTxId}`] = refundTx;
+    updates[`users/${cached.uid}/balance`] = (userData.balance || 0) + refundAmount;
+    updates[`users/${cached.uid}/lastRefundBookingId`] = bookingId;
+    updates[`bookings/${bookingId}`] = null;
 
-      const refundTx: Transaction = {
-        id: refundTxId,
-        userId: cached.uid!,
-        userEmail: userEmail,
-        userName: userData.name || cached.name || 'صارف',
-        type: 'refund',
-        amount: refundAmount,
-        date: new Date().toISOString(),
-        status: 'approved',
-        bookingId: bookingId,
-        note: `ایڈمن کی جانب سے بکنگ #${bookingId} کی منسوخی پر والٹ ریفنڈ`
-      };
-
-      transaction.set(refundTxRef, refundTx);
-
-      transaction.update(userRef, {
-        balance: userData.balance + refundAmount,
-        lastRefundBookingId: bookingId
-      });
-
-      transaction.delete(bookingRef);
-      return { success: true };
-    });
-    return result;
+    await update(ref(db), updates);
+    return { success: true };
   } catch (err: any) {
-    console.error("Admin cancel booking transaction failed:", err);
+    console.error("Admin cancel booking failed:", err);
     return { success: false, error: err.message || 'منسوخی کے دوران غلطی پیش آئی۔' };
   }
 }
@@ -1712,7 +1663,7 @@ export async function setOrUpdateLimit(category: DrawCategory, number: string, m
     maxAmount,
     ...(drawId && { drawId })
   };
-  await setDoc(doc(db, 'limits', limitId), limit);
+  await set(ref(db, `limits/${limitId}`), limit);
 
   const idx = cachedLimits.findIndex(l => l.id === limitId);
   if (idx !== -1) {
@@ -1726,7 +1677,7 @@ export async function setOrUpdateLimit(category: DrawCategory, number: string, m
 export async function deleteLimit(id: string): Promise<void> {
   const online = await checkInternetConnection();
   if (!online) return;
-  await deleteDoc(doc(db, 'limits', id));
+  await remove(ref(db, `limits/${id}`));
 
   cachedLimits = cachedLimits.filter(l => l.id !== id);
   notifyListeners();
@@ -1739,8 +1690,12 @@ export function getDemands(): Demand[] {
 export async function saveDemands(demands: Demand[]): Promise<void> {
   const online = await checkInternetConnection();
   if (!online) return;
+  const updates: Record<string, any> = {};
   for (const d of demands) {
-    await setDoc(doc(db, 'demands', d.id), d);
+    updates[`demands/${d.id}`] = d;
+  }
+  if (Object.keys(updates).length > 0) {
+    await update(ref(db), updates);
   }
 }
 
@@ -1770,33 +1725,33 @@ export async function addDemand(
     return { success: false, error: 'آپ کے والٹ میں کافی رقم موجود نہیں ہے' };
   }
 
-    const demandId = 'demand-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+  const demandId = 'demand-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
 
-    // Capture dealer identity at Demand creation time.
-    const isDealer = user.role === 'dealer';
+  // Capture dealer identity at Demand creation time.
+  const isDealer = user.role === 'dealer';
 
-    const newDemand: Demand = {
-      id: demandId,
-      userEmail: normalizedEmail,
-      ...(isDealer && { requesterRole: 'dealer' as const }),
-      ...(isDealer && user.uid && { dealerId: user.uid }),
-      ...(isDealer && { dealerEmail: user.email || normalizedEmail }),
-      ...(isDealer && { dealerName: user.name || 'ڈیلر' }),
-      category,
-      number,
-      firstAmount,
-      secondAmount,
-      timestamp: new Date().toISOString(),
-      status: 'pending',
-      ...(drawId && { drawId }),
-      ...(bondValue && { bondValue }),
-      ...(drawNumber && { drawNumber }),
-      ...(drawCity && { drawCity }),
-      ...(drawDate && { drawDate })
-    };
+  const newDemand: Demand = {
+    id: demandId,
+    userEmail: normalizedEmail,
+    ...(isDealer && { requesterRole: 'dealer' as const }),
+    ...(isDealer && user.uid && { dealerId: user.uid }),
+    ...(isDealer && { dealerEmail: user.email || normalizedEmail }),
+    ...(isDealer && { dealerName: user.name || 'ڈیلر' }),
+    category,
+    number,
+    firstAmount,
+    secondAmount,
+    timestamp: new Date().toISOString(),
+    status: 'pending',
+    ...(drawId && { drawId }),
+    ...(bondValue && { bondValue }),
+    ...(drawNumber && { drawNumber }),
+    ...(drawCity && { drawCity }),
+    ...(drawDate && { drawDate })
+  };
 
   try {
-    await setDoc(doc(db, 'demands', demandId), newDemand);
+    await set(ref(db, `demands/${demandId}`), newDemand);
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message || 'ڈیمانڈ بھیجنے کے دوران غلطی پیش آئی۔' };
@@ -1850,7 +1805,6 @@ export async function approveDemand(
 
   const isDealer = requesterRole === 'dealer';
 
-  const userRef = doc(db, 'users', cached.uid);
   const bookingId =
     (isDealer ? 'dlr-booking-' : 'booking-') +
     Date.now() +
@@ -1858,186 +1812,145 @@ export async function approveDemand(
     Math.floor(Math.random() * 1000);
 
   const bookingCollection = isDealer ? 'dealerBookings' : 'bookings';
-  const bookingRef = doc(db, bookingCollection, bookingId);
-  const demandRef = doc(db, 'demands', demandId);
-    // Deterministic ledger ID: Firestore rules verify this exact
-    // transaction against the approved booking.
-    const txId = 'tx-booking-' + bookingId;
-    const txRef = doc(db, 'transactions', txId);
+  const txId = 'tx-booking-' + bookingId;
 
   try {
-    const result = await runTransaction(db, async (transaction) => {
-      /*
-       * READ ALL DOCUMENTS FIRST.
-       * Firestore transactions require reads to happen before writes.
-       */
-      const demandDoc = await transaction.get(demandRef);
-
-      if (!demandDoc.exists()) {
-        throw new Error('ڈیمانڈ ریکارڈ نہیں ملا');
-      }
-
-      const currentDemand = demandDoc.data() as Demand;
-
-      if (currentDemand.status !== 'pending') {
-        throw new Error('یہ ڈیمانڈ پہلے ہی عمل میں لائی جا چکی ہے');
-      }
-
-      const userDoc = await transaction.get(userRef);
-
-      if (!userDoc.exists()) {
-        throw new Error('صارف کا ریکارڈ نہیں ملا');
-      }
-
-      const userData = userDoc.data() as User;
-      const currentBalance = userData.balance ?? 0;
-
-      const totalCost =
-        (currentDemand.firstAmount || 0) +
-        (currentDemand.secondAmount || 0);
-
-      if (totalCost <= 0) {
-        throw new Error('ڈیمانڈ کی رقم درست نہیں ہے');
-      }
-
-      if (currentBalance < totalCost) {
-        throw new Error('صارف کے والٹ میں کافی رقم موجود نہیں ہے');
-      }
-
-      /*
-       * Create the booking that belongs to this approved Demand.
-       */
-      if (isDealer) {
-        const dealerBooking: DealerBooking = {
-          id: bookingId,
-          dealerId: cached.uid,
-          dealerEmail:
-            userData.email ||
-            currentDemand.dealerEmail ||
-            userEmail,
-          dealerName:
-            userData.name ||
-            currentDemand.dealerName ||
-            cached.name ||
-            'ڈیلر',
-          category: currentDemand.category,
-          number: currentDemand.number,
-          firstAmount: currentDemand.firstAmount,
-          secondAmount: currentDemand.secondAmount,
-          timestamp: new Date().toISOString(),
-          ...(currentDemand.drawId && {
-            drawId: currentDemand.drawId
-          }),
-          ...(currentDemand.bondValue && {
-            bondValue: currentDemand.bondValue
-          }),
-          ...(currentDemand.drawNumber && {
-            drawNumber: currentDemand.drawNumber
-          }),
-          ...(currentDemand.drawCity && {
-            drawCity: currentDemand.drawCity
-          }),
-          ...(currentDemand.drawDate && {
-            drawDate: currentDemand.drawDate
-          })
-        };
-
-        transaction.set(bookingRef, dealerBooking);
-      } else {
-        const customerBooking: Booking = {
-          id: bookingId,
-          userEmail: currentDemand.userEmail,
-          category: currentDemand.category,
-          number: currentDemand.number,
-          firstAmount: currentDemand.firstAmount,
-          secondAmount: currentDemand.secondAmount,
-          timestamp: new Date().toISOString(),
-          ...(currentDemand.drawId && {
-            drawId: currentDemand.drawId
-          }),
-          ...(currentDemand.bondValue && {
-            bondValue: currentDemand.bondValue
-          }),
-          ...(currentDemand.drawNumber && {
-            drawNumber: currentDemand.drawNumber
-          }),
-          ...(currentDemand.drawCity && {
-            drawCity: currentDemand.drawCity
-          }),
-          ...(currentDemand.drawDate && {
-            drawDate: currentDemand.drawDate
-          })
-        };
-
-        transaction.set(bookingRef, customerBooking);
-      }
-
-      /*
-       * FINANCIAL LEDGER:
-       * Every approved Demand now gets an explicit booking_deduction
-       * transaction tied to the exact booking created above.
-       */
-      const categoryLabelMap: Record<DrawCategory, string> = {
-        pakistan_bond: 'پاکستان پرائز بانڈ',
-        thailand_lottery: 'تھائی لینڈ لاٹری'
-      };
-
-      const tx: Transaction = {
-        id: txId,
-        userId: cached.uid,
-        userEmail:
-          userData.email ||
-          currentDemand.userEmail ||
-          userEmail,
-        userName:
-          userData.name ||
-          cached.name ||
-          (isDealer ? 'ڈیلر' : 'صارف'),
-        type: 'booking_deduction',
-        amount: totalCost,
-        date: new Date().toISOString(),
-        status: 'approved',
-        bookingId: bookingId,
-        note:
-          `${categoryLabelMap[currentDemand.category] || currentDemand.category} ` +
-          `نمبر #${currentDemand.number} ` +
-          `${isDealer ? 'ڈیلر ' : ''}بکنگ ڈیمانڈ منظوری کٹوتی`
-      };
-
-      transaction.set(txRef, tx);
-
-      /*
-       * Wallet deduction is part of the SAME atomic transaction.
-       */
-      transaction.update(userRef, {
-          balance: currentBalance - totalCost,
-          lastBookingId: bookingId
-        });
-
-      /*
-       * Demand approval is part of the SAME atomic transaction.
-       */
-      transaction.update(demandRef, {
-        status: 'approved'
-      });
-
-      return { success: true };
-    });
-
-    if (result.success) {
-      cached.balance =
-        (cached.balance || 0) -
-        ((demand.firstAmount || 0) + (demand.secondAmount || 0));
-
-      /*
-       * Keep local demand cache consistent with Firestore.
-       */
-      demand.status = 'approved';
-
-      notifyListeners();
+    const demandSnap = await get(ref(db, `demands/${demandId}`));
+    if (!demandSnap.exists()) {
+      throw new Error('ڈیمانڈ ریکارڈ نہیں ملا');
     }
 
-    return result;
+    const currentDemand = demandSnap.val() as Demand;
+    if (currentDemand.status !== 'pending') {
+      throw new Error('یہ ڈیمانڈ پہلے ہی عمل میں لائی جا چکی ہے');
+    }
+
+    const userSnap = await get(ref(db, `users/${cached.uid}`));
+    if (!userSnap.exists()) {
+      throw new Error('صارف کا ریکارڈ نہیں ملا');
+    }
+
+    const userData = userSnap.val() as User;
+    const currentBalance = userData.balance ?? 0;
+
+    const totalCost =
+      (currentDemand.firstAmount || 0) +
+      (currentDemand.secondAmount || 0);
+
+    if (totalCost <= 0) {
+      throw new Error('ڈیمانڈ کی رقم درست نہیں ہے');
+    }
+
+    if (currentBalance < totalCost) {
+      throw new Error('صارف کے والٹ میں کافی رقم موجود نہیں ہے');
+    }
+
+    let bookingObj: Booking | DealerBooking;
+    if (isDealer) {
+      bookingObj = {
+        id: bookingId,
+        dealerId: cached.uid,
+        dealerEmail:
+          userData.email ||
+          currentDemand.dealerEmail ||
+          userEmail,
+        dealerName:
+          userData.name ||
+          currentDemand.dealerName ||
+          cached.name ||
+          'ڈیلر',
+        category: currentDemand.category,
+        number: currentDemand.number,
+        firstAmount: currentDemand.firstAmount,
+        secondAmount: currentDemand.secondAmount,
+        timestamp: new Date().toISOString(),
+        ...(currentDemand.drawId && {
+          drawId: currentDemand.drawId
+        }),
+        ...(currentDemand.bondValue && {
+          bondValue: currentDemand.bondValue
+        }),
+        ...(currentDemand.drawNumber && {
+          drawNumber: currentDemand.drawNumber
+        }),
+        ...(currentDemand.drawCity && {
+          drawCity: currentDemand.drawCity
+        }),
+        ...(currentDemand.drawDate && {
+          drawDate: currentDemand.drawDate
+        })
+      } as DealerBooking;
+    } else {
+      bookingObj = {
+        id: bookingId,
+        userEmail: currentDemand.userEmail,
+        category: currentDemand.category,
+        number: currentDemand.number,
+        firstAmount: currentDemand.firstAmount,
+        secondAmount: currentDemand.secondAmount,
+        timestamp: new Date().toISOString(),
+        ...(currentDemand.drawId && {
+          drawId: currentDemand.drawId
+        }),
+        ...(currentDemand.bondValue && {
+          bondValue: currentDemand.bondValue
+        }),
+        ...(currentDemand.drawNumber && {
+          drawNumber: currentDemand.drawNumber
+        }),
+        ...(currentDemand.drawCity && {
+          drawCity: currentDemand.drawCity
+        }),
+        ...(currentDemand.drawDate && {
+          drawDate: currentDemand.drawDate
+        })
+      } as Booking;
+    }
+
+    const categoryLabelMap: Record<DrawCategory, string> = {
+      pakistan_bond: 'پاکستان پرائز بانڈ',
+      thailand_lottery: 'تھائی لینڈ لاٹری'
+    };
+
+    const tx: Transaction = {
+      id: txId,
+      userId: cached.uid,
+      userEmail:
+        userData.email ||
+        currentDemand.userEmail ||
+        userEmail,
+      userName:
+        userData.name ||
+        cached.name ||
+        (isDealer ? 'ڈیلر' : 'صارف'),
+      type: 'booking_deduction',
+      amount: totalCost,
+      date: new Date().toISOString(),
+      status: 'approved',
+      bookingId: bookingId,
+      note:
+        `${categoryLabelMap[currentDemand.category] || currentDemand.category} ` +
+        `نمبر #${currentDemand.number} ` +
+        `${isDealer ? 'ڈیلر ' : ''}بکنگ ڈیمانڈ منظوری کٹوتی`
+    };
+
+    const updates: Record<string, any> = {};
+    updates[`${bookingCollection}/${bookingId}`] = bookingObj;
+    updates[`transactions/${txId}`] = tx;
+    updates[`users/${cached.uid}/balance`] = currentBalance - totalCost;
+    updates[`users/${cached.uid}/lastBookingId`] = bookingId;
+    updates[`demands/${demandId}/status`] = 'approved';
+
+    await update(ref(db), updates);
+
+    cached.balance =
+      (cached.balance || 0) -
+      ((demand.firstAmount || 0) + (demand.secondAmount || 0));
+
+    demand.status = 'approved';
+    notifyListeners();
+
+    return { success: true };
   } catch (err: any) {
     console.error(
       'Approve demand transaction failed:',
@@ -2067,8 +1980,7 @@ export async function rejectDemand(demandId: string): Promise<{ success: boolean
   }
 
   try {
-    await setDoc(doc(db, 'demands', demandId), {
-      ...demand,
+    await update(ref(db, `demands/${demandId}`), {
       status: 'rejected'
     });
     return { success: true };
@@ -2084,9 +1996,13 @@ export function getDrawDeadlines(): DrawDeadline[] {
 export async function saveDrawDeadlines(deadlines: DrawDeadline[]): Promise<void> {
   const online = await checkInternetConnection();
   if (!online) return;
+  const updates: Record<string, any> = {};
   for (const d of deadlines) {
     const targetId = d.id || d.category;
-    await setDoc(doc(db, 'deadlines', targetId), { ...d, id: targetId });
+    updates[`deadlines/${targetId}`] = { ...d, id: targetId };
+  }
+  if (Object.keys(updates).length > 0) {
+    await update(ref(db), updates);
   }
 }
 
@@ -2124,7 +2040,7 @@ export async function setDrawDeadline(
     createdAt: existing?.createdAt || now,
     updatedAt: now
   };
-  await setDoc(doc(db, 'deadlines', targetDocId), deadline);
+  await set(ref(db, `deadlines/${targetDocId}`), deadline);
 
   const idx = cachedDeadlines.findIndex(d => (d.id || d.drawId || d.category) === targetDocId);
   if (idx !== -1) {
@@ -2138,7 +2054,7 @@ export async function setDrawDeadline(
 export async function deleteDrawDeadline(id: string): Promise<void> {
   const online = await checkInternetConnection();
   if (!online) return;
-  await deleteDoc(doc(db, 'deadlines', id));
+  await remove(ref(db, `deadlines/${id}`));
   cachedDeadlines = cachedDeadlines.filter(d => d.id !== id);
   notifyListeners();
 }
@@ -2156,81 +2072,86 @@ export function getThaiLotteryResults(): ThaiLotteryResult[] {
 }
 
 export async function autoCleanOldDrawData(category: 'pakistan_bond' | 'thailand_lottery', targetDrawId?: string): Promise<void> {
+  if (!targetDrawId) {
+    console.log(`[Store] No targetDrawId provided for autoCleanOldDrawData (${category}). Skipping archiving of active draws.`);
+    return;
+  }
+
   try {
-    console.log(`Starting auto archiving for completed draw data of category: ${category}, drawId: ${targetDrawId || 'all'}`);
+    console.log(`Starting auto archiving for completed draw data of category: ${category}, drawId: ${targetDrawId}`);
     
-    // 1. Archive bookings of this draw/category
-    const bookingsRef = collection(db, 'bookings');
-    const bookingsQuery = targetDrawId 
-      ? query(bookingsRef, where('drawId', '==', targetDrawId))
-      : query(bookingsRef, where('category', '==', category));
-    const bookingsSnapshot = await getDocs(bookingsQuery);
-    
-    for (const d of bookingsSnapshot.docs) {
-      await updateDoc(doc(db, 'bookings', d.id), { isArchived: true });
-    }
-    console.log(`Archived ${bookingsSnapshot.size} bookings for category ${category}`);
+    const updates: Record<string, any> = {};
 
-    // 2. Archive dealer bookings of this draw/category
-    // DealerBooking already contains drawId and isArchived.
-    const dealerBookingsRef = collection(db, 'dealerBookings');
-    const dealerBookingsQuery = targetDrawId
-      ? query(dealerBookingsRef, where('drawId', '==', targetDrawId))
-      : query(dealerBookingsRef, where('category', '==', category));
-    const dealerBookingsSnapshot = await getDocs(dealerBookingsQuery);
-
-    for (const d of dealerBookingsSnapshot.docs) {
-      await updateDoc(doc(db, 'dealerBookings', d.id), { isArchived: true });
-    }
-
-    console.log(`Archived ${dealerBookingsSnapshot.size} dealer bookings for category ${category}`);
-
-    // 3. Archive demands of this draw/category
-    const demandsRef = collection(db, 'demands');
-    const demandsQuery = targetDrawId
-      ? query(demandsRef, where('drawId', '==', targetDrawId))
-      : query(demandsRef, where('category', '==', category));
-    const demandsSnapshot = await getDocs(demandsQuery);
-
-    for (const d of demandsSnapshot.docs) {
-      await updateDoc(doc(db, 'demands', d.id), { isArchived: true });
-    }
-
-    // 4. Archive number limits of this draw/category
-    const limitsRef = collection(db, 'limits');
-    const limitsQuery = targetDrawId
-      ? query(limitsRef, where('drawId', '==', targetDrawId))
-      : query(limitsRef, where('category', '==', category));
-    const limitsSnapshot = await getDocs(limitsQuery);
-    
-    for (const d of limitsSnapshot.docs) {
-      await updateDoc(doc(db, 'limits', d.id), { isArchived: true });
-    }
-
-    // 5. Remove the completed draw deadline.
-    // Bookings/demands/limits are archived above; the deadline itself
-    // is deleted so completed draws no longer appear as active deadlines.
-    if (targetDrawId) {
-      const deadlineRef = doc(db, 'deadlines', targetDrawId);
-      await deleteDoc(deadlineRef);
-      cachedDeadlines = cachedDeadlines.filter(
-        d => d.id !== targetDrawId && d.drawId !== targetDrawId
-      );
-    } else {
-      const deadlinesRef = collection(db, 'deadlines');
-      const deadlinesQuery = query(
-        deadlinesRef,
-        where('category', '==', category)
-      );
-      const deadlinesSnapshot = await getDocs(deadlinesQuery);
-
-      for (const d of deadlinesSnapshot.docs) {
-        await deleteDoc(doc(db, 'deadlines', d.id));
+    // 1. Archive customer and admin bookings of this specific draw only
+    const bookingsSnap = await get(ref(db, 'bookings'));
+    if (bookingsSnap.exists()) {
+      const val = bookingsSnap.val();
+      for (const id of Object.keys(val)) {
+        if (val[id]?.drawId === targetDrawId) {
+          updates[`bookings/${id}/isArchived`] = true;
+        }
       }
+    }
 
-      cachedDeadlines = cachedDeadlines.filter(
-        d => d.category !== category
-      );
+    // 2. Archive dealer bookings of this specific draw only
+    const dealerBookingsSnap = await get(ref(db, 'dealerBookings'));
+    if (dealerBookingsSnap.exists()) {
+      const val = dealerBookingsSnap.val();
+      for (const id of Object.keys(val)) {
+        if (val[id]?.drawId === targetDrawId) {
+          updates[`dealerBookings/${id}/isArchived`] = true;
+        }
+      }
+    }
+
+    // 3. Archive demands of this specific draw only
+    const demandsSnap = await get(ref(db, 'demands'));
+    if (demandsSnap.exists()) {
+      const val = demandsSnap.val();
+      for (const id of Object.keys(val)) {
+        if (val[id]?.drawId === targetDrawId) {
+          updates[`demands/${id}/isArchived`] = true;
+        }
+      }
+    }
+
+    // 4. Archive number limits of this specific draw only
+    const limitsSnap = await get(ref(db, 'limits'));
+    if (limitsSnap.exists()) {
+      const val = limitsSnap.val();
+      for (const id of Object.keys(val)) {
+        if (val[id]?.drawId === targetDrawId) {
+          updates[`limits/${id}/isArchived`] = true;
+        }
+      }
+    }
+
+    // 5. Update the related draw deadline document to result_announced
+    const matchingDeadline = cachedDeadlines.find(
+      d => d.id === targetDrawId || d.drawId === targetDrawId
+    );
+    const deadlineDocId = matchingDeadline?.id || targetDrawId;
+
+    updates[`deadlines/${deadlineDocId}/status`] = 'result_announced';
+    updates[`deadlines/${deadlineDocId}/bookingStatusUrdu`] = 'بکنگ بند ہے';
+    updates[`deadlines/${deadlineDocId}/isArchived`] = false;
+    updates[`deadlines/${deadlineDocId}/updatedAt`] = new Date().toISOString();
+
+    if (Object.keys(updates).length > 0) {
+      await update(ref(db), updates);
+    }
+
+    const idx = cachedDeadlines.findIndex(
+      d => d.id === deadlineDocId || d.drawId === targetDrawId
+    );
+
+    if (idx !== -1) {
+      cachedDeadlines[idx] = {
+        ...cachedDeadlines[idx],
+        status: 'result_announced',
+        bookingStatusUrdu: 'بکنگ بند ہے',
+        isArchived: false
+      };
     }
 
     notifyListeners();
@@ -2271,9 +2192,27 @@ export async function addResult(result: AllResultType): Promise<{ success: boole
 
   try {
     const colName = result.category === 'pakistan_bond' ? 'pakistanBondResults' : 'thaiLotteryResults';
-    await setDoc(doc(db, colName, result.id), result);
-    // Archive completed draw data automatically
-    await autoCleanOldDrawData(result.category, result.drawId);
+    await set(ref(db, `${colName}/${result.id}`), result);
+
+    // Update local cache immediately
+    if (result.category === 'pakistan_bond') {
+      const pb = result as PakistanBondResult;
+      const idx = cachedPakistanBondResults.findIndex(r => r.id === pb.id);
+      if (idx !== -1) cachedPakistanBondResults[idx] = pb;
+      else cachedPakistanBondResults.unshift(pb);
+    } else {
+      const tl = result as ThaiLotteryResult;
+      const idx = cachedThaiLotteryResults.findIndex(r => r.id === tl.id);
+      if (idx !== -1) cachedThaiLotteryResults[idx] = tl;
+      else cachedThaiLotteryResults.unshift(tl);
+    }
+    notifyListeners();
+
+    // Archive completed draw data automatically for the related draw only
+    if (result.drawId) {
+      await autoCleanOldDrawData(result.category, result.drawId);
+    }
+
     return { success: true };
   } catch (err: any) {
     console.error("Add result failed:", err);
@@ -2287,9 +2226,32 @@ export async function editResult(result: AllResultType): Promise<{ success: bool
 
   try {
     const colName = result.category === 'pakistan_bond' ? 'pakistanBondResults' : 'thaiLotteryResults';
-    await setDoc(doc(db, colName, result.id), result, { merge: true });
-    // Archive completed draw data automatically
-    await autoCleanOldDrawData(result.category, result.drawId);
+    await update(ref(db, `${colName}/${result.id}`), result);
+
+    // Update local cache immediately
+    if (result.category === 'pakistan_bond') {
+      const pb = result as PakistanBondResult;
+      const idx = cachedPakistanBondResults.findIndex(r => r.id === pb.id);
+      if (idx !== -1) cachedPakistanBondResults[idx] = pb;
+      else cachedPakistanBondResults.unshift(pb);
+    } else {
+      const tl = result as ThaiLotteryResult;
+      const idx = cachedThaiLotteryResults.findIndex(r => r.id === tl.id);
+      if (idx !== -1) cachedThaiLotteryResults[idx] = tl;
+      else cachedThaiLotteryResults.unshift(tl);
+    }
+    notifyListeners();
+
+    // Only clean draw data if linked to an active unannounced draw; do not modify unrelated draws or historical records
+    if (result.drawId) {
+      const activeMatchingDeadline = cachedDeadlines.find(
+        d => (d.id === result.drawId || d.drawId === result.drawId) && d.status !== 'result_announced'
+      );
+      if (activeMatchingDeadline) {
+        await autoCleanOldDrawData(result.category, result.drawId);
+      }
+    }
+
     return { success: true };
   } catch (err: any) {
     console.error("Edit result failed:", err);
@@ -2303,7 +2265,7 @@ export async function deleteResult(id: string, category: 'pakistan_bond' | 'thai
 
   try {
     const colName = category === 'pakistan_bond' ? 'pakistanBondResults' : 'thaiLotteryResults';
-    await deleteDoc(doc(db, colName, id));
+    await remove(ref(db, `${colName}/${id}`));
     return { success: true };
   } catch (err: any) {
     console.error("Delete result failed:", err);

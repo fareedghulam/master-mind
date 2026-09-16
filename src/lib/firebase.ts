@@ -1,10 +1,11 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getDatabase } from 'firebase/database';
 import { getAuth, setPersistence, browserLocalPersistence } from 'firebase/auth';
 
 export const firebaseConfig = {
   apiKey: "AIzaSyAx59hRoNxWI7a4iQtIaPkOGftFW1EMmfc",
   authDomain: "master-mind-qureshi-enterprise.firebaseapp.com",
+  databaseURL: (import.meta as any).env?.VITE_FIREBASE_DATABASE_URL || "https://master-mind-qureshi-enterprise-default-rtdb.firebaseio.com",
   projectId: "master-mind-qureshi-enterprise",
   storageBucket: "master-mind-qureshi-enterprise.firebasestorage.app",
   messagingSenderId: "343587675373",
@@ -12,7 +13,7 @@ export const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+export const db = getDatabase(app, firebaseConfig.databaseURL);
 export const auth = getAuth(app);
 
 // Explicitly persist normal Firebase Auth sessions across app restarts.
@@ -22,18 +23,3 @@ setPersistence(auth, browserLocalPersistence).catch((error) => {
   console.error('[FirebaseAuth] Failed to configure local persistence:', error);
 });
 
-async function testConnection() {
-  try {
-    // Attempt a live fetch from server to verify connection and credentials
-    await getDocFromServer(doc(db, 'settings', 'connection_check'));
-    console.log("Firestore connection check succeeded.");
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration: Client is offline.");
-    } else {
-      console.log("Firestore connection verified:", error);
-    }
-  }
-}
-
-testConnection();

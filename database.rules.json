@@ -1,0 +1,69 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "settings": {
+      "general": {
+        ".read": true,
+        ".write": "auth != null && (auth.token.email === 'mastermaind.qureshi110@gmail.com' || auth.token.email === 'fareed.ghulam@gmail.com' || root.child('users').child(auth.uid).child('isAdmin').val() === true)"
+      }
+    },
+
+    "users": {
+      ".read": "auth != null",
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || auth.token.email === 'mastermaind.qureshi110@gmail.com' || auth.token.email === 'fareed.ghulam@gmail.com' || root.child('users').child(auth.uid).child('isAdmin').val() === true)",
+        ".write": "auth != null && (auth.uid === $uid || auth.token.email === 'mastermaind.qureshi110@gmail.com' || auth.token.email === 'fareed.ghulam@gmail.com' || root.child('users').child(auth.uid).child('isAdmin').val() === true)"
+      }
+    },
+
+    "bookings": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$bookingId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+
+    "dealerBookings": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$bookingId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+
+    "limits": {
+      ".read": true,
+      ".write": "auth != null && (auth.token.email === 'mastermaind.qureshi110@gmail.com' || auth.token.email === 'fareed.ghulam@gmail.com' || root.child('users').child(auth.uid).child('isAdmin').val() === true)"
+    },
+
+    "demands": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+
+    "deadlines": {
+      ".read": true,
+      ".write": "auth != null && (auth.token.email === 'mastermaind.qureshi110@gmail.com' || auth.token.email === 'fareed.ghulam@gmail.com' || root.child('users').child(auth.uid).child('isAdmin').val() === true)"
+    },
+
+    "transactions": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+
+    "pakistanBondResults": {
+      ".read": true,
+      ".write": "auth != null && (auth.token.email === 'mastermaind.qureshi110@gmail.com' || auth.token.email === 'fareed.ghulam@gmail.com' || root.child('users').child(auth.uid).child('isAdmin').val() === true)"
+    },
+
+    "thaiLotteryResults": {
+      ".read": true,
+      ".write": "auth != null && (auth.token.email === 'mastermaind.qureshi110@gmail.com' || auth.token.email === 'fareed.ghulam@gmail.com' || root.child('users').child(auth.uid).child('isAdmin').val() === true)"
+    }
+  }
+}
