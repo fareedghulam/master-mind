@@ -105,6 +105,17 @@ function notifyListeners() {
   });
 }
 
+export function sortResultsChronological<T extends { date?: string; drawNo?: string; id?: string }>(list: T[]): T[] {
+  return [...list].sort((a, b) => {
+    const timeA = a.date ? new Date(a.date).getTime() : 0;
+    const timeB = b.date ? new Date(b.date).getTime() : 0;
+    if (timeB !== timeA) {
+      return timeB - timeA; // Consistent newest -> oldest chronological order
+    }
+    return (b.drawNo || b.id || '').localeCompare(a.drawNo || a.id || '');
+  });
+}
+
 export function isLoggedUserAdminOrSuper(): boolean {
   const firebaseUser = auth.currentUser;
   if (!firebaseUser) return false;
@@ -523,7 +534,8 @@ export function initializeStore() {
         }
       }
     } else {
-      cachedPakistanBondResults = Object.keys(val).map(k => ({ ...val[k], id: val[k].id || k }));
+      const parsedList = Object.keys(val).map(k => ({ ...val[k], id: val[k].id || k })) as PakistanBondResult[];
+      cachedPakistanBondResults = sortResultsChronological(parsedList);
       notifyListeners();
     }
   });
@@ -534,9 +546,10 @@ export function initializeStore() {
     if (!val) {
       cachedThaiLotteryResults = [];
     } else {
-      cachedThaiLotteryResults = Object.keys(val).map(
+      const parsedList = Object.keys(val).map(
         k => ({ ...val[k], id: val[k].id || k }) as ThaiLotteryResult
       );
+      cachedThaiLotteryResults = sortResultsChronological(parsedList);
     }
     notifyListeners();
   });
@@ -2183,12 +2196,14 @@ export async function addResult(result: AllResultType): Promise<{ success: boole
       const pb = result as PakistanBondResult;
       const idx = cachedPakistanBondResults.findIndex(r => r.id === pb.id);
       if (idx !== -1) cachedPakistanBondResults[idx] = pb;
-      else cachedPakistanBondResults.unshift(pb);
+      else cachedPakistanBondResults.push(pb);
+      cachedPakistanBondResults = sortResultsChronological(cachedPakistanBondResults);
     } else {
       const tl = result as ThaiLotteryResult;
       const idx = cachedThaiLotteryResults.findIndex(r => r.id === tl.id);
       if (idx !== -1) cachedThaiLotteryResults[idx] = tl;
-      else cachedThaiLotteryResults.unshift(tl);
+      else cachedThaiLotteryResults.push(tl);
+      cachedThaiLotteryResults = sortResultsChronological(cachedThaiLotteryResults);
     }
     notifyListeners();
 
@@ -2217,12 +2232,14 @@ export async function editResult(result: AllResultType): Promise<{ success: bool
       const pb = result as PakistanBondResult;
       const idx = cachedPakistanBondResults.findIndex(r => r.id === pb.id);
       if (idx !== -1) cachedPakistanBondResults[idx] = pb;
-      else cachedPakistanBondResults.unshift(pb);
+      else cachedPakistanBondResults.push(pb);
+      cachedPakistanBondResults = sortResultsChronological(cachedPakistanBondResults);
     } else {
       const tl = result as ThaiLotteryResult;
       const idx = cachedThaiLotteryResults.findIndex(r => r.id === tl.id);
       if (idx !== -1) cachedThaiLotteryResults[idx] = tl;
-      else cachedThaiLotteryResults.unshift(tl);
+      else cachedThaiLotteryResults.push(tl);
+      cachedThaiLotteryResults = sortResultsChronological(cachedThaiLotteryResults);
     }
     notifyListeners();
 
