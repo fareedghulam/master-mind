@@ -174,42 +174,33 @@ export function initializeStore() {
             const userSnap = await get(ref(db, `users/${uid}`));
             if (userSnap.exists()) {
               userProfile = userSnap.val() as User;
+              const idx = cachedUsers.findIndex(u => u.uid === uid);
+              if (idx !== -1) {
+                cachedUsers[idx] = userProfile;
+              } else {
+                cachedUsers.push(userProfile);
+              }
             }
           } catch (e) {
             console.error("Failed to fetch user role on auth state change:", e);
           }
         }
-        
-        const isSuper = userProfile && (userProfile.role === 'superAdmin' || userProfile.role === 'admin');
-        const isDataEntry = userProfile && userProfile.role === 'dataEntryAdmin';
-        
-    if (isSuper || isDataEntry) {
-      // SECURITY: Only allow Admin/Data-Entry sessions that were
-      // explicitly authorized by a fresh login in this app session.
-      const explicitAdminLogin =
-        sessionStorage.getItem('mqe_explicit_admin_login') === 'true';
 
-      if (!explicitAdminLogin) {
-        console.log('[Security] Persisted Admin/Data-Entry session detected. Signing out.');
-        sessionStorage.removeItem('admin_verified');
-        try {
-          localStorage.removeItem('mqe_cached_user_profile');
-        } catch (e) {
-          // Ignore localStorage errors
+        if (userProfile) {
+          try {
+            localStorage.setItem('mqe_cached_user_profile', JSON.stringify(userProfile));
+          } catch (e) {
+            // Ignore localStorage errors
+          }
         }
-        await signOut(auth).catch((e) => {
-          console.error('[Security] Failed to clear persisted admin session:', e);
-        });
-        notifyListeners();
-        return;
-      }
-
-      // Fresh explicit Admin login is allowed.
-      sessionStorage.removeItem('mqe_explicit_admin_login');
-    }
       }
     } else {
       sessionStorage.removeItem('admin_verified');
+      try {
+        localStorage.removeItem('mqe_cached_user_profile');
+      } catch (e) {
+        // Ignore localStorage errors
+      }
     }
     notifyListeners();
   });
@@ -877,12 +868,6 @@ export async function signInWithGoogle(): Promise<{ success: boolean; user?: Use
 
   try {
     const provider = new GoogleAuthProvider();
-
-    // SECURITY: Mark Google authentication as an explicit login attempt.
-    // This allows a freshly authenticated Admin/Data-Entry user through
-    // the startup session guard.
-    sessionStorage.setItem('mqe_explicit_admin_login', 'true');
-
     const result = await signInWithPopup(auth, provider);
     const firebaseUser = result.user;
     if (!firebaseUser || !firebaseUser.email) {
@@ -941,7 +926,6 @@ export async function signInWithGoogle(): Promise<{ success: boolean; user?: Use
     notifyListeners();
     return { success: true, user: userProfile, isNewOrIncomplete };
   } catch (err: any) {
-    sessionStorage.removeItem('mqe_explicit_admin_login');
     console.error("Google sign in error:", err);
     if (err && err.code === 'auth/popup-closed-by-user') {
       return { success: false, error: 'گوگل لاگ ان منسوخ کر دیا گیا ہے۔' };

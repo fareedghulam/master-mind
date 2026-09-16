@@ -340,15 +340,9 @@ export default function App() {
 
       let uid = '';
       try {
-        // SECURITY: Mark this as an explicit login attempt.
-        // This allows a freshly authenticated Admin/Data-Entry user
-        // while blocking an old persisted Admin session at startup.
-        sessionStorage.setItem('mqe_explicit_admin_login', 'true');
-
         const cred = await signInWithEmailAndPassword(auth, emailToAuth.toLowerCase().trim(), passwordInput);
         uid = cred.user.uid;
       } catch (err: any) {
-        sessionStorage.removeItem('mqe_explicit_admin_login');
         console.error("Firebase Auth sign in failed:", err);
         if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found') {
           return { success: false, error: 'ای میل/موبائل نمبر یا پاس ورڈ درست نہیں ہے۔ (Incorrect email/phone or password.)' };

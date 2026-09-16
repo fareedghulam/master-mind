@@ -16,9 +16,7 @@ export const app = initializeApp(firebaseConfig);
 export const db = getDatabase(app, firebaseConfig.databaseURL);
 export const auth = getAuth(app);
 
-// Explicitly persist normal Firebase Auth sessions across app restarts.
-// Admin/Data-Entry sessions are separately blocked by the startup security guard
-// unless they were authorized by a fresh login in the current app session.
+// Explicitly persist Firebase Auth sessions across app restarts and browser reloads.
 setPersistence(auth, browserLocalPersistence).catch((error) => {
   console.error('[FirebaseAuth] Failed to configure local persistence:', error);
 });
