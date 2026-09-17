@@ -23,6 +23,7 @@ import {
   signInWithPopup
 } from 'firebase/auth';
 import { pakistanBondDraws } from './pakistanBondData';
+import { thailandLotteryDraws } from './thailandLotteryData';
 
 import { registerInAuthOnly as registerInAuthOnlyService, sendPasswordResetLink as sendPasswordResetLinkService } from '../services/userService';
 
@@ -544,12 +545,30 @@ export function initializeStore() {
   onValue(ref(db, 'thaiLotteryResults'), (snapshot) => {
     const val = snapshot.val();
     if (!val) {
-      cachedThaiLotteryResults = [];
+      if (isLoggedUserAdminOrSuper() || isLoggedUserDataEntry()) {
+        console.log("Migrating Thailand Lottery results to RTDB...");
+        if (thailandLotteryDraws && thailandLotteryDraws.length > 0) {
+          const updates: Record<string, any> = {};
+          thailandLotteryDraws.forEach((draw) => {
+            updates[`thaiLotteryResults/${draw.id}`] = draw;
+          });
+          update(ref(db), updates).catch(e => console.error("Failed to migrate thaiLotteryResult docs:", e));
+        }
+      }
+      cachedThaiLotteryResults = sortResultsChronological([...thailandLotteryDraws]);
     } else {
       const parsedList = Object.keys(val).map(
         k => ({ ...val[k], id: val[k].id || k }) as ThaiLotteryResult
       );
-      cachedThaiLotteryResults = sortResultsChronological(parsedList);
+      // If RTDB currently has fewer records than default draws, merge to ensure complete historical archive
+      const existingIds = new Set(parsedList.map(p => p.id));
+      const combined = [...parsedList];
+      thailandLotteryDraws.forEach(d => {
+        if (!existingIds.has(d.id)) {
+          combined.push(d);
+        }
+      });
+      cachedThaiLotteryResults = sortResultsChronological(combined);
     }
     notifyListeners();
   });
@@ -2065,6 +2084,9 @@ export function getPakistanBondResults(): PakistanBondResult[] {
 }
 
 export function getThaiLotteryResults(): ThaiLotteryResult[] {
+  if (cachedThaiLotteryResults.length === 0) {
+    return thailandLotteryDraws;
+  }
   return cachedThaiLotteryResults;
 }
 

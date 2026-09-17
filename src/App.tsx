@@ -376,20 +376,67 @@ export default function App() {
             await remove(ref(db, `users/${cleanEmailKey}`));
             console.log(`[UID-Migration] Successfully migrated legacy user profile for ${emailToAuth} to users/{uid}`);
           } else {
-            // [Firestore-Migration] Step 3: Fallback to Firestore 'users' collection
-            console.log(`[Firestore-Migration] Checking Firestore for user profile: ${emailToAuth} (UID: ${uid})`);
-            const fsProfile = await migrateUserProfileFromFirestore(uid, emailToAuth);
-            if (fsProfile) {
-              matchedUser = fsProfile;
-              console.log(`[Firestore-Migration] Successfully migrated profile from Firestore to RTDB for: ${emailToAuth}`);
-            } else {
-              // Step 5: Profile not found in database - SECURITY ENFORCEMENT:
-              // Do NOT auto-create fake customer profiles for authenticated accounts without a database record.
-              await signOut(auth);
-              return { 
-                success: false, 
-                error: 'صارف کا پروفائل ڈیٹا بیس میں نہیں ملا۔ براہ کرم ایڈمن سے رابطہ کریں۔ (User profile not found in database. Please contact Admin.)' 
-              };
+            // [UID-Migration] Step 2.5: Search all users in RTDB by matching email
+            const allUsersSnap = await get(ref(db, 'users'));
+            if (allUsersSnap.exists()) {
+              const allUsersObj = allUsersSnap.val() as Record<string, any>;
+              const emailTarget = emailToAuth.toLowerCase().trim();
+              const foundEntry = Object.entries(allUsersObj).find(([k, u]) => 
+                (u?.email && u.email.toLowerCase().trim() === emailTarget) ||
+                (u?.uid && u.uid === uid)
+              );
+              if (foundEntry) {
+                const [oldKey, oldData] = foundEntry;
+                matchedUser = {
+                  ...oldData,
+                  uid: uid
+                };
+                await set(ref(db, `users/${uid}`), matchedUser);
+                if (oldKey !== uid) {
+                  await remove(ref(db, `users/${oldKey}`));
+                }
+                console.log(`[UID-Migration] Successfully migrated user from key ${oldKey} to users/{uid}`);
+              }
+            }
+
+            if (!matchedUser) {
+              // [Firestore-Migration] Step 3: Fallback to Firestore 'users' collection
+              console.log(`[Firestore-Migration] Checking Firestore for user profile: ${emailToAuth} (UID: ${uid})`);
+              const fsProfile = await migrateUserProfileFromFirestore(uid, emailToAuth);
+              if (fsProfile) {
+                matchedUser = fsProfile;
+                console.log(`[Firestore-Migration] Successfully migrated profile from Firestore to RTDB for: ${emailToAuth}`);
+              } else {
+                // Step 4: Check if authenticated user is the designated Super Admin or Data Entry Admin
+                const normEmail = emailToAuth.toLowerCase().trim();
+                const isSuperAdminEmail = normEmail === 'mastermaind.qureshi110@gmail.com';
+                const isDataEntryEmail = normEmail === 'fareed.ghulam@gmail.com';
+
+                if (isSuperAdminEmail || isDataEntryEmail) {
+                  matchedUser = {
+                    uid,
+                    email: normEmail,
+                    name: isSuperAdminEmail ? 'Super Admin' : 'Data Entry Admin',
+                    phone: '',
+                    city: 'Pakistan',
+                    role: isSuperAdminEmail ? 'superAdmin' : 'dataEntryAdmin',
+                    isAdmin: true,
+                    status: 'active',
+                    active: true,
+                    balance: 0,
+                    profileCompleted: true
+                  };
+                  await set(ref(db, `users/${uid}`), matchedUser);
+                  console.log(`[Admin-Bootstrap] Initialized admin user profile in RTDB for: ${normEmail}`);
+                } else {
+                  // Step 5: Profile not found in database - SECURITY ENFORCEMENT:
+                  await signOut(auth);
+                  return { 
+                    success: false, 
+                    error: 'صارف کا پروفائل ڈیٹا بیس میں نہیں ملا۔ براہ کرم ایڈمن سے رابطہ کریں۔ (User profile not found in database. Please contact Admin.)' 
+                  };
+                }
+              }
             }
           }
         }

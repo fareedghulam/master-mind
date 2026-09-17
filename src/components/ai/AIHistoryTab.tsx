@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react';
-import { History, Search, Download, Coins, MapPin, BarChart3 } from 'lucide-react';
-import { PakistanBondResult } from '../../types';
+import { History, Search, Download, Coins, MapPin, BarChart3, Calendar, Filter, RotateCcw } from 'lucide-react';
+import { PakistanBondResult, ThaiLotteryResult } from '../../types';
 import { generateDrawHistoryPDF } from '../../utils/pdfGenerator';
 import { PK_BOND_CATEGORIES, PK_CITIES_LIST, computeAnalysisStats } from '../../utils/bondAnalysisUtils';
+import { ThaiDrawDateFilter, THAI_MONTHS_LIST } from '../../utils/thaiAnalysisUtils';
 
 interface AIHistoryTabProps {
   historySearchQuery: string;
@@ -13,7 +14,15 @@ interface AIHistoryTabProps {
   setHistoryBondValue: (bond: string) => void;
   historyCity: string;
   setHistoryCity: (city: string) => void;
-  filteredHistory: PakistanBondResult[];
+  filteredHistory: (PakistanBondResult | ThaiLotteryResult)[];
+  thaiDrawDateFilter?: ThaiDrawDateFilter;
+  setThaiDrawDateFilter?: (d: ThaiDrawDateFilter) => void;
+  thaiMonthFilter?: string;
+  setThaiMonthFilter?: (m: string) => void;
+  thaiYearFilter?: string;
+  setThaiYearFilter?: (y: string) => void;
+  availableThaiYears?: string[];
+  onResetThaiFilters?: () => void;
 }
 
 export const AIHistoryTab: React.FC<AIHistoryTabProps> = ({
@@ -25,7 +34,15 @@ export const AIHistoryTab: React.FC<AIHistoryTabProps> = ({
   setHistoryBondValue,
   historyCity,
   setHistoryCity,
-  filteredHistory
+  filteredHistory,
+  thaiDrawDateFilter = 'all',
+  setThaiDrawDateFilter,
+  thaiMonthFilter = 'all',
+  setThaiMonthFilter,
+  thaiYearFilter = 'all',
+  setThaiYearFilter,
+  availableThaiYears = [],
+  onResetThaiFilters,
 }) => {
   const [statusMsg, setStatusMsg] = React.useState<{ text: string; isError?: boolean } | null>(null);
 
@@ -133,6 +150,109 @@ export const AIHistoryTab: React.FC<AIHistoryTabProps> = ({
             </button>
           </div>
         </div>
+
+        {/* THAILAND LOTTERY DRAW DATE & MONTH FILTERS (Only shown for Thailand Lottery) */}
+        {historyCategory === 'thailand_lottery' && (
+          <div className="mb-5 bg-slate-950/40 p-4 rounded-xl border border-slate-800 space-y-3">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-800/80 pb-2.5">
+              {onResetThaiFilters && (
+                <button
+                  id="reset-history-thai-filters-btn"
+                  onClick={onResetThaiFilters}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] font-bold py-1 px-2.5 rounded-lg border border-slate-700 flex items-center gap-1.5 cursor-pointer transition-all"
+                >
+                  <RotateCcw className="w-3 h-3 text-amber-400" />
+                  <span>فلٹرز ری سیٹ (Reset)</span>
+                </button>
+              )}
+              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400">
+                <Filter className="w-3.5 h-3.5" />
+                <span>تھائی لاٹری تاریخ و مہینہ فلٹرز (Draw Date & Month Filter)</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* Draw Date Selector */}
+              <div className="space-y-1">
+                <label className="block text-right text-[10px] font-bold text-slate-300 flex items-center justify-end gap-1">
+                  <span>قرعہ اندازی تاریخ (Draw Date):</span>
+                  <Calendar className="w-3 h-3 text-amber-400" />
+                </label>
+                <div className="grid grid-cols-3 gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
+                  <button
+                    onClick={() => setThaiDrawDateFilter && setThaiDrawDateFilter('all')}
+                    className={`py-1.5 px-2 text-center rounded-lg text-[11px] font-bold cursor-pointer transition-all ${
+                      thaiDrawDateFilter === 'all'
+                        ? 'bg-amber-500 text-slate-950 shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    تمام
+                  </button>
+                  <button
+                    onClick={() => setThaiDrawDateFilter && setThaiDrawDateFilter('1st')}
+                    className={`py-1.5 px-2 text-center rounded-lg text-[11px] font-bold cursor-pointer transition-all ${
+                      thaiDrawDateFilter === '1st'
+                        ? 'bg-amber-500 text-slate-950 shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    1 تاریخ
+                  </button>
+                  <button
+                    onClick={() => setThaiDrawDateFilter && setThaiDrawDateFilter('16th')}
+                    className={`py-1.5 px-2 text-center rounded-lg text-[11px] font-bold cursor-pointer transition-all ${
+                      thaiDrawDateFilter === '16th'
+                        ? 'bg-amber-500 text-slate-950 shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    16 تاریخ
+                  </button>
+                </div>
+              </div>
+
+              {/* Month Selector */}
+              <div className="space-y-1">
+                <label className="block text-right text-[10px] font-bold text-slate-300">
+                  مہینہ (Month):
+                </label>
+                <select
+                  value={thaiMonthFilter}
+                  onChange={(e) => setThaiMonthFilter && setThaiMonthFilter(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 text-slate-200 py-1.5 px-3 rounded-xl text-[11px] font-bold focus:border-amber-500/50 outline-none text-right cursor-pointer"
+                >
+                  {THAI_MONTHS_LIST.map((m) => (
+                    <option key={m.value} value={m.value} className="bg-slate-900 text-white">
+                      {m.labelUrdu}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Year Selector */}
+              <div className="space-y-1">
+                <label className="block text-right text-[10px] font-bold text-slate-300">
+                  سال (Year):
+                </label>
+                <select
+                  value={thaiYearFilter}
+                  onChange={(e) => setThaiYearFilter && setThaiYearFilter(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 text-slate-200 py-1.5 px-3 rounded-xl text-[11px] font-bold focus:border-amber-500/50 outline-none text-right cursor-pointer font-mono"
+                >
+                  <option value="all" className="bg-slate-900 text-white font-sans">
+                    تمام سال (All)
+                  </option>
+                  {availableThaiYears.map((yr) => (
+                    <option key={yr} value={yr} className="bg-slate-900 text-white font-mono">
+                      {yr}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* BOND VALUE SELECTOR IN RECORDS (Only shown for Pakistan Bonds or All) */}
         {historyCategory !== 'thailand_lottery' && (

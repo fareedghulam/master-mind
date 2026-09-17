@@ -1,6 +1,6 @@
 import { db, firestore } from '../lib/firebase';
 import { ref, get, set, update } from 'firebase/database';
-import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { User } from '../types';
 
 export interface MigrationReport {
@@ -37,10 +37,10 @@ export async function migrateUserProfileFromFirestore(uid: string, email: string
 
   try {
     // 1. Try fetching by UID directly
-    let fsDocSnap = await getDoc(doc(firestore, 'users', uid));
+    let fsDocSnap: any = await getDoc(doc(firestore, 'users', uid));
     
     // 2. Fallback: try by cleaned email key if document was saved with email key in legacy Firestore
-    if (!fsDocSnap.exists() && cleanEmailKey) {
+    if ((!fsDocSnap || !fsDocSnap.exists()) && cleanEmailKey) {
       const fallbackSnap = await getDoc(doc(firestore, 'users', cleanEmailKey));
       if (fallbackSnap.exists()) {
         fsDocSnap = fallbackSnap;
@@ -48,14 +48,57 @@ export async function migrateUserProfileFromFirestore(uid: string, email: string
     }
 
     // 3. Fallback: try by raw email
-    if (!fsDocSnap.exists() && normalizedEmail) {
+    if ((!fsDocSnap || !fsDocSnap.exists()) && normalizedEmail) {
       const rawEmailSnap = await getDoc(doc(firestore, 'users', normalizedEmail));
       if (rawEmailSnap.exists()) {
         fsDocSnap = rawEmailSnap;
       }
     }
 
-    if (!fsDocSnap.exists()) {
+    // 4. Fallback: Query Firestore users collection by field 'email'
+    if (!fsDocSnap || !fsDocSnap.exists()) {
+      try {
+        const qEmail = query(collection(firestore, 'users'), where('email', '==', normalizedEmail));
+        const qEmailSnap = await getDocs(qEmail);
+        if (!qEmailSnap.empty) {
+          fsDocSnap = qEmailSnap.docs[0];
+        }
+      } catch (e) {
+        console.warn("[FirestoreToRTDB] Query by email failed:", e);
+      }
+    }
+
+    // 5. Fallback: Query Firestore users collection by field 'uid'
+    if (!fsDocSnap || !fsDocSnap.exists()) {
+      try {
+        const qUid = query(collection(firestore, 'users'), where('uid', '==', uid));
+        const qUidSnap = await getDocs(qUid);
+        if (!qUidSnap.empty) {
+          fsDocSnap = qUidSnap.docs[0];
+        }
+      } catch (e) {
+        console.warn("[FirestoreToRTDB] Query by uid failed:", e);
+      }
+    }
+
+    // 6. Fallback: Scan all Firestore users docs and match case-insensitively
+    if (!fsDocSnap || !fsDocSnap.exists()) {
+      try {
+        const allDocsSnap = await getDocs(collection(firestore, 'users'));
+        for (const d of allDocsSnap.docs) {
+          const data = d.data();
+          const docEmail = (data.email || '').toLowerCase().trim();
+          if (docEmail === normalizedEmail || data.uid === uid || d.id === uid || d.id.toLowerCase().trim() === normalizedEmail) {
+            fsDocSnap = d;
+            break;
+          }
+        }
+      } catch (e) {
+        console.warn("[FirestoreToRTDB] Scan all docs failed:", e);
+      }
+    }
+
+    if (!fsDocSnap || !fsDocSnap.exists()) {
       return null;
     }
 
@@ -98,6 +141,7 @@ export async function migrateUserProfileFromFirestore(uid: string, email: string
       name: fsData.name ?? existingRtdbData.name ?? '',
       phone: fsData.phone ?? existingRtdbData.phone ?? '',
       city: fsData.city ?? existingRtdbData.city ?? '',
+      status: fsData.status ?? existingRtdbData.status ?? (fsData.active === false ? 'inactive' : 'active'),
       balance: typeof fsData.balance === 'number' 
         ? fsData.balance 
         : (typeof existingRtdbData.balance === 'number' ? existingRtdbData.balance : (Number(fsData.balance) || 0)),
@@ -235,6 +279,7 @@ export async function migrateAllFirestoreUsersToRtdb(): Promise<MigrationReport>
         name: fsData.name ?? existingUser?.name ?? '',
         phone: fsData.phone ?? existingUser?.phone ?? '',
         city: fsData.city ?? existingUser?.city ?? '',
+        status: fsData.status ?? existingUser?.status ?? (fsData.active === false ? 'inactive' : 'active'),
         balance: typeof existingUser?.balance === 'number'
           ? existingUser.balance
           : (typeof fsData.balance === 'number' ? fsData.balance : (Number(fsData.balance) || 0)),

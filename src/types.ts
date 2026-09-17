@@ -13,9 +13,11 @@ export interface User {
   password?: string;
   isAdmin?: boolean;
   role?: string;
+  status?: string;
   active?: boolean;
   lastLogin?: string;
   profileCompleted?: boolean;
+  [key: string]: any;
 }
 
 export interface Booking {

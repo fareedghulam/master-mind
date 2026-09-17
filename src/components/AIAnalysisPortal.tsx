@@ -1,15 +1,22 @@
 import React, { useState, useMemo } from 'react';
 import { 
-  Sparkles, TrendingUp, History, MessageSquare, LayoutGrid, Calculator, Coins
+  Sparkles, TrendingUp, History, MessageSquare, LayoutGrid, Calculator, Coins, Globe
 } from 'lucide-react';
 import { User, Booking, PakistanBondResult, ThaiLotteryResult } from '../types';
 import { AIGeneratorTab } from './ai/AIGeneratorTab';
 import { AIChartsTab } from './ai/AIChartsTab';
 import { AICityAnalysisTab } from './ai/AICityAnalysisTab';
 import { AIBondAnalysisTab } from './ai/AIBondAnalysisTab';
+import { AIThailandAnalysisTab } from './ai/AIThailandAnalysisTab';
 import { AIHistoryTab } from './ai/AIHistoryTab';
 import { AIChatbotTab } from './ai/AIChatbotTab';
 import { normalizeDrawBondValue } from '../utils/bondAnalysisUtils';
+import { 
+  ThaiDrawDateFilter, 
+  filterThaiLotteryDraws, 
+  getAvailableThaiYears, 
+  parseThaiDrawDate 
+} from '../utils/thaiAnalysisUtils';
 
 interface AIAnalysisPortalProps {
   user: User;
@@ -28,7 +35,23 @@ export default function AIAnalysisPortal({
   onAddBooking,
   onAddDemand
 }: AIAnalysisPortalProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'generator' | 'charts' | 'bondAnalysis' | 'cityAnalysis' | 'history' | 'chatbot'>('bondAnalysis');
+  const [activeSubTab, setActiveSubTab] = useState<'generator' | 'charts' | 'bondAnalysis' | 'cityAnalysis' | 'thaiAnalysis' | 'history' | 'chatbot'>('bondAnalysis');
+
+  // Thailand Lottery Analysis Filters
+  const [thaiDrawDateFilter, setThaiDrawDateFilter] = useState<ThaiDrawDateFilter>('all');
+  const [thaiMonthFilter, setThaiMonthFilter] = useState<string>('all');
+  const [thaiYearFilter, setThaiYearFilter] = useState<string>('all');
+
+  // Dynamically extract available years for Thailand Lottery
+  const availableThaiYears = useMemo(() => {
+    return getAvailableThaiYears(thaiLotteryResults);
+  }, [thaiLotteryResults]);
+
+  const handleResetThaiFilters = () => {
+    setThaiDrawDateFilter('all');
+    setThaiMonthFilter('all');
+    setThaiYearFilter('all');
+  };
 
   // Generator states
   const [genCategory, setGenCategory] = useState<'pakistan_bond' | 'thailand_lottery'>('pakistan_bond');
@@ -74,7 +97,12 @@ export default function AIAnalysisPortal({
 
   // Dynamic analysis computation
   const analysisData = useMemo(() => {
-    const draws = historicalDraws.filter(d => d.category === analysisCategory);
+    let draws = historicalDraws.filter(d => d.category === analysisCategory);
+    
+    // Apply Thailand Lottery date, month, and year filters when Thailand is selected
+    if (analysisCategory === 'thailand_lottery') {
+      draws = filterThaiLotteryDraws(draws as ThaiLotteryResult[], thaiDrawDateFilter, thaiMonthFilter, thaiYearFilter);
+    }
     
     const frequencies = {
       open: Array(10).fill(0),
@@ -151,7 +179,7 @@ export default function AIAnalysisPortal({
       firstPrizeOdds: firstPrizeOdd,
       firstPrizeEvens: firstPrizeEven
     };
-  }, [analysisCategory, historicalDraws]);
+  }, [analysisCategory, historicalDraws, thaiDrawDateFilter, thaiMonthFilter, thaiYearFilter]);
 
   // City-to-City Analysis State
   const [selectedCity, setSelectedCity] = useState<string>('کراچی');
@@ -410,7 +438,7 @@ export default function AIAnalysisPortal({
     }, 1000);
   };
 
-  // Filtered History with Bond Value and City filters
+  // Filtered History with Bond Value, City, and Thailand Date/Month/Year filters
   const filteredHistory = useMemo(() => historicalDraws.filter(draw => {
     const matchesCategory = historyCategory === 'all' || draw.category === historyCategory;
     const matchesBond = 
@@ -421,13 +449,26 @@ export default function AIAnalysisPortal({
       historyCategory === 'thailand_lottery' ||
       historyCity === 'all' ||
       draw.city === historyCity;
+    
+    // Thailand Draw Date, Month and Year filtering
+    let matchesThaiFilters = true;
+    if (draw.category === 'thailand_lottery' && (historyCategory === 'thailand_lottery' || historyCategory === 'all')) {
+      if (thaiDrawDateFilter !== 'all' || thaiMonthFilter !== 'all' || thaiYearFilter !== 'all') {
+        const parsed = parseThaiDrawDate(draw.date);
+        if (thaiDrawDateFilter === '1st' && !parsed.is1st) matchesThaiFilters = false;
+        if (thaiDrawDateFilter === '16th' && !parsed.is16th) matchesThaiFilters = false;
+        if (thaiMonthFilter !== 'all' && parsed.month !== parseInt(thaiMonthFilter, 10)) matchesThaiFilters = false;
+        if (thaiYearFilter !== 'all' && parsed.year !== parseInt(thaiYearFilter, 10)) matchesThaiFilters = false;
+      }
+    }
+
     const matchesSearch = 
       draw.drawNo.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
       draw.firstPrize.includes(historySearchQuery) ||
       draw.city.includes(historySearchQuery) ||
       draw.secondPrizes.some(p => p.includes(historySearchQuery));
-    return matchesCategory && matchesBond && matchesCity && matchesSearch;
-  }), [historicalDraws, historyCategory, historyBondValue, historyCity, historySearchQuery]);
+    return matchesCategory && matchesBond && matchesCity && matchesThaiFilters && matchesSearch;
+  }), [historicalDraws, historyCategory, historyBondValue, historyCity, historySearchQuery, thaiDrawDateFilter, thaiMonthFilter, thaiYearFilter]);
 
   return (
     <div className="bg-slate-900 text-slate-100 rounded-3xl p-4 sm:p-8 shadow-xl border border-slate-800 font-sans max-w-4xl mx-auto text-right">
@@ -476,6 +517,19 @@ export default function AIAnalysisPortal({
         >
           <LayoutGrid className="w-4 h-4" />
           <span>شہر ٹو شہر تجزیہ (City Analysis)</span>
+        </button>
+
+        <button
+          id="portal-nav-thai-analysis"
+          onClick={() => setActiveSubTab('thaiAnalysis')}
+          className={`flex items-center gap-1.5 text-xs font-bold py-2.5 px-3.5 rounded-xl transition-all cursor-pointer ${
+            activeSubTab === 'thaiAnalysis'
+              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
+              : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white'
+          }`}
+        >
+          <Globe className="w-4 h-4" />
+          <span>تھائی لاٹری تجزیہ (Thai Analysis)</span>
         </button>
 
         <button
@@ -551,6 +605,12 @@ export default function AIAnalysisPortal({
           />
         )}
 
+        {activeSubTab === 'thaiAnalysis' && (
+          <AIThailandAnalysisTab
+            allThaiResults={thaiLotteryResults}
+          />
+        )}
+
         {activeSubTab === 'history' && (
           <AIHistoryTab
             historySearchQuery={historySearchQuery}
@@ -562,6 +622,14 @@ export default function AIAnalysisPortal({
             historyCity={historyCity}
             setHistoryCity={setHistoryCity}
             filteredHistory={filteredHistory}
+            thaiDrawDateFilter={thaiDrawDateFilter}
+            setThaiDrawDateFilter={setThaiDrawDateFilter}
+            thaiMonthFilter={thaiMonthFilter}
+            setThaiMonthFilter={setThaiMonthFilter}
+            thaiYearFilter={thaiYearFilter}
+            setThaiYearFilter={setThaiYearFilter}
+            availableThaiYears={availableThaiYears}
+            onResetThaiFilters={handleResetThaiFilters}
           />
         )}
 
@@ -572,6 +640,14 @@ export default function AIAnalysisPortal({
             analysisType={analysisType}
             setAnalysisType={setAnalysisType}
             analysisData={analysisData}
+            thaiDrawDateFilter={thaiDrawDateFilter}
+            setThaiDrawDateFilter={setThaiDrawDateFilter}
+            thaiMonthFilter={thaiMonthFilter}
+            setThaiMonthFilter={setThaiMonthFilter}
+            thaiYearFilter={thaiYearFilter}
+            setThaiYearFilter={setThaiYearFilter}
+            availableThaiYears={availableThaiYears}
+            onResetThaiFilters={handleResetThaiFilters}
           />
         )}
 

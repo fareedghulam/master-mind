@@ -1,5 +1,6 @@
 import React from 'react';
-import { TrendingUp } from 'lucide-react';
+import { TrendingUp, Calendar, Filter, RotateCcw } from 'lucide-react';
+import { ThaiDrawDateFilter, THAI_MONTHS_LIST } from '../../utils/thaiAnalysisUtils';
 
 interface AIChartsTabProps {
   analysisCategory: 'pakistan_bond' | 'thailand_lottery';
@@ -18,6 +19,14 @@ interface AIChartsTabProps {
     firstPrizeOdds: number;
     firstPrizeEvens: number;
   };
+  thaiDrawDateFilter?: ThaiDrawDateFilter;
+  setThaiDrawDateFilter?: (d: ThaiDrawDateFilter) => void;
+  thaiMonthFilter?: string;
+  setThaiMonthFilter?: (m: string) => void;
+  thaiYearFilter?: string;
+  setThaiYearFilter?: (y: string) => void;
+  availableThaiYears?: string[];
+  onResetThaiFilters?: () => void;
 }
 
 export const AIChartsTab: React.FC<AIChartsTabProps> = ({
@@ -25,7 +34,15 @@ export const AIChartsTab: React.FC<AIChartsTabProps> = ({
   setAnalysisCategory,
   analysisType,
   setAnalysisType,
-  analysisData
+  analysisData,
+  thaiDrawDateFilter = 'all',
+  setThaiDrawDateFilter,
+  thaiMonthFilter = 'all',
+  setThaiMonthFilter,
+  thaiYearFilter = 'all',
+  setThaiYearFilter,
+  availableThaiYears = [],
+  onResetThaiFilters,
 }) => {
   return (
     <div className="space-y-6 text-right">
@@ -68,6 +85,118 @@ export const AIChartsTab: React.FC<AIChartsTabProps> = ({
             پاکستان پرائز بانڈ (Pakistan Bond)
           </button>
         </div>
+
+        {/* THAILAND DATE & MONTH FILTERS (Shown when Thailand Lottery is active) */}
+        {analysisCategory === 'thailand_lottery' && (
+          <div className="mb-5 bg-slate-950/70 p-4 rounded-2xl border border-slate-800 space-y-3">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-800/80 pb-2.5">
+              {onResetThaiFilters && (
+                <button
+                  id="reset-charts-thai-filters-btn"
+                  onClick={onResetThaiFilters}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] font-bold py-1 px-2.5 rounded-lg border border-slate-700 flex items-center gap-1.5 cursor-pointer transition-all"
+                >
+                  <RotateCcw className="w-3 h-3 text-amber-400" />
+                  <span>فلٹرز ری سیٹ (Reset)</span>
+                </button>
+              )}
+              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400">
+                <Filter className="w-3.5 h-3.5" />
+                <span>تھائی لاٹری تاریخ و مہینہ فلٹر (Draw Date & Month Filter)</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* Draw Date: All, 1st, 16th */}
+              <div className="space-y-1">
+                <label className="block text-right text-[10px] font-bold text-slate-300 flex items-center justify-end gap-1">
+                  <span>قرعہ اندازی تاریخ (Draw Date):</span>
+                  <Calendar className="w-3 h-3 text-amber-400" />
+                </label>
+                <div className="grid grid-cols-3 gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
+                  <button
+                    onClick={() => setThaiDrawDateFilter && setThaiDrawDateFilter('all')}
+                    className={`py-1.5 px-2 text-center rounded-lg text-[11px] font-bold cursor-pointer transition-all ${
+                      thaiDrawDateFilter === 'all'
+                        ? 'bg-amber-500 text-slate-950 shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    تمام
+                  </button>
+                  <button
+                    onClick={() => setThaiDrawDateFilter && setThaiDrawDateFilter('1st')}
+                    className={`py-1.5 px-2 text-center rounded-lg text-[11px] font-bold cursor-pointer transition-all ${
+                      thaiDrawDateFilter === '1st'
+                        ? 'bg-amber-500 text-slate-950 shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    1 تاریخ
+                  </button>
+                  <button
+                    onClick={() => setThaiDrawDateFilter && setThaiDrawDateFilter('16th')}
+                    className={`py-1.5 px-2 text-center rounded-lg text-[11px] font-bold cursor-pointer transition-all ${
+                      thaiDrawDateFilter === '16th'
+                        ? 'bg-amber-500 text-slate-950 shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    16 تاریخ
+                  </button>
+                </div>
+              </div>
+
+              {/* Month Selector */}
+              <div className="space-y-1">
+                <label className="block text-right text-[10px] font-bold text-slate-300">
+                  مہینہ (Month):
+                </label>
+                <select
+                  value={thaiMonthFilter}
+                  onChange={(e) => setThaiMonthFilter && setThaiMonthFilter(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 text-slate-200 py-1.5 px-3 rounded-xl text-[11px] font-bold focus:border-amber-500/50 outline-none text-right cursor-pointer"
+                >
+                  {THAI_MONTHS_LIST.map((m) => (
+                    <option key={m.value} value={m.value} className="bg-slate-900 text-white">
+                      {m.labelUrdu}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Year Selector */}
+              <div className="space-y-1">
+                <label className="block text-right text-[10px] font-bold text-slate-300">
+                  سال (Year):
+                </label>
+                <select
+                  value={thaiYearFilter}
+                  onChange={(e) => setThaiYearFilter && setThaiYearFilter(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 text-slate-200 py-1.5 px-3 rounded-xl text-[11px] font-bold focus:border-amber-500/50 outline-none text-right cursor-pointer font-mono"
+                >
+                  <option value="all" className="bg-slate-900 text-white font-sans">
+                    تمام سال (All)
+                  </option>
+                  {availableThaiYears.map((yr) => (
+                    <option key={yr} value={yr} className="bg-slate-900 text-white font-mono">
+                      {yr}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="text-[10px] text-slate-400 flex justify-between items-center pt-1 border-t border-slate-900">
+              <span className="text-amber-400 font-mono font-bold">
+                شامل ڈراز: {analysisData.drawsCount}
+              </span>
+              <span>
+                چارٹس نیچے دیئے گئے فلٹرز کے مطابق فوری اپ ڈیٹ ہو رہے ہیں
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* METHOD/ANALYSIS TYPE SELECTOR */}
         <div className="flex flex-row-reverse flex-wrap gap-1.5 mb-6 bg-slate-950/60 p-1.5 rounded-xl border border-slate-900">
