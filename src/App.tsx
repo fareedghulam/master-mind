@@ -38,6 +38,7 @@ import {
   updateUserProfile
 } from './utils/store';
 import { User, Booking, DealerBooking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult, DrawCategory } from './types';
+import { migrateUserProfileFromFirestore, migrateAllFirestoreUsersToRtdb } from './utils/userMigration';
 import { db, auth } from './lib/firebase';
 import { ref, get, set, update, remove } from 'firebase/database';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
@@ -360,7 +361,7 @@ export default function App() {
           matchedUser = userSnap.val() as User;
           console.log(`[UID-Migration] Found existing modern UID-based user record for: ${emailToAuth}`);
         } else {
-          // [UID-Migration] Step 2: Fallback to the legacy users/{email} document
+          // [UID-Migration] Step 2: Fallback to the legacy users/{email} document in RTDB
           const cleanEmailKey = emailToAuth.toLowerCase().trim().replace(/[.#$\[\]]/g, '_');
           const legacySnap = await get(ref(db, `users/${cleanEmailKey}`));
           if (legacySnap.exists()) {
@@ -375,13 +376,21 @@ export default function App() {
             await remove(ref(db, `users/${cleanEmailKey}`));
             console.log(`[UID-Migration] Successfully migrated legacy user profile for ${emailToAuth} to users/{uid}`);
           } else {
-            // Step 5: Profile not found in database - SECURITY ENFORCEMENT:
-            // Do NOT auto-create fake customer profiles for authenticated accounts without a database record.
-            await signOut(auth);
-            return { 
-              success: false, 
-              error: 'صارف کا پروفائل ڈیٹا بیس میں نہیں ملا۔ براہ کرم ایڈمن سے رابطہ کریں۔ (User profile not found in database. Please contact Admin.)' 
-            };
+            // [Firestore-Migration] Step 3: Fallback to Firestore 'users' collection
+            console.log(`[Firestore-Migration] Checking Firestore for user profile: ${emailToAuth} (UID: ${uid})`);
+            const fsProfile = await migrateUserProfileFromFirestore(uid, emailToAuth);
+            if (fsProfile) {
+              matchedUser = fsProfile;
+              console.log(`[Firestore-Migration] Successfully migrated profile from Firestore to RTDB for: ${emailToAuth}`);
+            } else {
+              // Step 5: Profile not found in database - SECURITY ENFORCEMENT:
+              // Do NOT auto-create fake customer profiles for authenticated accounts without a database record.
+              await signOut(auth);
+              return { 
+                success: false, 
+                error: 'صارف کا پروفائل ڈیٹا بیس میں نہیں ملا۔ براہ کرم ایڈمن سے رابطہ کریں۔ (User profile not found in database. Please contact Admin.)' 
+              };
+            }
           }
         }
       } catch (err: any) {
@@ -451,6 +460,12 @@ export default function App() {
         setIsMandatorySetupOpen(false);
         setAdminMode(true);
         setActiveTab('admin');
+        // Asynchronously migrate all remaining Firestore users to RTDB securely
+        migrateAllFirestoreUsersToRtdb().then(report => {
+          console.log("[FirestoreToRTDB] Background full migration result:", report);
+        }).catch(err => {
+          console.error("[FirestoreToRTDB] Background full migration error:", err);
+        });
       } else {
         if (!isProfileComplete) {
           setIsMandatorySetupOpen(true);

@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getDatabase } from 'firebase/database';
 import { getAuth, setPersistence, browserLocalPersistence } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 
 export const firebaseConfig = {
   apiKey: "AIzaSyAx59hRoNxWI7a4iQtIaPkOGftFW1EMmfc",
@@ -15,6 +16,7 @@ export const firebaseConfig = {
 export const app = initializeApp(firebaseConfig);
 export const db = getDatabase(app, firebaseConfig.databaseURL);
 export const auth = getAuth(app);
+export const firestore = getFirestore(app);
 
 // Explicitly persist Firebase Auth sessions across app restarts and browser reloads.
 setPersistence(auth, browserLocalPersistence).catch((error) => {

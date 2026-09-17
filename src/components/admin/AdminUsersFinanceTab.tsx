@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { User, DealerBooking } from '../../types';
-import { MessageCircle, ShieldCheck, UserCheck, Search } from 'lucide-react';
+import { MessageCircle, ShieldCheck, UserCheck, Search, Database, RefreshCw, CheckCircle, AlertTriangle, FileUp } from 'lucide-react';
 import { getAdminConfiguredEmail } from '../../utils/store';
+import { migrateAllFirestoreUsersToRtdb, migrateUsersFromJson, MigrationReport } from '../../utils/userMigration';
 
 interface AdminUsersFinanceTabProps {
   users: User[];
@@ -66,8 +67,196 @@ export const AdminUsersFinanceTab: React.FC<AdminUsersFinanceTabProps> = ({
   setUserConfirmPassword,
   handleUserPasswordReset
 }) => {
+  const [migrating, setMigrating] = useState(false);
+  const [migrationReport, setMigrationReport] = useState<MigrationReport | null>(null);
+  const [migrationError, setMigrationError] = useState('');
+  const [showJsonInput, setShowJsonInput] = useState(false);
+  const [jsonText, setJsonText] = useState('');
+
+  const handleRunMigration = async () => {
+    setMigrating(true);
+    setMigrationError('');
+    try {
+      const report = await migrateAllFirestoreUsersToRtdb();
+      setMigrationReport(report);
+      if (!report.success && report.error) {
+        setMigrationError(report.error);
+      }
+    } catch (err: any) {
+      setMigrationError(err?.message || 'Migration failed');
+    } finally {
+      setMigrating(false);
+    }
+  };
+
+  const handleJsonImport = async () => {
+    if (!jsonText.trim()) return;
+    setMigrating(true);
+    setMigrationError('');
+    try {
+      const parsed = JSON.parse(jsonText.trim());
+      const usersList = Array.isArray(parsed) ? parsed : (parsed.users ? parsed.users : Object.values(parsed));
+      const report = await migrateUsersFromJson(usersList);
+      setMigrationReport(report);
+      if (!report.success && report.error) {
+        setMigrationError(report.error);
+      }
+    } catch (e: any) {
+      setMigrationError('غلط JSON فارمیٹ: ' + (e?.message || 'Invalid JSON'));
+    } finally {
+      setMigrating(false);
+    }
+  };
+
   return (
     <div className="space-y-8">
+      {/* Module 0: Firestore to RTDB Migration Hub */}
+      <div id="firestore-rtdb-migration-card" className="bg-gradient-to-br from-slate-900 via-slate-850 to-slate-950 text-white p-6 sm:p-8 rounded-3xl border border-amber-500/30 shadow-xl relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-700/60 mb-6">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowJsonInput(!showJsonInput)}
+              className="text-xs text-slate-400 hover:text-amber-400 underline cursor-pointer transition-colors"
+            >
+              {showJsonInput ? 'بیک اپ پینل چھپائیں (Hide)' : 'JSON بیک اپ امپورٹ (JSON Import)'}
+            </button>
+            <span className="px-3 py-1 bg-amber-500/20 text-amber-400 border border-amber-500/40 rounded-full text-xs font-mono font-bold">
+              RTDB Users: {users.length}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 text-right">
+            <div>
+              <h4 className="text-base font-bold text-amber-400 flex items-center justify-end gap-2">
+                <span>فائر اسٹور سے RTDB یوزرز مائیگریشن (Firestore to RTDB Migration)</span>
+                <Database className="w-5 h-5 text-amber-400" />
+              </h4>
+              <p className="text-xs text-slate-400 mt-0.5">
+                صرف Firestore سے تمام user profiles کو بغیر کسی تبدیلی یا ڈیٹا ضائع کیے RTDB میں محفوظ طور پر منتقل کریں
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {migrationError && (
+          <div className="bg-red-500/20 border border-red-500/50 rounded-2xl p-4 text-red-200 text-xs mb-4 flex items-center justify-end gap-2 text-right">
+            <span>{migrationError}</span>
+            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6 text-right">
+          <div className="bg-slate-800/80 p-3.5 rounded-2xl border border-slate-700/60">
+            <span className="block text-[11px] text-slate-400 mb-1">موجودہ RTDB یوزرز (RTDB Users)</span>
+            <span className="font-mono text-xl font-bold text-amber-400">{users.length}</span>
+          </div>
+
+          <div className="bg-slate-800/80 p-3.5 rounded-2xl border border-slate-700/60">
+            <span className="block text-[11px] text-slate-400 mb-1">گمشدہ UIDs (Missing UIDs)</span>
+            <span className="font-mono text-xl font-bold text-emerald-400">
+              {migrationReport ? migrationReport.missingUids : 0}
+            </span>
+          </div>
+
+          <div className="bg-slate-800/80 p-3.5 rounded-2xl border border-slate-700/60">
+            <span className="block text-[11px] text-slate-400 mb-1">ڈپلیکیٹ UIDs (Duplicate UIDs)</span>
+            <span className="font-mono text-xl font-bold text-emerald-400">
+              {migrationReport ? migrationReport.duplicateUids : 0}
+            </span>
+          </div>
+        </div>
+
+        {showJsonInput && (
+          <div className="bg-slate-800/90 p-4 rounded-2xl border border-amber-500/20 mb-6 space-y-3">
+            <label className="block text-xs font-semibold text-slate-300 text-right">
+              فائر اسٹور یوزرز JSON بیک اپ ڈیٹا یہاں پیسٹ کریں (Paste Firestore Users JSON Export)
+            </label>
+            <textarea
+              value={jsonText}
+              onChange={(e) => setJsonText(e.target.value)}
+              placeholder='[{"uid": "...", "email": "...", "name": "...", "role": "customer", "balance": 0}]'
+              rows={4}
+              className="w-full text-xs font-mono bg-slate-900 text-slate-200 p-3 rounded-xl border border-slate-700 focus:outline-none focus:border-amber-500"
+            />
+            <button
+              onClick={handleJsonImport}
+              disabled={migrating || !jsonText.trim()}
+              className="w-full bg-amber-500 hover:bg-amber-400 disabled:bg-slate-700 text-slate-950 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer transition-all"
+            >
+              <FileUp className="w-4 h-4" />
+              <span>JSON ڈیٹا کو RTDB میں منتقل کریں (Import JSON to RTDB)</span>
+            </button>
+          </div>
+        )}
+
+        <div className="flex flex-col sm:flex-row gap-3 items-center justify-end">
+          <button
+            id="run-firestore-migration-btn"
+            onClick={handleRunMigration}
+            disabled={migrating}
+            className="w-full sm:w-auto bg-amber-500 hover:bg-amber-400 disabled:bg-slate-700 text-slate-950 font-bold py-3 px-6 rounded-2xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20"
+          >
+            {migrating ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>ڈیٹا منتقل کیا جا رہا ہے... (Migrating...)</span>
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-4 h-4" />
+                <span>فائر اسٹور سے RTDB میں تمام یوزرز منتقل کریں (Migrate All Users Now)</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {migrationReport && (
+          <div className="mt-6 pt-5 border-t border-slate-700/80 space-y-4">
+            <div className="flex items-center justify-between text-xs font-semibold">
+              <span className="text-emerald-400 flex items-center gap-1.5">
+                <CheckCircle className="w-4 h-4" />
+                مائیگریشن مکمل ہو گئی (Migration Finished)
+              </span>
+              <span className="text-slate-300">
+                فائر اسٹور ریکارڈز: <strong className="text-amber-400">{migrationReport.firestoreCount}</strong> | RTDB کل یوزرز: <strong className="text-amber-400">{migrationReport.rtdbCount}</strong>
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+              <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700">
+                <span className="text-slate-400 block text-[10px]">نئے منتقل شدہ (New)</span>
+                <span className="font-mono font-bold text-amber-400">{migrationReport.migratedCount}</span>
+              </div>
+              <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700">
+                <span className="text-slate-400 block text-[10px]">محفوظ طور پر ضم شدہ (Merged)</span>
+                <span className="font-mono font-bold text-blue-400">{migrationReport.mergedCount}</span>
+              </div>
+              <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700">
+                <span className="text-slate-400 block text-[10px]">گمشدہ UIDs (Missing)</span>
+                <span className="font-mono font-bold text-emerald-400">{migrationReport.missingUids}</span>
+              </div>
+              <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700">
+                <span className="text-slate-400 block text-[10px]">فائر اسٹور اصل ڈیٹا (Original Data)</span>
+                <span className="font-bold text-emerald-400">محفوظ (Preserved)</span>
+              </div>
+            </div>
+
+            {Object.keys(migrationReport.roleVerification).length > 0 && (
+              <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700 text-xs text-right">
+                <span className="text-slate-400 font-semibold block mb-1">رولز کی تصدیق (Role Verification):</span>
+                <div className="flex flex-wrap gap-2 justify-end">
+                  {Object.entries(migrationReport.roleVerification).map(([r, c]) => (
+                    <span key={r} className="bg-slate-700/80 px-2 py-0.5 rounded text-amber-300 font-mono text-[11px]">
+                      {r}: {c}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Module 1: Registered Customers List & Balances */}
       <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md">
         <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 mb-5 flex items-center justify-end gap-2">
