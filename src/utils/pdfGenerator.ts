@@ -394,6 +394,101 @@ export async function generateDrawHistoryPDF(
   }
 }
 
+export async function generateThaiFront3PDF(
+  records: any[],
+  filterDetails: { dateLabel: string; monthLabel: string; yearLabel: string },
+  highlights: {
+    topOverallHotDigit: string;
+    topOverallColdDigit: string;
+    topCombo: string;
+    topComboCount: number;
+    topPair12: string;
+    topPair23: string;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const doc = new jsPDF() as any;
+    const safeRecords = Array.isArray(records) ? records : [];
+
+    // Header banner
+    doc.setFillColor(15, 23, 42);
+    doc.rect(0, 0, 210, 35, 'F');
+
+    // Title
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('MASTERMIND QURESHI ENTERPRISE', 105, 14, { align: 'center' });
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text('THAILAND LOTTERY - FRONT 3 DIGITS HISTORICAL ANALYSIS', 105, 24, { align: 'center' });
+
+    // Summary box
+    doc.setFillColor(248, 250, 252);
+    doc.rect(10, 40, 190, 30, 'F');
+    doc.setDrawColor(226, 232, 240);
+    doc.rect(10, 40, 190, 30);
+
+    doc.setTextColor(15, 23, 42);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text('FRONT 3 HISTORICAL PARAMETERS & HIGHLIGHTS', 15, 47);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Filters: Date [${filterDetails.dateLabel}] | Month [${filterDetails.monthLabel}] | Year [${filterDetails.yearLabel}]`, 15, 55);
+    doc.text(`Total Records Analyzed: ${safeRecords.length} draws`, 15, 62);
+    doc.text(`Hot Digit: ${highlights.topOverallHotDigit} | Cold Digit: ${highlights.topOverallColdDigit}`, 110, 55);
+    doc.text(`Top Front 3: ${highlights.topCombo} (${highlights.topComboCount}x) | Pair 1+2: ${highlights.topPair12}`, 110, 62);
+
+    // Table
+    const tableRows = safeRecords.map((r, idx) => [
+      idx + 1,
+      r.date || '--',
+      r.drawNo || '--',
+      r.firstPrize || '--',
+      r.front3 || '--',
+      r.d1 || '--',
+      r.d2 || '--',
+      r.d3 || '--',
+      `${r.sum || 0} (Root ${r.rootSum || 0})`,
+      r.patternType || '--'
+    ]);
+
+    autoTable(doc, {
+      startY: 75,
+      head: [['Sr #', 'Draw Date', 'Draw No', 'First Prize', 'Front 3', 'Pos 1', 'Pos 2', 'Pos 3', 'Sum', 'Pattern']],
+      body: tableRows,
+      theme: 'striped',
+      headStyles: { fillColor: [15, 23, 42], fontStyle: 'bold' },
+      styles: { fontSize: 8, cellPadding: 2.5, font: 'helvetica' },
+      columnStyles: {
+        0: { cellWidth: 10 },
+        1: { cellWidth: 24 },
+        2: { cellWidth: 40 },
+        3: { cellWidth: 24 },
+        4: { fontStyle: 'bold', textColor: [220, 38, 38], cellWidth: 20 },
+        5: { fontStyle: 'bold', cellWidth: 14 },
+        6: { fontStyle: 'bold', cellWidth: 14 },
+        7: { fontStyle: 'bold', cellWidth: 14 },
+        8: { cellWidth: 20 },
+        9: { cellWidth: 20 }
+      }
+    });
+
+    const finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY || 150 : 150;
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184);
+    doc.text('MasterMind Qureshi Enterprise - Official Thailand Front 3 Analytics', 105, finalY + 12, { align: 'center' });
+
+    const filename = `Thailand_Front3_Analysis_${filterDetails.dateLabel}_${new Date().toISOString().split('T')[0]}.pdf`;
+    return await savePdfDocument(doc, filename);
+  } catch (err: any) {
+    console.error('Failed to generate Thai Front 3 PDF:', err);
+    return { success: false, error: err?.message || 'تھائی فرنٹ 3 پی ڈی ایف رپورٹ بنانے میں خرابی پیش آئی۔' };
+  }
+}
+
 
 export async function generateDealerBookingsPDF(
   reportTitle: string,

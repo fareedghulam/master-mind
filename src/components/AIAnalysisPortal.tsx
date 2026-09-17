@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { 
-  Sparkles, TrendingUp, History, MessageSquare, LayoutGrid, Calculator, Coins, Globe
+  Sparkles, TrendingUp, History, MessageSquare, LayoutGrid, Calculator, Coins, Globe, Hash
 } from 'lucide-react';
 import { User, Booking, PakistanBondResult, ThaiLotteryResult } from '../types';
 import { AIGeneratorTab } from './ai/AIGeneratorTab';
@@ -8,6 +8,7 @@ import { AIChartsTab } from './ai/AIChartsTab';
 import { AICityAnalysisTab } from './ai/AICityAnalysisTab';
 import { AIBondAnalysisTab } from './ai/AIBondAnalysisTab';
 import { AIThailandAnalysisTab } from './ai/AIThailandAnalysisTab';
+import { AIThaiFront3AnalysisTab } from './ai/AIThaiFront3AnalysisTab';
 import { AIHistoryTab } from './ai/AIHistoryTab';
 import { AIChatbotTab } from './ai/AIChatbotTab';
 import { normalizeDrawBondValue } from '../utils/bondAnalysisUtils';
@@ -41,7 +42,7 @@ export default function AIAnalysisPortal({
   onAddBooking,
   onAddDemand
 }: AIAnalysisPortalProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'generator' | 'charts' | 'bondAnalysis' | 'cityAnalysis' | 'thaiAnalysis' | 'history' | 'chatbot'>('bondAnalysis');
+  const [activeSubTab, setActiveSubTab] = useState<'generator' | 'charts' | 'bondAnalysis' | 'cityAnalysis' | 'thaiAnalysis' | 'thaiFront3Analysis' | 'history' | 'chatbot'>('bondAnalysis');
 
   // Thailand Lottery Analysis Filters
   const [thaiDrawDateFilter, setThaiDrawDateFilter] = useState<ThaiDrawDateFilter>('all');
@@ -546,6 +547,19 @@ export default function AIAnalysisPortal({
         </button>
 
         <button
+          id="portal-nav-thai-front3-analysis"
+          onClick={() => setActiveSubTab('thaiFront3Analysis')}
+          className={`flex items-center gap-1.5 text-xs font-bold py-2.5 px-3.5 rounded-xl transition-all cursor-pointer ${
+            activeSubTab === 'thaiFront3Analysis'
+              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
+              : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white'
+          }`}
+        >
+          <Hash className="w-4 h-4" />
+          <span>تھائی فرنٹ 3 تجزیہ (Thai Front 3)</span>
+        </button>
+
+        <button
           onClick={() => setActiveSubTab('history')}
           className={`flex items-center gap-1.5 text-xs font-bold py-2.5 px-3.5 rounded-xl transition-all cursor-pointer ${
             activeSubTab === 'history'
@@ -620,6 +634,12 @@ export default function AIAnalysisPortal({
 
         {activeSubTab === 'thaiAnalysis' && (
           <AIThailandAnalysisTab
+            allThaiResults={thaiLotteryResults}
+          />
+        )}
+
+        {activeSubTab === 'thaiFront3Analysis' && (
+          <AIThaiFront3AnalysisTab
             allThaiResults={thaiLotteryResults}
           />
         )}
