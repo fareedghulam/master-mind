@@ -17,6 +17,12 @@ import {
   getAvailableThaiYears, 
   parseThaiDrawDate 
 } from '../utils/thaiAnalysisUtils';
+import { 
+  generateLuckyNumberFromHistory, 
+  GeneratedCandidateResult, 
+  GenFormula, 
+  filterPakistanBondDraws 
+} from '../utils/luckyGenerateUtils';
 
 interface AIAnalysisPortalProps {
   user: User;
@@ -55,11 +61,31 @@ export default function AIAnalysisPortal({
 
   // Generator states
   const [genCategory, setGenCategory] = useState<'pakistan_bond' | 'thailand_lottery'>('pakistan_bond');
-  const [genFormula, setGenFormula] = useState<'odd_even' | 'frequency' | 'astrological'>('frequency');
+  const [genFormula, setGenFormula] = useState<GenFormula>('frequency');
+  const [genPkBondValue, setGenPkBondValue] = useState<string>('all');
+  const [genPkCity, setGenPkCity] = useState<string>('all');
+  const [genThaiDrawDate, setGenThaiDrawDate] = useState<ThaiDrawDateFilter>('all');
+  const [genThaiMonth, setGenThaiMonth] = useState<string>('all');
+  const [genThaiYear, setGenThaiYear] = useState<string>('all');
+
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedNumber, setGeneratedNumber] = useState<string | null>(null);
-  const [genProbability, setGenProbability] = useState<number | null>(null);
-  const [genReason, setGenReason] = useState<string | null>(null);
+  const [generatedResult, setGeneratedResult] = useState<GeneratedCandidateResult | null>(null);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+  const [sessionGeneratedNumbers, setSessionGeneratedNumbers] = useState<string[]>([]);
+
+  // Dynamically calculate generator sample size based on active generator filters
+  const currentGenSampleSize = useMemo(() => {
+    if (genCategory === 'pakistan_bond') {
+      return filterPakistanBondDraws(pakistanBondResults, genPkBondValue, genPkCity).length;
+    } else {
+      return filterThaiLotteryDraws(thaiLotteryResults, genThaiDrawDate, genThaiMonth, genThaiYear).length;
+    }
+  }, [genCategory, pakistanBondResults, thaiLotteryResults, genPkBondValue, genPkCity, genThaiDrawDate, genThaiMonth, genThaiYear]);
+
+  const handleResetSessionHistory = () => {
+    setSessionGeneratedNumbers([]);
+    setGenerateError(null);
+  };
   
   // Custom booking integration with generated number
   const [quickFirstAmt, setQuickFirstAmt] = useState('100');
@@ -297,51 +323,38 @@ export default function AIAnalysisPortal({
 
   const handleGenerate = () => {
     setIsGenerating(true);
+    setGenerateError(null);
     setBookingStatus(null);
+
     setTimeout(() => {
-      let num = '';
-      let prob = 0;
-      let reason = '';
+      const res = generateLuckyNumberFromHistory({
+        category: genCategory,
+        formula: genFormula,
+        pakistanDraws: pakistanBondResults,
+        thaiDraws: thaiLotteryResults,
+        sessionGeneratedNumbers,
+        pkBondValue: genPkBondValue,
+        pkCity: genPkCity,
+        thaiDrawDate: genThaiDrawDate,
+        thaiMonth: genThaiMonth,
+        thaiYear: genThaiYear,
+      });
 
-      if (genCategory === 'pakistan_bond') {
-        if (genFormula === 'frequency') {
-          num = '786' + Math.floor(100 + Math.random() * 900).toString();
-          prob = 84.5;
-          reason = 'سابقہ ریکارڈز کے مطابق نمبر 786 کے بعد "طاق" ہندسوں کے ملاپ کی فریکوئنسی 84% زیادہ ہے۔';
-        } else if (genFormula === 'odd_even') {
-          num = '246' + (Math.floor(10 + Math.random() * 89) * 2).toString();
-          prob = 79.2;
-          reason = 'حالیہ ڈراز میں جفت (Even) نمبرز کا غلبہ ہے، یہ ایک توازن والا جفت فلو ہے۔';
-        } else {
-          num = Math.floor(100000 + Math.random() * 900000).toString();
-          prob = 91.8;
-          reason = 'علم نجوم اور تاریخی تاریخوں کے ہندساتی زائچہ سے اخذ کردہ شاہکار عدد۔';
-        }
+      if (res.success && res.result) {
+        setGeneratedResult(res.result);
+        setGenerateError(null);
+        setSessionGeneratedNumbers(prev => [...prev, res.result.number]);
       } else {
-        if (genFormula === 'frequency') {
-          num = '00' + Math.floor(10 + Math.random() * 90).toString();
-          prob = 82.1;
-          reason = 'تھائی لاٹری کے گذشتہ 5 فلو پیٹرنز میں صفر ڈبل جوڑی کی کارکردگی غیر معمولی رہی ہے۔';
-        } else if (genFormula === 'odd_even') {
-          num = '13' + (Math.floor(1 + Math.random() * 4) * 2 + 1).toString() + '5';
-          prob = 76.8;
-          reason = 'طاق ہندسوں کا یہ سیٹ (1, 3, 5, 9) تھائی ڈرا کی متوقع فریکوئنسی کے عین مطابق ہے۔';
-        } else {
-          num = Math.floor(1000 + Math.random() * 9000).toString();
-          prob = 89.5;
-          reason = 'ماہانہ زائچہ اور تھائی لینڈ جوتشی کیلکولیٹر کے ملاپ سے تیار کردہ لکی نمبر۔';
-        }
+        setGenerateError(res.error || 'نمبر تیار کرنے میں غلطی پیش آئی۔');
+        setGeneratedResult(null);
       }
-
-      setGeneratedNumber(num);
-      setGenProbability(prob);
-      setGenReason(reason);
       setIsGenerating(false);
-    }, 1200);
+    }, 600);
   };
 
   const handleQuickBook = async (isDemand: boolean) => {
-    if (!generatedNumber) return;
+    const numToBook = generatedResult?.number;
+    if (!numToBook) return;
     setBookingStatus(null);
 
     const first = parseInt(quickFirstAmt || '0', 10);
@@ -358,16 +371,16 @@ export default function AIAnalysisPortal({
         setBookingStatus({ type: 'error', message: 'ڈیمانڈ کے لئے مجموعی رقم 500 روپے سے زائد ہونی چاہیے۔' });
         return;
       }
-      const res = await onAddDemand(generatedNumber, first, second);
+      const res = await onAddDemand(numToBook, first, second);
       if (res.success) {
-        setBookingStatus({ type: 'success', message: `کامیابی: نمبر ${generatedNumber} کی Rs. ${total.toLocaleString()} کی ڈیمانڈ ایڈمن کو بھیج دی گئی ہے۔` });
+        setBookingStatus({ type: 'success', message: `کامیابی: نمبر ${numToBook} کی Rs. ${total.toLocaleString()} کی ڈیمانڈ ایڈمن کو بھیج دی گئی ہے۔` });
       } else {
         setBookingStatus({ type: 'error', message: res.error || 'غلطی پیش آئی۔' });
       }
     } else {
-      const res = await onAddBooking(generatedNumber, first, second);
+      const res = await onAddBooking(numToBook, first, second);
       if (res.success) {
-        setBookingStatus({ type: 'success', message: `کامیابی: نمبر ${generatedNumber} کامیابی سے بک کر لیا گیا ہے اور والٹ سے رقم منہا کر دی گئی ہے۔` });
+        setBookingStatus({ type: 'success', message: `کامیابی: نمبر ${numToBook} کامیابی سے بک کر لیا گیا ہے اور والٹ سے رقم منہا کر دی گئی ہے۔` });
       } else {
         setBookingStatus({ type: 'error', message: res.error || 'غلطی پیش آئی۔' });
       }
@@ -654,20 +667,36 @@ export default function AIAnalysisPortal({
         {activeSubTab === 'generator' && (
           <AIGeneratorTab
             genCategory={genCategory}
-            setGenCategory={setGenCategory}
+            setGenCategory={(cat) => {
+              setGenCategory(cat);
+              setGeneratedResult(null);
+              setGenerateError(null);
+            }}
             genFormula={genFormula}
             setGenFormula={setGenFormula}
+            genPkBondValue={genPkBondValue}
+            setGenPkBondValue={setGenPkBondValue}
+            genPkCity={genPkCity}
+            setGenPkCity={setGenPkCity}
+            genThaiDrawDate={genThaiDrawDate}
+            setGenThaiDrawDate={setGenThaiDrawDate}
+            genThaiMonth={genThaiMonth}
+            setGenThaiMonth={setGenThaiMonth}
+            genThaiYear={genThaiYear}
+            setGenThaiYear={setGenThaiYear}
+            availableThaiYears={availableThaiYears}
+            sampleSize={currentGenSampleSize}
             isGenerating={isGenerating}
-            generatedNumber={generatedNumber}
-            setGeneratedNumber={setGeneratedNumber}
-            genProbability={genProbability}
-            genReason={genReason}
+            generatedResult={generatedResult}
+            generateError={generateError}
+            sessionGeneratedNumbers={sessionGeneratedNumbers}
+            onResetSessionHistory={handleResetSessionHistory}
+            handleGenerate={handleGenerate}
             quickFirstAmt={quickFirstAmt}
             setQuickFirstAmt={setQuickFirstAmt}
             quickSecondAmt={quickSecondAmt}
             setQuickSecondAmt={setQuickSecondAmt}
             bookingStatus={bookingStatus}
-            handleGenerate={handleGenerate}
             handleQuickBook={handleQuickBook}
           />
         )}
