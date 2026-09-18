@@ -1480,10 +1480,10 @@ export async function addBooking(
       const secondLimit = typeof limit.secondPrizeAmountLimit === 'number' ? limit.secondPrizeAmountLimit : limit.maxAmount;
 
       if (firstLimit > 0 && firstAmount > firstLimit) {
-        throw new Error(`اس نمبر (${number}) کے لئے فرسٹ پرائز رقم کی حد Rs. ${firstLimit.toLocaleString()} ہے`);
+        throw new Error('یہ نمبر اس وقت booking کے لیے دستیاب نہیں ہے۔');
       }
       if (secondLimit > 0 && secondAmount > secondLimit) {
-        throw new Error(`اس نمبر (${number}) کے لئے سیکنڈ پرائز رقم کی حد Rs. ${secondLimit.toLocaleString()} ہے`);
+        throw new Error('یہ نمبر اس وقت booking کے لیے دستیاب نہیں ہے۔');
       }
     }
 

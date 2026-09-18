@@ -1,5 +1,5 @@
 import React, { useState, useEffect, FormEvent } from 'react';
-import { User, Booking, DealerBooking, NumberLimit, Demand, DrawDeadline, DrawCategory } from '../types';
+import { User, Booking, DealerBooking, Demand, DrawDeadline, DrawCategory } from '../types';
 import { generateBookingPDF } from '../utils/pdfGenerator';
 import { BookingDrawHeader } from './booking/BookingDrawHeader';
 import { BookingFormSection } from './booking/BookingFormSection';
@@ -9,7 +9,6 @@ interface BookingPageProps {
   user: User;
   bookings: Booking[];
   dealerBookings?: DealerBooking[];
-  limits: NumberLimit[];
   demands?: Demand[];
   deadlines?: DrawDeadline[];
   category: DrawCategory | 'unified';
@@ -22,7 +21,6 @@ export default function BookingPage({
   user,
   bookings,
   dealerBookings = [],
-  limits,
   demands = [],
   deadlines = [],
   category,
@@ -168,14 +166,6 @@ export default function BookingPage({
       return selectedDrawId ? (d.drawId === selectedDrawId || d.category === activeDraw?.category) : true;
     }
     return d.category === category;
-  });
-
-  const relevantLimits = (limits || []).filter(l => {
-    if (!l) return false;
-    if (selectedDrawId && l.drawId) {
-      return l.drawId === selectedDrawId;
-    }
-    return l.category === (activeDraw?.category || (category === 'unified' ? 'pakistan_bond' : category));
   });
 
   const currentFirstAmt = parseInt(firstAmtInput || '0', 10);
@@ -349,7 +339,6 @@ export default function BookingPage({
         currentTotalCost={currentTotalCost}
         handleSubmit={handleSubmit}
         handleDemandClick={handleDemandClick}
-        relevantLimits={relevantLimits}
       />
 
       <BookingsAndDemandsTables

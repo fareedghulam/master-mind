@@ -649,10 +649,10 @@ export default function App() {
     // Hard Favorite / Blocked check
     const isHardFavBlocked = await checkIsNumberHardFavorite(category, number, drawId);
     if (isHardFavBlocked) {
-      return { success: false, error: 'معذرت! یہ نمبر اس وقت بکنگ کے لیے دستیاب نہیں ہے۔' };
+      return { success: false, error: 'یہ نمبر اس وقت booking کے لیے دستیاب نہیں ہے۔' };
     }
 
-    // Individual Number Limit check (separate First Prize and Second Prize limits)
+    // Individual Number Limit check (separate First Prize and Second Prize limits - internal values protected)
     const limitsList = getNumberLimits();
     const limit = limitsList.find(l => (drawId ? l.drawId === drawId : l.category === category) && normalizeBookingNumber(l.number) === normalizeBookingNumber(number));
     if (limit) {
@@ -660,10 +660,10 @@ export default function App() {
       const secondLimit = typeof limit.secondPrizeAmountLimit === 'number' ? limit.secondPrizeAmountLimit : limit.maxAmount;
 
       if (firstLimit > 0 && firstAmt > firstLimit) {
-        return { success: false, error: `اس نمبر (${number}) کے لئے فرسٹ پرائز رقم کی حد Rs. ${firstLimit.toLocaleString()} ہے` };
+        return { success: false, error: 'یہ نمبر اس وقت booking کے لیے دستیاب نہیں ہے۔' };
       }
       if (secondLimit > 0 && secondAmt > secondLimit) {
-        return { success: false, error: `اس نمبر (${number}) کے لئے سیکنڈ پرائز رقم کی حد Rs. ${secondLimit.toLocaleString()} ہے` };
+        return { success: false, error: 'یہ نمبر اس وقت booking کے لیے دستیاب نہیں ہے۔' };
       }
     }
 
@@ -735,7 +735,7 @@ export default function App() {
     // Hard Favorite / Blocked check
     const isHardFavBlocked = await checkIsNumberHardFavorite(category, number, drawId);
     if (isHardFavBlocked) {
-      return { success: false, error: 'معذرت! یہ نمبر اس وقت بکنگ کے لیے دستیاب نہیں ہے۔' };
+      return { success: false, error: 'یہ نمبر اس وقت booking کے لیے دستیاب نہیں ہے۔' };
     }
 
     const action = async () => {
@@ -955,7 +955,6 @@ export default function App() {
               user={currentUser}
               bookings={bookings}
               dealerBookings={dealerBookings}
-              limits={limits}
               demands={demands}
               deadlines={deadlines}
               category="pakistan_bond"
@@ -970,7 +969,6 @@ export default function App() {
               user={currentUser}
               bookings={bookings}
               dealerBookings={dealerBookings}
-              limits={limits}
               demands={demands}
               deadlines={deadlines}
               category="thailand_lottery"

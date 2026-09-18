@@ -1,6 +1,5 @@
 import React from 'react';
-import { NumberLimit } from '../../types';
-import { Plus, Sparkles, AlertCircle } from 'lucide-react';
+import { Plus, Sparkles, ShieldCheck } from 'lucide-react';
 
 interface BookingFormSectionProps {
   isTimeUp: boolean;
@@ -15,7 +14,6 @@ interface BookingFormSectionProps {
   currentTotalCost: number;
   handleSubmit: (e: React.FormEvent) => void;
   handleDemandClick: (e: React.MouseEvent) => void;
-  relevantLimits: NumberLimit[];
 }
 
 export const BookingFormSection: React.FC<BookingFormSectionProps> = ({
@@ -30,8 +28,7 @@ export const BookingFormSection: React.FC<BookingFormSectionProps> = ({
   setSecondAmtInput,
   currentTotalCost,
   handleSubmit,
-  handleDemandClick,
-  relevantLimits
+  handleDemandClick
 }) => {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -151,45 +148,56 @@ export const BookingFormSection: React.FC<BookingFormSectionProps> = ({
         </form>
       </div>
 
-      {/* Side Panel: Active Caps Set by Admin */}
-      <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200/50 flex flex-col justify-between">
+      {/* Side Panel: Booking Instructions & Guidelines (Private limits hidden from Customer and Dealer) */}
+      <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200/60 flex flex-col justify-between">
         <div>
           <h4 className="font-bold text-sm text-slate-800 pb-2 border-b border-slate-200 mb-3 flex items-center justify-end gap-1.5">
-            <span>مخصوص لمٹ نمبرز (Caps)</span>
-            <AlertCircle className="w-4 h-4 text-amber-500" />
+            <span>بکنگ رہنمائی و قواعد</span>
+            <ShieldCheck className="w-4 h-4 text-amber-500" />
           </h4>
-          <p className="text-[11px] text-slate-500 leading-relaxed mb-4">
-            ایڈمن نے ان نمبرز کے لئے فرسٹ یا سیکنڈ پر بکنگ کی حد لاگو کی ہے۔ اس سے زیادہ رقم کا نمبر بک نہیں ہو سکتا۔
+          <p className="text-[11px] text-slate-500 leading-relaxed mb-3.5 text-right">
+            درست اندراج اور بروقت بکنگ کے لیے درج ذیل اہم ہدایات ملاحظہ فرمائیں:
           </p>
 
-          {relevantLimits.length === 0 ? (
-            <div className="text-center py-4 bg-white/70 rounded-xl border border-dashed border-slate-200">
-              <span className="text-[11px] text-slate-400 font-normal">کوئی حد مقرر نہیں ہے۔ تمام نمبرز اوپن ہیں۔</span>
+          <div className="space-y-2 text-xs text-slate-700 text-right">
+            <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex items-start gap-2.5 justify-end">
+              <div>
+                <p className="font-semibold text-slate-800 text-[11px]">والٹ بیلنس کا ہونا</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">بکنگ کی تصدیق کے لیے والٹ میں مطلوبہ رقم کا ہونا لازمی ہے۔</p>
+              </div>
+              <div className="w-2 h-2 rounded-full bg-amber-500 shrink-0 mt-1.5"></div>
             </div>
-          ) : (
-            <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
-              {relevantLimits.map((l) => {
-                const firstLimit = typeof l.firstPrizeAmountLimit === 'number' ? l.firstPrizeAmountLimit : l.maxAmount;
-                const secondLimit = typeof l.secondPrizeAmountLimit === 'number' ? l.secondPrizeAmountLimit : l.maxAmount;
-                return (
-                  <div key={l.id} className="flex justify-between items-center bg-white p-2.5 rounded-xl text-xs border border-slate-200/80 shadow-xs">
-                    <div className="flex items-center gap-2 font-mono text-[11px]">
-                      <span className="text-amber-800 font-medium">1st: Rs. {firstLimit > 0 ? firstLimit.toLocaleString() : 'اوپن'}</span>
-                      <span className="text-slate-300">|</span>
-                      <span className="text-indigo-800 font-medium">2nd: Rs. {secondLimit > 0 ? secondLimit.toLocaleString() : 'اوپن'}</span>
-                    </div>
-                    <span className="font-mono font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md">#{l.number}</span>
-                  </div>
-                );
-              })}
+
+            <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex items-start gap-2.5 justify-end">
+              <div>
+                <p className="font-semibold text-slate-800 text-[11px]">ڈرا کا اختتامی وقت</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">مقررہ ڈیڈ لائن پر بکنگ خودکار بند ہو جائے گی۔ وقت سے پہلے اندراج کریں۔</p>
+              </div>
+              <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 mt-1.5"></div>
             </div>
-          )}
+
+            <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex items-start gap-2.5 justify-end">
+              <div>
+                <p className="font-semibold text-slate-800 text-[11px]">منسوخی کی سہولت</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">غلط اندراج کی صورت میں 2 منٹ کے اندر بکنگ کینسل کر کے رقم والٹ میں واپس لی جا سکتی ہے۔</p>
+              </div>
+              <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0 mt-1.5"></div>
+            </div>
+
+            <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex items-start gap-2.5 justify-end">
+              <div>
+                <p className="font-semibold text-slate-800 text-[11px]">ڈیمانڈ آپشن</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">اگر مطلوبہ نمبر براہ راست رجسٹر نہ ہو سکے تو 'ڈیمانڈ بھیجیں' کا آپشن استعمال کریں۔</p>
+              </div>
+              <div className="w-2 h-2 rounded-full bg-indigo-500 shrink-0 mt-1.5"></div>
+            </div>
+          </div>
         </div>
 
-        <div className="mt-4 pt-4 border-t border-slate-200">
-          <h5 className="text-[10px] text-slate-400 leading-normal">
-            نوٹ: کسی بھی نمبر کی بکنگ کے لئے آپ کا والٹ بیلنس کافی ہونا ضروری ہے۔
-          </h5>
+        <div className="mt-4 pt-3 border-t border-slate-200">
+          <p className="text-[10px] text-slate-400 leading-normal text-right">
+            نوٹ: تمام بکنگز سسٹم کی عمومی پالیسی اور دستیابی کے تحت منظور کی جاتی ہیں۔
+          </p>
         </div>
       </div>
     </div>
