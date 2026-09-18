@@ -1,10 +1,13 @@
-import React from 'react';
-import { NumberLimit, DrawDeadline, DrawCategory } from '../../types';
-import { Plus, Trash, Clock, X } from 'lucide-react';
+import React, { useState } from 'react';
+import { NumberLimit, DrawDeadline, DrawCategory, HardFavoriteNumber } from '../../types';
+import { Plus, Trash, Clock, X, ShieldAlert, Ban, Search, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface AdminLimitsDeadlinesTabProps {
   limits: NumberLimit[];
   deadlines: DrawDeadline[];
+  hardFavoriteNumbers?: HardFavoriteNumber[];
+  onAddHardFavorite?: (category: DrawCategory | 'all', number: string, note?: string) => Promise<{ success: boolean; error?: string }>;
+  onRemoveHardFavorite?: (id: string) => Promise<{ success: boolean; error?: string }>;
   limitError: string;
   limitSuccess: string;
   limitCategory: DrawCategory;
@@ -56,6 +59,9 @@ interface AdminLimitsDeadlinesTabProps {
 export const AdminLimitsDeadlinesTab: React.FC<AdminLimitsDeadlinesTabProps> = ({
   limits,
   deadlines,
+  hardFavoriteNumbers = [],
+  onAddHardFavorite,
+  onRemoveHardFavorite,
   limitError,
   limitSuccess,
   limitCategory,
@@ -93,6 +99,78 @@ export const AdminLimitsDeadlinesTab: React.FC<AdminLimitsDeadlinesTabProps> = (
   safeGetTime,
   safeFormatDate
 }) => {
+  // Hard Favorite state
+  const [hfCategory, setHfCategory] = useState<DrawCategory | 'all'>('all');
+  const [hfNumber, setHfNumber] = useState('');
+  const [hfNote, setHfNote] = useState('');
+  const [hfSearch, setHfSearch] = useState('');
+  const [hfError, setHfError] = useState('');
+  const [hfSuccess, setHfSuccess] = useState('');
+  const [hfSubmitting, setHfSubmitting] = useState(false);
+
+  const handleHfSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setHfError('');
+    setHfSuccess('');
+
+    const raw = hfNumber.trim();
+    if (!raw) {
+      setHfError('براہ کرم کوئی نمبر درج کریں۔');
+      return;
+    }
+
+    if (!onAddHardFavorite) {
+      setHfError('ہارڈ فیورٹ سروس دستیاب نہیں ہے۔');
+      return;
+    }
+
+    setHfSubmitting(true);
+    try {
+      const res = await onAddHardFavorite(hfCategory, raw, hfNote);
+      if (res && res.success) {
+        setHfSuccess(`نمبر ${raw} کامیابی سے ہارڈ فیورٹ / بلاک لسٹ میں شامل کر دیا گیا۔`);
+        setHfNumber('');
+        setHfNote('');
+      } else {
+        setHfError(res?.error || 'ہارڈ فیورٹ نمبر شامل کرنے میں خرابی پیش آئی۔');
+      }
+    } catch (err: any) {
+      setHfError(err.message || 'غیر متوقع خرابی پیش آئی۔');
+    } finally {
+      setHfSubmitting(false);
+    }
+  };
+
+  const handleHfRemove = async (id: string, num: string) => {
+    if (!window.confirm(`کیا آپ واقعی نمبر #${num} کو ہارڈ فیورٹ / بلاک لسٹ سے ہٹانا چاہتے ہیں؟ اس کے بعد یہ نمبر دوبارہ بکنگ کے لیے دستیاب ہو جائے گا۔`)) {
+      return;
+    }
+    setHfError('');
+    setHfSuccess('');
+    if (!onRemoveHardFavorite) return;
+    try {
+      const res = await onRemoveHardFavorite(id);
+      if (res && res.success) {
+        setHfSuccess(`نمبر #${num} کامیابی سے ان بلاک کر دیا گیا ہے۔`);
+      } else {
+        setHfError(res?.error || 'نمبر ہٹانے میں خرابی پیش آئی۔');
+      }
+    } catch (err: any) {
+      setHfError(err.message || 'غیر متوقع خرابی پیش آئی۔');
+    }
+  };
+
+  const filteredHardFavorites = hardFavoriteNumbers.filter(hf => {
+    if (!hfSearch.trim()) return true;
+    const q = hfSearch.trim().toLowerCase();
+    return (
+      hf.number.toLowerCase().includes(q) ||
+      (hf.note && hf.note.toLowerCase().includes(q)) ||
+      (hf.createdBy && hf.createdBy.toLowerCase().includes(q)) ||
+      hf.category.toLowerCase().includes(q)
+    );
+  });
+
   return (
     <div className="space-y-8">
       {/* Module 2: Number Booking Limit Configuration */}
@@ -213,6 +291,186 @@ export const AdminLimitsDeadlinesTab: React.FC<AdminLimitsDeadlinesTabProps> = (
                           <span>{categoryMap[limit.category] || limit.category}</span>
                         </div>
                         <span className="text-[11px] text-slate-500 font-mono block mt-1">زیادہ سے زیادہ فرسٹ/سیکنڈ لمٹ: Rs. {limit.maxAmount.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Module 2.5: Hard Favorite Numbers (Fully Blocked from Booking) */}
+      <div className="bg-white p-6 sm:p-8 rounded-3xl border border-rose-100 shadow-md flex flex-col justify-between">
+        <div>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-3 border-b border-rose-100 mb-4 gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold px-3 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1.5">
+                <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
+                <span>مستقل ممنوعہ / بلاکڈ نمبرز</span>
+              </span>
+              <span className="text-xs font-mono font-bold bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full">
+                کل تعداد: {hardFavoriteNumbers.length}
+              </span>
+            </div>
+            <h4 className="text-base font-bold text-slate-800 flex items-center justify-end gap-2">
+              <span>ہارڈ فیورٹ نمبرز (Hard Favorite Numbers)</span>
+              <span className="w-2.5 h-2.5 bg-rose-500 rounded-full animate-pulse"></span>
+            </h4>
+          </div>
+
+          <div className="text-xs text-slate-600 text-right mb-5 leading-relaxed bg-rose-50/40 p-4 rounded-2xl border border-rose-100 flex flex-col gap-1">
+            <div className="font-bold text-rose-800 flex items-center justify-end gap-1.5">
+              <span>ایڈمن کے لیے اہم نوٹ:</span>
+              <Ban className="w-4 h-4 text-rose-600" />
+            </div>
+            <p>
+              جس نمبر کو آپ یہاں <strong>ہارڈ فیورٹ</strong> کے طور پر شامل کریں گے، اس پر کوئی بھی کسٹمر یا ڈیلر نئی بکنگ نہیں کرا سکے گا اور بکنگ فوراً مسترد ہو جائے گی۔
+            </p>
+            <p className="text-[11px] text-slate-500 mt-1">
+              🔒 <strong>مکمل پرائیویسی:</strong> یہ لسٹ صرف ایڈمن پینل میں نظر آتی ہے۔ عام صارفین اور ڈیلرز کو نہ تو یہ لسٹ نظر آتی ہے اور نہ ہی انہیں یہ بتایا جاتا ہے کہ یہ نمبر ایڈمن نے بلاک کیا ہے۔
+            </p>
+          </div>
+
+          {hfError && (
+            <div className="bg-rose-50 border border-rose-200 text-rose-700 p-3 rounded-2xl text-xs text-right font-medium mb-4 flex items-center justify-end gap-2">
+              <span>{hfError}</span>
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+            </div>
+          )}
+          {hfSuccess && (
+            <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-3 rounded-2xl text-xs text-right font-medium mb-4 flex items-center justify-end gap-2">
+              <span>{hfSuccess}</span>
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+            </div>
+          )}
+
+          {/* Form to Add Hard Favorite Number */}
+          <form onSubmit={handleHfSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1 text-right">کیٹیگری منتخب کریں</label>
+                <select
+                  value={hfCategory}
+                  onChange={(e) => setHfCategory(e.target.value as DrawCategory | 'all')}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2.5 text-xs text-right font-medium focus:ring-2 focus:ring-rose-400 focus:outline-none"
+                >
+                  <option value="all">تمام کیٹیگریز (پاکستان بانڈ اور تھائی دونوں)</option>
+                  <option value="pakistan_bond">صرف پاکستان پرائز بانڈ</option>
+                  <option value="thailand_lottery">صرف تھائی لینڈ لاٹری</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1 text-right">
+                  نمبر درج کریں <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={hfNumber}
+                  onChange={(e) => setHfNumber(e.target.value)}
+                  placeholder="مثلاً: 05 یا 786 یا 1234"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2.5 text-xs text-right font-mono font-bold tracking-wider focus:ring-2 focus:ring-rose-400 focus:outline-none"
+                  required
+                />
+                <span className="text-[10px] text-slate-400 block text-right mt-1">
+                  نوٹ: زیرو محفوظ رہے گا (مثلاً 05 اور 5 الگ ہوں گے)
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1 text-right">
+                  ریمارکس / وجہ (اختیاری)
+                </label>
+                <input
+                  type="text"
+                  value={hfNote}
+                  onChange={(e) => setHfNote(e.target.value)}
+                  placeholder="مثلاً: خصوصی ہارڈ کوٹہ بلاک"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2.5 text-xs text-right focus:ring-2 focus:ring-rose-400 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={hfSubmitting}
+              className="w-full bg-rose-600 hover:bg-rose-700 disabled:bg-rose-300 text-white font-bold py-3 rounded-2xl text-xs flex items-center justify-center gap-2 cursor-pointer transition-all shadow-sm"
+            >
+              <Ban className="w-4 h-4" />
+              <span>{hfSubmitting ? 'شامل کیا جا رہا ہے...' : 'ہارڈ فیورٹ میں شامل کریں (مکمل بلاک کریں)'}</span>
+            </button>
+          </form>
+
+          {/* List of Active Hard Favorite Numbers */}
+          <div className="mt-6 pt-5 border-t border-rose-100">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
+              {hardFavoriteNumbers.length > 3 && (
+                <div className="relative w-full sm:w-64">
+                  <input
+                    type="text"
+                    value={hfSearch}
+                    onChange={(e) => setHfSearch(e.target.value)}
+                    placeholder="نمبر یا نوٹ تلاش کریں..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-8 pl-3 py-1.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-rose-400 font-sans"
+                  />
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
+                </div>
+              )}
+              <h5 className="text-xs font-bold text-slate-700 text-right w-full sm:w-auto">
+                موجودہ ہارڈ فیورٹ / بلاکڈ نمبرز کی لسٹ ({hardFavoriteNumbers.length})
+              </h5>
+            </div>
+
+            {hardFavoriteNumbers.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-4 bg-slate-50 rounded-2xl border border-slate-100">
+                کوئی ہارڈ فیورٹ / بلاکڈ نمبر موجود نہیں ہے۔ تمام نمبرز معمول کے مطابق کھلے ہیں۔
+              </p>
+            ) : filteredHardFavorites.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-4 bg-slate-50 rounded-2xl border border-slate-100">
+                تلاش کے مطابق کوئی نمبر نہیں ملا۔
+              </p>
+            ) : (
+              <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                {filteredHardFavorites.map((hf) => {
+                  const catLabel = hf.category === 'all'
+                    ? 'تمام کیٹیگریز'
+                    : hf.category === 'pakistan_bond'
+                    ? 'پاکستان پرائز بانڈ'
+                    : 'تھائی لینڈ لاٹری';
+
+                  return (
+                    <div
+                      key={hf.id}
+                      className="flex justify-between items-center bg-rose-50/30 hover:bg-rose-50/70 p-3 rounded-2xl text-xs transition-all border border-rose-100"
+                    >
+                      <button
+                        onClick={() => handleHfRemove(hf.id, hf.number)}
+                        className="px-3 py-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-100 rounded-xl transition-all cursor-pointer flex items-center gap-1 font-bold text-[11px] border border-rose-200"
+                        title="ان بلاک کریں / لسٹ سے ہٹائیں"
+                      >
+                        <Trash className="w-3.5 h-3.5" />
+                        <span>ان بلاک کریں</span>
+                      </button>
+
+                      <div className="text-right">
+                        <div className="font-bold text-slate-800 flex items-center justify-end gap-2">
+                          <span className="bg-rose-600 text-white px-2.5 py-0.5 rounded-lg font-mono font-bold text-sm tracking-widest shadow-xs">
+                            #{hf.number}
+                          </span>
+                          <span className="text-xs text-slate-700 font-semibold">{catLabel}</span>
+                        </div>
+                        <div className="flex items-center justify-end gap-2 mt-1 text-[11px] text-slate-500">
+                          {hf.note && (
+                            <span className="text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
+                              {hf.note}
+                            </span>
+                          )}
+                          <span className="font-mono text-[10px] text-slate-400">
+                            {safeFormatDate(hf.createdAt)}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   );

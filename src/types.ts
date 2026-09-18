@@ -63,6 +63,17 @@ export interface NumberLimit {
   isArchived?: boolean;
 }
 
+export interface HardFavoriteNumber {
+  id: string;
+  category: DrawCategory | 'all';
+  number: string;
+  createdAt: string;
+  createdBy?: string;
+  note?: string;
+  drawId?: string;
+  isArchived?: boolean;
+}
+
 export interface Demand {
   id: string;
   userEmail: string;

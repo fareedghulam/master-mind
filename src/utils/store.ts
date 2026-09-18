@@ -1,4 +1,4 @@
-import { User, Booking, DealerBooking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult, AllResultType, DrawCategory, Transaction } from '../types';
+import { User, Booking, DealerBooking, NumberLimit, HardFavoriteNumber, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult, AllResultType, DrawCategory, Transaction } from '../types';
 import { db, auth, firebaseConfig } from '../lib/firebase';
 import { 
   ref,
@@ -78,6 +78,7 @@ let cachedUsers: User[] = [];
 let cachedBookings: Booking[] = [];
 let cachedDealerBookings: DealerBooking[] = [];
 let cachedLimits: NumberLimit[] = [];
+let cachedHardFavoriteNumbers: HardFavoriteNumber[] = [];
 let cachedDemands: Demand[] = [];
 let cachedDeadlines: DrawDeadline[] = [];
 let cachedTransactions: Transaction[] = [];
@@ -115,6 +116,26 @@ export function sortResultsChronological<T extends { date?: string; drawNo?: str
     }
     return (b.drawNo || b.id || '').localeCompare(a.drawNo || a.id || '');
   });
+}
+
+/**
+ * Normalizes a booking number:
+ * - Trims outer whitespace
+ * - Converts Eastern Arabic and Urdu numerals (۰-۹) to standard digits (0-9)
+ * - Strips any spaces, hyphens, and hashes to prevent formatting bypasses
+ * - CRITICAL: Preserves leading zeros and exact character length (e.g. "05" remains "05", distinct from "5")
+ */
+export function normalizeBookingNumber(raw: string | number | undefined | null): string {
+  if (raw === undefined || raw === null) return '';
+  const str = String(raw).trim();
+  if (!str) return '';
+  const arabicUrduMap: Record<string, string> = {
+    '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4', '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9',
+    '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4', '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9'
+  };
+  let cleaned = str.replace(/[۰-۹٠-٩]/g, (ch) => arabicUrduMap[ch] || ch);
+  cleaned = cleaned.replace(/[\s\-_#]/g, '');
+  return cleaned;
 }
 
 export function isLoggedUserAdminOrSuper(): boolean {
@@ -289,18 +310,25 @@ export function initializeStore() {
   // Active single-user document listener for real-time customer profile & balance sync
   let activeUserUnsub: (() => void) | null = null;
   let activeDealerBookingsUnsub: (() => void) | null = null;
+  let activeHardFavoriteUnsub: (() => void) | null = null;
   onAuthStateChanged(auth, async (firebaseUser) => {
     if (activeUserUnsub) {
       activeUserUnsub();
       activeUserUnsub = null;
     }
 
-      if (activeDealerBookingsUnsub) {
-        activeDealerBookingsUnsub();
-        activeDealerBookingsUnsub = null;
-      }
+    if (activeDealerBookingsUnsub) {
+      activeDealerBookingsUnsub();
+      activeDealerBookingsUnsub = null;
+    }
 
-      cachedDealerBookings = [];
+    if (activeHardFavoriteUnsub) {
+      activeHardFavoriteUnsub();
+      activeHardFavoriteUnsub = null;
+    }
+
+    cachedDealerBookings = [];
+    cachedHardFavoriteNumbers = [];
 
     if (firebaseUser) {
       const uid = firebaseUser.uid;
@@ -366,6 +394,59 @@ export function initializeStore() {
         );
       };
 
+      // SECURITY: Hard Favorite Numbers are strictly Admin-only.
+      // Non-admins, dealers, and public never receive the real-time list.
+      const syncHardFavoriteListener = (roleData: User) => {
+        if (activeHardFavoriteUnsub) {
+          activeHardFavoriteUnsub();
+          activeHardFavoriteUnsub = null;
+        }
+
+        cachedHardFavoriteNumbers = [];
+
+        const role = roleData.role;
+        const isAdminUser =
+          role === 'superAdmin' ||
+          role === 'admin' ||
+          role === 'dataEntryAdmin' ||
+          isSuperAdminEmail ||
+          isDataEntryEmail ||
+          roleData.isAdmin === true;
+
+        if (!isAdminUser) {
+          notifyListeners();
+          return;
+        }
+
+        activeHardFavoriteUnsub = onValue(
+          ref(db, 'hardFavoriteNumbers'),
+          (snapshot) => {
+            const val = snapshot.val();
+            const list: HardFavoriteNumber[] = val
+              ? Object.keys(val).map(k => ({ ...val[k], id: val[k].id || k }))
+              : [];
+
+            cachedHardFavoriteNumbers = list
+              .filter(hf => !hf.isArchived)
+              .sort(
+                (a, b) =>
+                  new Date(b.createdAt || 0).getTime() -
+                  new Date(a.createdAt || 0).getTime()
+              );
+
+            notifyListeners();
+          },
+          (err) => {
+            console.error(
+              `[HardFavoriteNumbers] Listener failed for ${uid}:`,
+              err
+            );
+            cachedHardFavoriteNumbers = [];
+            notifyListeners();
+          }
+        );
+      };
+
       activeUserUnsub = onValue(ref(db, `users/${uid}`), (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.val() as User;
@@ -394,6 +475,7 @@ export function initializeStore() {
             // SECURITY: Start the dealerBookings listener only after
             // the user's complete role/admin status has been resolved.
             syncDealerBookingsListener(userObj);
+            syncHardFavoriteListener(userObj);
 
           const isComplete = data.profileCompleted === true || (Boolean(userObj.name?.trim()) && Boolean(userObj.phone?.trim()) && Boolean(userObj.city?.trim()));
           userObj.profileCompleted = isComplete;
@@ -652,6 +734,17 @@ export function saveNumberLimits(limits: NumberLimit[]) {
   if (Object.keys(updates).length > 0) {
     update(ref(db), updates);
   }
+}
+
+/**
+ * Retrieves the Hard Favorite Numbers list.
+ * STRICT SECURITY: Never returns data to non-admin accounts.
+ */
+export function getHardFavoriteNumbers(): HardFavoriteNumber[] {
+  if (!isLoggedUserAdminOrSuper() && !isLoggedUserDataEntry()) {
+    return [];
+  }
+  return cachedHardFavoriteNumbers;
 }
 
 export function getLoggedInUser(): User | null {
@@ -1391,6 +1484,12 @@ export async function addBooking(
       }
     }
 
+    // HARD FAVORITE / BLOCKED CHECK: Rejects prohibited numbers authoritatively
+    const isHardFavBlocked = await checkIsNumberHardFavorite(category, number, drawId);
+    if (isHardFavBlocked) {
+      throw new Error('یہ نمبر اس وقت booking کے لیے دستیاب نہیں ہے۔');
+    }
+
     const categoryLabelMap: Record<DrawCategory, string> = {
       pakistan_bond: 'پاکستان پرائز بانڈ',
       thailand_lottery: 'تھائی لینڈ لاٹری'
@@ -1699,6 +1798,141 @@ export async function deleteLimit(id: string): Promise<void> {
   notifyListeners();
 }
 
+/**
+ * Authoritative check if a number is marked as Hard Favorite / Blocked.
+ * Normalizes the input (handling Urdu/Arabic digits, stripping spaces/hyphens/hashes, preserving leading zeroes).
+ */
+export async function checkIsNumberHardFavorite(
+  category: DrawCategory,
+  number: string,
+  drawId?: string
+): Promise<boolean> {
+  const norm = normalizeBookingNumber(number);
+  if (!norm) return false;
+
+  // Fast check in memory cache if populated
+  if (cachedHardFavoriteNumbers && cachedHardFavoriteNumbers.length > 0) {
+    const isCachedBlocked = cachedHardFavoriteNumbers.some(hf => {
+      if (hf.isArchived) return false;
+      if (normalizeBookingNumber(hf.number) !== norm) return false;
+      const catMatch = hf.category === 'all' || hf.category === category;
+      if (!catMatch) return false;
+      if (hf.drawId && drawId && hf.drawId !== drawId) return false;
+      return true;
+    });
+    if (isCachedBlocked) return true;
+  }
+
+  // Authoritative real-time check directly against database for all accounts
+  try {
+    const snap = await get(ref(db, 'hardFavoriteNumbers'));
+    if (snap.exists()) {
+      const val = snap.val();
+      const list: HardFavoriteNumber[] = Object.keys(val).map(k => ({ ...val[k], id: val[k].id || k }));
+      return list.some(hf => {
+        if (hf.isArchived) return false;
+        if (normalizeBookingNumber(hf.number) !== norm) return false;
+        const catMatch = hf.category === 'all' || hf.category === category;
+        if (!catMatch) return false;
+        if (hf.drawId && drawId && hf.drawId !== drawId) return false;
+        return true;
+      });
+    }
+  } catch (err) {
+    console.error('[HardFavorite] Error querying database for validation:', err);
+  }
+
+  return false;
+}
+
+export async function addHardFavoriteNumber(
+  category: DrawCategory | 'all',
+  rawNumber: string,
+  note?: string,
+  drawId?: string
+): Promise<{ success: boolean; error?: string }> {
+  const online = await checkInternetConnection();
+  if (!online) return { success: false, error: 'NO_INTERNET' };
+
+  if (!isLoggedUserAdminOrSuper() && !isLoggedUserDataEntry()) {
+    return { success: false, error: 'صرف ایڈمن کو ہارڈ فیورٹ نمبر شامل کرنے کی اجازت ہے۔' };
+  }
+
+  const normalized = normalizeBookingNumber(rawNumber);
+  if (!normalized) {
+    return { success: false, error: 'براہ کرم درست نمبر درج کریں۔' };
+  }
+
+  if (!/^\d+$/.test(normalized)) {
+    return { success: false, error: 'نمبر میں صرف ہندسے (0-9) ہونے چاہئیں۔' };
+  }
+
+  try {
+    const snap = await get(ref(db, 'hardFavoriteNumbers'));
+    const val = snap.exists() ? snap.val() : {};
+    const existingList: HardFavoriteNumber[] = Object.keys(val).map(k => ({ ...val[k], id: val[k].id || k }));
+
+    const isDuplicate = existingList.some(hf => {
+      if (hf.isArchived) return false;
+      if (normalizeBookingNumber(hf.number) !== normalized) return false;
+      if (category === 'all' || hf.category === 'all' || hf.category === category) {
+        if (drawId && hf.drawId && hf.drawId !== drawId) return false;
+        return true;
+      }
+      return false;
+    });
+
+    if (isDuplicate) {
+      return { success: false, error: `نمبر ${normalized} پہلے سے ہارڈ فیورٹ / بلاک لسٹ میں موجود ہے۔` };
+    }
+
+    const id = 'hf-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+    const newEntry: HardFavoriteNumber = {
+      id,
+      category,
+      number: normalized,
+      createdAt: new Date().toISOString(),
+      createdBy: auth.currentUser?.email || 'admin',
+      ...(note?.trim() && { note: note.trim() }),
+      ...(drawId && { drawId }),
+      isArchived: false
+    };
+
+    await set(ref(db, `hardFavoriteNumbers/${id}`), newEntry);
+
+    const idx = cachedHardFavoriteNumbers.findIndex(h => h.id === id);
+    if (idx !== -1) {
+      cachedHardFavoriteNumbers[idx] = newEntry;
+    } else {
+      cachedHardFavoriteNumbers.unshift(newEntry);
+    }
+    notifyListeners();
+    return { success: true };
+  } catch (err: any) {
+    console.error('[HardFavorite] Error adding entry:', err);
+    return { success: false, error: err.message || 'ہارڈ فیورٹ نمبر شامل کرنے میں خرابی پیش آئی۔' };
+  }
+}
+
+export async function removeHardFavoriteNumber(id: string): Promise<{ success: boolean; error?: string }> {
+  const online = await checkInternetConnection();
+  if (!online) return { success: false, error: 'NO_INTERNET' };
+
+  if (!isLoggedUserAdminOrSuper() && !isLoggedUserDataEntry()) {
+    return { success: false, error: 'صرف ایڈمن کو ہارڈ فیورٹ نمبر ہٹانے کی اجازت ہے۔' };
+  }
+
+  try {
+    await remove(ref(db, `hardFavoriteNumbers/${id}`));
+    cachedHardFavoriteNumbers = cachedHardFavoriteNumbers.filter(h => h.id !== id);
+    notifyListeners();
+    return { success: true };
+  } catch (err: any) {
+    console.error('[HardFavorite] Error removing entry:', err);
+    return { success: false, error: err.message || 'ہارڈ فیورٹ نمبر ہٹانے میں خرابی پیش آئی۔' };
+  }
+}
+
 export function getDemands(): Demand[] {
   return cachedDemands;
 }
@@ -1735,6 +1969,12 @@ export async function addDemand(
   const normalizedEmail = email.toLowerCase();
   const user = cachedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
   if (!user) return { success: false, error: 'کسٹمر ریکارڈ نہیں ملا' };
+
+  // HARD FAVORITE / BLOCKED CHECK
+  const isHardFavBlocked = await checkIsNumberHardFavorite(category, number, drawId);
+  if (isHardFavBlocked) {
+    return { success: false, error: 'یہ نمبر اس وقت booking کے لیے دستیاب نہیں ہے۔' };
+  }
 
   const totalCost = firstAmount + secondAmount;
   if (user.balance < totalCost) {
@@ -1859,6 +2099,12 @@ export async function approveDemand(
 
     if (currentBalance < totalCost) {
       throw new Error('صارف کے والٹ میں کافی رقم موجود نہیں ہے');
+    }
+
+    // HARD FAVORITE / BLOCKED CHECK
+    const isHardFavBlocked = await checkIsNumberHardFavorite(currentDemand.category, currentDemand.number, currentDemand.drawId);
+    if (isHardFavBlocked) {
+      throw new Error('یہ نمبر اس وقت booking کے لیے دستیاب نہیں ہے۔');
     }
 
     let bookingObj: Booking | DealerBooking;

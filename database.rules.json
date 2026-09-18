@@ -41,6 +41,11 @@
       ".write": "auth != null && (auth.token.email === 'mastermaind.qureshi110@gmail.com' || auth.token.email === 'fareed.ghulam@gmail.com' || root.child('users').child(auth.uid).child('isAdmin').val() === true)"
     },
 
+    "hardFavoriteNumbers": {
+      ".read": "auth != null",
+      ".write": "auth != null && (auth.token.email === 'mastermaind.qureshi110@gmail.com' || auth.token.email === 'fareed.ghulam@gmail.com' || root.child('users').child(auth.uid).child('isAdmin').val() === true)"
+    },
+
     "demands": {
       ".read": "auth != null",
       ".write": "auth != null"

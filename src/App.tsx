@@ -35,9 +35,13 @@ import {
   editResult,
   deleteResult,
   signInWithGoogle,
-  updateUserProfile
+  updateUserProfile,
+  getHardFavoriteNumbers,
+  addHardFavoriteNumber,
+  removeHardFavoriteNumber,
+  checkIsNumberHardFavorite
 } from './utils/store';
-import { User, Booking, DealerBooking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult, DrawCategory } from './types';
+import { User, Booking, DealerBooking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult, DrawCategory, HardFavoriteNumber } from './types';
 import { migrateUserProfileFromFirestore, migrateAllFirestoreUsersToRtdb } from './utils/userMigration';
 import { db, auth } from './lib/firebase';
 import { ref, get, set, update, remove } from 'firebase/database';
@@ -67,6 +71,7 @@ export default function App() {
   const [adminConfiguredEmail, setAdminConfiguredEmailState] = useState<string>('mastermaind.qureshi110@gmail.com');
   const [pakistanBondResults, setPakistanBondResults] = useState<PakistanBondResult[]>([]);
   const [thaiLotteryResults, setThaiLotteryResults] = useState<ThaiLotteryResult[]>([]);
+  const [hardFavoriteNumbers, setHardFavoriteNumbers] = useState<HardFavoriteNumber[]>([]);
   const [isMandatorySetupOpen, setIsMandatorySetupOpen] = useState<boolean>(false);
 
   // Network and Wallet Protection states
@@ -178,6 +183,7 @@ export default function App() {
     setDeadlines(getDrawDeadlines());
     setPakistanBondResults(getPakistanBondResults());
     setThaiLotteryResults(getThaiLotteryResults());
+    setHardFavoriteNumbers(getHardFavoriteNumbers());
     
     if (loggedIn) {
       if (loggedIn.isAdmin) {
@@ -236,6 +242,36 @@ export default function App() {
       return true;
     };
     return await verifyNetworkAndExecute(action);
+  };
+
+  const handleAddHardFavorite = async (category: DrawCategory | 'all', number: string, note?: string) => {
+    const action = async () => {
+      const res = await addHardFavoriteNumber(category, number, note);
+      if (res && res.success) {
+        syncWithStore();
+      }
+      return res;
+    };
+    const res = await verifyNetworkAndExecute(action);
+    if (res && 'success' in res) {
+      return res as { success: boolean; error?: string };
+    }
+    return { success: false, error: 'نیٹ ورک کا مسئلہ ہے۔' };
+  };
+
+  const handleRemoveHardFavorite = async (id: string) => {
+    const action = async () => {
+      const res = await removeHardFavoriteNumber(id);
+      if (res && res.success) {
+        syncWithStore();
+      }
+      return res;
+    };
+    const res = await verifyNetworkAndExecute(action);
+    if (res && 'success' in res) {
+      return res as { success: boolean; error?: string };
+    }
+    return { success: false, error: 'نیٹ ورک کا مسئلہ ہے۔' };
   };
 
   const handleRegister = async (name: string, phone: string, city: string, email: string, password: string) => {
@@ -603,6 +639,12 @@ export default function App() {
       }
     }
 
+    // Hard Favorite / Blocked check
+    const isHardFavBlocked = await checkIsNumberHardFavorite(category, number, drawId);
+    if (isHardFavBlocked) {
+      return { success: false, error: 'معذرت! یہ نمبر اس وقت بکنگ کے لیے دستیاب نہیں ہے۔' };
+    }
+
     const action = async () => {
       const res = await addBooking(currentUser.email, category, number, firstAmt, secondAmt, bondValue, drawNumber, drawDate, drawCity, drawId);
       if (res.success) {
@@ -666,6 +708,12 @@ export default function App() {
       if (deadlineTime > 0 && Date.now() >= deadlineTime) {
         return { success: false, error: 'معذرت! اس ڈرا کی بکنگ کا وقت ختم ہو چکا ہے۔' };
       }
+    }
+
+    // Hard Favorite / Blocked check
+    const isHardFavBlocked = await checkIsNumberHardFavorite(category, number, drawId);
+    if (isHardFavBlocked) {
+      return { success: false, error: 'معذرت! یہ نمبر اس وقت بکنگ کے لیے دستیاب نہیں ہے۔' };
     }
 
     const action = async () => {
@@ -921,6 +969,9 @@ export default function App() {
               pakistanBondResults={pakistanBondResults}
               thaiLotteryResults={thaiLotteryResults}
               currentUser={currentUser}
+              hardFavoriteNumbers={hardFavoriteNumbers}
+              onAddHardFavorite={handleAddHardFavorite}
+              onRemoveHardFavorite={handleRemoveHardFavorite}
               onCancelBookingByAdmin={handleCancelBookingByAdmin}
               onCancelDealerBookingByAdmin={cancelDealerBookingByAdmin}
               onAssignDealer={assignDealerRole}

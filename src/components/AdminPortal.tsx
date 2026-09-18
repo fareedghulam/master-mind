@@ -1,5 +1,5 @@
 import React, { useState, useEffect, FormEvent } from 'react';
-import { User, AdminRole, NumberLimit, Demand, DrawDeadline, Booking, DealerBooking, PakistanBondResult, ThaiLotteryResult, AllResultType, DrawCategory } from '../types';
+import { User, AdminRole, NumberLimit, Demand, DrawDeadline, Booking, DealerBooking, PakistanBondResult, ThaiLotteryResult, AllResultType, DrawCategory, HardFavoriteNumber } from '../types';
 import { ShieldCheck, UserCheck, Sparkles, Clock, History, Building2 } from 'lucide-react';
 import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, getAdminConfiguredEmail, updateCustomerPassword, registerInAuthOnly, changeLoggedAdminPassword, assignDealerRole, cancelDealerBookingByAdmin } from '../utils/store';
 import { db } from '../lib/firebase';
@@ -23,6 +23,9 @@ interface AdminPortalProps {
   pakistanBondResults: PakistanBondResult[];
   thaiLotteryResults: ThaiLotteryResult[];
   currentUser: User | null;
+  hardFavoriteNumbers?: HardFavoriteNumber[];
+  onAddHardFavorite?: (category: DrawCategory | 'all', number: string, note?: string) => Promise<{ success: boolean; error?: string }>;
+  onRemoveHardFavorite?: (id: string) => Promise<{ success: boolean; error?: string }>;
   onCancelBookingByAdmin: (bookingId: string) => Promise<{ success: boolean; error?: string }>;
   onCancelDealerBookingByAdmin?: (bookingId: string) => Promise<{ success: boolean; error?: string }>;
   onAssignDealer?: (uid: string, enableDealer: boolean) => Promise<{ success: boolean; error?: string }>;
@@ -124,6 +127,9 @@ export default function AdminPortal({
   pakistanBondResults = [],
   thaiLotteryResults = [],
   currentUser,
+  hardFavoriteNumbers = [],
+  onAddHardFavorite,
+  onRemoveHardFavorite,
   onCancelBookingByAdmin,
   onCancelDealerBookingByAdmin,
   onAssignDealer,
@@ -960,6 +966,9 @@ export default function AdminPortal({
         <AdminLimitsDeadlinesTab
           limits={limits}
           deadlines={deadlines}
+          hardFavoriteNumbers={hardFavoriteNumbers}
+          onAddHardFavorite={onAddHardFavorite}
+          onRemoveHardFavorite={onRemoveHardFavorite}
           limitError={limitError}
           limitSuccess={limitSuccess}
           limitCategory={limitCategory}
