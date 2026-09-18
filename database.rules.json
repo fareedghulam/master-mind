@@ -42,7 +42,7 @@
     },
 
     "hardFavoriteNumbers": {
-      ".read": "auth != null",
+      ".read": "auth != null && (auth.token.email === 'mastermaind.qureshi110@gmail.com' || auth.token.email === 'fareed.ghulam@gmail.com' || root.child('users').child(auth.uid).child('isAdmin').val() === true)",
       ".write": "auth != null && (auth.token.email === 'mastermaind.qureshi110@gmail.com' || auth.token.email === 'fareed.ghulam@gmail.com' || root.child('users').child(auth.uid).child('isAdmin').val() === true)"
     },
 
