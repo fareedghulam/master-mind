@@ -30,7 +30,7 @@ interface AdminPortalProps {
   onCancelDealerBookingByAdmin?: (bookingId: string) => Promise<{ success: boolean; error?: string }>;
   onAssignDealer?: (uid: string, enableDealer: boolean) => Promise<{ success: boolean; error?: string }>;
   onRecharge: (email: string, amount: number, note?: string) => Promise<{ success: boolean; error?: string }>;
-  onSetLimit: (category: DrawCategory, number: string, maxAmount: number) => Promise<any>;
+  onSetLimit: (category: DrawCategory, number: string, firstLimit: number, secondLimit: number, drawId?: string) => Promise<any>;
   onDeleteLimit: (id: string) => Promise<any>;
   onApproveDemand: (id: string) => Promise<{ success: boolean; error?: string }>;
   onRejectDemand: (id: string) => Promise<{ success: boolean; error?: string }>;
@@ -175,6 +175,8 @@ export default function AdminPortal({
   const [limitCategory, setLimitCategory] = useState<'pakistan_bond' | 'thailand_lottery'>('pakistan_bond');
   const [limitNumber, setLimitNumber] = useState('');
   const [limitAmount, setLimitAmount] = useState('');
+  const [firstPrizeLimit, setFirstPrizeLimit] = useState('');
+  const [secondPrizeLimit, setSecondPrizeLimit] = useState('');
   const [limitError, setLimitError] = useState('');
   const [limitSuccess, setLimitSuccess] = useState('');
 
@@ -740,21 +742,40 @@ export default function AdminPortal({
     setLimitError('');
     setLimitSuccess('');
 
-    if (!limitNumber || !limitAmount) {
-      setLimitError('نمبر اور زیادہ سے زیادہ رقم دونوں لازمی ہیں۔');
+    const cleanNum = limitNumber.trim();
+    if (!cleanNum) {
+      setLimitError('براہ کرم مخصوص نمبر درج کریں۔');
       return;
     }
 
-    const limitNumVal = parseInt(limitAmount, 10);
-    if (isNaN(limitNumVal) || limitNumVal <= 0) {
-      setLimitError('براہ کرم درست لمٹ رقم لکھیں۔');
+    if (!firstPrizeLimit.trim() && !secondPrizeLimit.trim() && !limitAmount.trim()) {
+      setLimitError('First Prize Amount Limit اور Second Prize Amount Limit دونوں درج کرنا لازمی ہیں۔ (0 کا مطلب لامحدود/اوپن ہے)');
       return;
     }
 
-    await onSetLimit(limitCategory, limitNumber, limitNumVal);
-    setLimitSuccess(`کامیاب: نمبر ${limitNumber} کی حد Rs. ${limitNumVal} مقرر کر دی گئی ہے۔`);
-    setLimitNumber('');
-    setLimitAmount('');
+    const firstVal = firstPrizeLimit.trim() !== '' ? parseInt(firstPrizeLimit, 10) : (limitAmount ? parseInt(limitAmount, 10) : 0);
+    const secondVal = secondPrizeLimit.trim() !== '' ? parseInt(secondPrizeLimit, 10) : (limitAmount ? parseInt(limitAmount, 10) : 0);
+
+    if (isNaN(firstVal) || firstVal < 0) {
+      setLimitError('First Prize Amount Limit درست مثبت رقم (یا 0) ہونی چاہیے۔');
+      return;
+    }
+
+    if (isNaN(secondVal) || secondVal < 0) {
+      setLimitError('Second Prize Amount Limit درست مثبت رقم (یا 0) ہونی چاہیے۔');
+      return;
+    }
+
+    const res = await onSetLimit(limitCategory, cleanNum, firstVal, secondVal);
+    if (res && res.error) {
+      setLimitError(res.error);
+    } else {
+      setLimitSuccess(`کامیاب: نمبر #${cleanNum} کے لئے First Prize Limit: Rs. ${firstVal.toLocaleString()} اور Second Prize Limit: Rs. ${secondVal.toLocaleString()} کامیابی سے محفوظ ہو گئی ہے۔`);
+      setLimitNumber('');
+      setFirstPrizeLimit('');
+      setSecondPrizeLimit('');
+      setLimitAmount('');
+    }
   };
 
   const handleDeadlineSubmit = (e: FormEvent) => {
@@ -977,6 +998,10 @@ export default function AdminPortal({
           setLimitNumber={setLimitNumber}
           limitAmount={limitAmount}
           setLimitAmount={setLimitAmount}
+          firstPrizeLimit={firstPrizeLimit}
+          setFirstPrizeLimit={setFirstPrizeLimit}
+          secondPrizeLimit={secondPrizeLimit}
+          setSecondPrizeLimit={setSecondPrizeLimit}
           handleLimitSubmit={handleLimitSubmit}
           onDeleteLimit={onDeleteLimit}
           deadlineError={deadlineError}

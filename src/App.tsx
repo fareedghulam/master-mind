@@ -39,7 +39,8 @@ import {
   getHardFavoriteNumbers,
   addHardFavoriteNumber,
   removeHardFavoriteNumber,
-  checkIsNumberHardFavorite
+  checkIsNumberHardFavorite,
+  normalizeBookingNumber
 } from './utils/store';
 import { User, Booking, DealerBooking, NumberLimit, Demand, DrawDeadline, PakistanBondResult, ThaiLotteryResult, DrawCategory, HardFavoriteNumber } from './types';
 import { migrateUserProfileFromFirestore, migrateAllFirestoreUsersToRtdb } from './utils/userMigration';
@@ -589,11 +590,17 @@ export default function App() {
     return { success: false, error: 'انٹرنیٹ کنکشن کا مسئلہ ہے یا نیٹ ورک کی خرابی ہے۔' };
   };
 
-  const handleSetLimit = async (category: DrawCategory, number: string, maxAmount: number) => {
+  const handleSetLimit = async (
+    category: DrawCategory, 
+    number: string, 
+    firstPrizeAmountLimit: number, 
+    secondPrizeAmountLimit: number,
+    drawId?: string
+  ) => {
     const action = async () => {
-      await setOrUpdateLimit(category, number, maxAmount);
+      const res = await setOrUpdateLimit(category, number, firstPrizeAmountLimit, secondPrizeAmountLimit, drawId);
       syncWithStore();
-      return true;
+      return res;
     };
     return await verifyNetworkAndExecute(action);
   };
@@ -643,6 +650,21 @@ export default function App() {
     const isHardFavBlocked = await checkIsNumberHardFavorite(category, number, drawId);
     if (isHardFavBlocked) {
       return { success: false, error: 'معذرت! یہ نمبر اس وقت بکنگ کے لیے دستیاب نہیں ہے۔' };
+    }
+
+    // Individual Number Limit check (separate First Prize and Second Prize limits)
+    const limitsList = getNumberLimits();
+    const limit = limitsList.find(l => (drawId ? l.drawId === drawId : l.category === category) && normalizeBookingNumber(l.number) === normalizeBookingNumber(number));
+    if (limit) {
+      const firstLimit = typeof limit.firstPrizeAmountLimit === 'number' ? limit.firstPrizeAmountLimit : limit.maxAmount;
+      const secondLimit = typeof limit.secondPrizeAmountLimit === 'number' ? limit.secondPrizeAmountLimit : limit.maxAmount;
+
+      if (firstLimit > 0 && firstAmt > firstLimit) {
+        return { success: false, error: `اس نمبر (${number}) کے لئے فرسٹ پرائز رقم کی حد Rs. ${firstLimit.toLocaleString()} ہے` };
+      }
+      if (secondLimit > 0 && secondAmt > secondLimit) {
+        return { success: false, error: `اس نمبر (${number}) کے لئے سیکنڈ پرائز رقم کی حد Rs. ${secondLimit.toLocaleString()} ہے` };
+      }
     }
 
     const action = async () => {

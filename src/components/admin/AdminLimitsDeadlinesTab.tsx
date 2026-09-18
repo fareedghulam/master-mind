@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NumberLimit, DrawDeadline, DrawCategory, HardFavoriteNumber } from '../../types';
-import { Plus, Trash, Clock, X, ShieldAlert, Ban, Search, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Plus, Trash, Clock, X, ShieldAlert, Ban, Search, CheckCircle2, AlertCircle, Edit2 } from 'lucide-react';
 
 interface AdminLimitsDeadlinesTabProps {
   limits: NumberLimit[];
@@ -14,8 +14,12 @@ interface AdminLimitsDeadlinesTabProps {
   setLimitCategory: (cat: DrawCategory) => void;
   limitNumber: string;
   setLimitNumber: (num: string) => void;
-  limitAmount: string;
-  setLimitAmount: (amt: string) => void;
+  limitAmount?: string;
+  setLimitAmount?: (amt: string) => void;
+  firstPrizeLimit?: string;
+  setFirstPrizeLimit?: (amt: string) => void;
+  secondPrizeLimit?: string;
+  setSecondPrizeLimit?: (amt: string) => void;
   handleLimitSubmit: (e: React.FormEvent) => void;
   onDeleteLimit: (id: string) => Promise<any>;
   deadlineError: string;
@@ -68,8 +72,12 @@ export const AdminLimitsDeadlinesTab: React.FC<AdminLimitsDeadlinesTabProps> = (
   setLimitCategory,
   limitNumber,
   setLimitNumber,
-  limitAmount,
+  limitAmount = '',
   setLimitAmount,
+  firstPrizeLimit = '',
+  setFirstPrizeLimit,
+  secondPrizeLimit = '',
+  setSecondPrizeLimit,
   handleLimitSubmit,
   onDeleteLimit,
   deadlineError,
@@ -107,6 +115,9 @@ export const AdminLimitsDeadlinesTab: React.FC<AdminLimitsDeadlinesTabProps> = (
   const [hfError, setHfError] = useState('');
   const [hfSuccess, setHfSuccess] = useState('');
   const [hfSubmitting, setHfSubmitting] = useState(false);
+
+  // Number Limit Search state
+  const [limitSearchQuery, setLimitSearchQuery] = useState('');
 
   const handleHfSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -176,25 +187,42 @@ export const AdminLimitsDeadlinesTab: React.FC<AdminLimitsDeadlinesTabProps> = (
       {/* Module 2: Number Booking Limit Configuration */}
       <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md flex flex-col justify-between">
         <div>
-          <h4 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100 mb-5 flex items-center justify-end gap-2">
-            <span>بکنگ نمبر زیادہ سے زیادہ لمٹ</span>
-            <span className="w-2.5 h-2.5 bg-amber-500 rounded-full"></span>
-          </h4>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-3 border-b border-slate-100 mb-5 gap-2">
+            <span className="text-xs font-mono font-bold bg-amber-50 text-amber-900 border border-amber-200/80 px-2.5 py-1 rounded-full">
+              کل لمٹس: {limits.length}
+            </span>
+            <h4 className="text-base font-bold text-slate-800 flex items-center justify-end gap-2">
+              <span>بکنگ نمبر لمٹ سسٹم (Prize Amount Limits)</span>
+              <span className="w-2.5 h-2.5 bg-amber-500 rounded-full"></span>
+            </h4>
+          </div>
+
+          <div className="mb-4 bg-amber-50/60 border border-amber-200/60 rounded-2xl p-3 text-xs text-amber-950 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold mb-0.5">فرسٹ اور سیکنڈ پرائز کی لمٹ الگ الگ مقرر کریں</p>
+              <p className="text-[11px] text-amber-800">
+                دونوں رقمیں مکمل طور پر ایک دوسرے سے الگ ہیں۔ رقم کی فیلڈ میں <strong>0</strong> لکھنے کا مطلب لامحدود (Unlimited / Open) ہے۔ ایڈمن جب چاہے دونوں رقمیں تبدیل کر سکتا ہے۔
+              </p>
+            </div>
+          </div>
 
           {limitError && (
-            <div className="mb-4 p-3 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs leading-relaxed">
-              ⚠️ {limitError}
+            <div className="mb-4 p-3 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs leading-relaxed flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+              <span>{limitError}</span>
             </div>
           )}
           {limitSuccess && (
-            <div className="mb-4 p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs leading-relaxed">
-              ✓ {limitSuccess}
+            <div className="mb-4 p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs leading-relaxed flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+              <span>{limitSuccess}</span>
             </div>
           )}
 
           <form onSubmit={handleLimitSubmit} className="space-y-4">
             <div>
-              <label className="block text-slate-600 text-xs font-semibold mb-1.5">
+              <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
                 کیٹیگری منتخب کریں (Choose Draw Type) *
               </label>
               <div className="grid grid-cols-2 gap-2 text-xs font-medium">
@@ -223,78 +251,174 @@ export const AdminLimitsDeadlinesTab: React.FC<AdminLimitsDeadlinesTabProps> = (
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                  زیادہ سے زیادہ رقم لمٹ *
+            <div>
+              <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
+                مخصوص نمبر لکھیں (Target Number) *
+              </label>
+              <input
+                type="text"
+                placeholder="مثال: 123456 یا 45"
+                value={limitNumber}
+                onChange={(e) => setLimitNumber(e.target.value)}
+                className="w-full text-left bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
+              />
+            </div>
+
+            {/* Separate Amount Limits for First and Second Prize */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div className="bg-amber-50/40 p-3.5 rounded-2xl border border-amber-100/80">
+                <label className="block text-amber-950 text-xs font-bold mb-1 text-right flex items-center justify-end gap-1.5">
+                  <span>First Prize Amount Limit *</span>
+                  <span className="bg-amber-200/80 text-amber-900 px-1.5 py-0.2 rounded text-[10px]">1st</span>
                 </label>
-                <input
-                  type="number"
-                  placeholder="مثال: 50"
-                  value={limitAmount}
-                  onChange={(e) => setLimitAmount(e.target.value)}
-                  className="w-full text-left bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
-                />
+                <p className="text-[10px] text-slate-500 text-right mb-1.5">فرسٹ پرائز رقم کی زیادہ سے زیادہ حد (0 = لامحدود)</p>
+                <div className="relative">
+                  <span className="absolute left-3 top-3 text-xs font-mono text-slate-400">Rs.</span>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="مثلاً: 100000"
+                    value={firstPrizeLimit}
+                    onChange={(e) => setFirstPrizeLimit?.(e.target.value)}
+                    className="w-full text-left pl-10 bg-white border border-slate-200 rounded-xl py-2.5 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono font-bold text-slate-900"
+                  />
+                </div>
               </div>
-              
-              <div>
-                <label className="block text-slate-600 text-xs font-semibold mb-1.5 text-right">
-                  مخصوص نمبر لکھیں *
+
+              <div className="bg-indigo-50/40 p-3.5 rounded-2xl border border-indigo-100/80">
+                <label className="block text-indigo-950 text-xs font-bold mb-1 text-right flex items-center justify-end gap-1.5">
+                  <span>Second Prize Amount Limit *</span>
+                  <span className="bg-indigo-200/80 text-indigo-900 px-1.5 py-0.2 rounded text-[10px]">2nd</span>
                 </label>
-                <input
-                  type="text"
-                  placeholder="نمبر لکھیں"
-                  value={limitNumber}
-                  onChange={(e) => setLimitNumber(e.target.value)}
-                  className="w-full text-left bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
-                />
+                <p className="text-[10px] text-slate-500 text-right mb-1.5">سیکنڈ پرائز رقم کی زیادہ سے زیادہ حد (0 = لامحدود)</p>
+                <div className="relative">
+                  <span className="absolute left-3 top-3 text-xs font-mono text-slate-400">Rs.</span>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="مثلاً: 50000"
+                    value={secondPrizeLimit}
+                    onChange={(e) => setSecondPrizeLimit?.(e.target.value)}
+                    className="w-full text-left pl-10 bg-white border border-slate-200 rounded-xl py-2.5 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono font-bold text-slate-900"
+                  />
+                </div>
               </div>
             </div>
 
-            <button
-              type="submit"
-              className="w-full bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold py-3 px-4 rounded-2xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <Plus className="w-4 h-4 text-amber-400" />
-              <span>خصوصی بکنگ لمٹ لگائیں</span>
-            </button>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="submit"
+                className="flex-1 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold py-3 px-4 rounded-2xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+              >
+                <Plus className="w-4 h-4 text-amber-400" />
+                <span>لمٹ محفوظ کریں (Save Prize Limits)</span>
+              </button>
+              {(limitNumber || firstPrizeLimit || secondPrizeLimit) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLimitNumber('');
+                    setFirstPrizeLimit?.('');
+                    setSecondPrizeLimit?.('');
+                    setLimitAmount?.('');
+                  }}
+                  className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl text-xs font-medium transition-all"
+                  title="فارم صاف کریں"
+                >
+                  ری سیٹ
+                </button>
+              )}
+            </div>
           </form>
 
           {/* List of active set limits */}
           <div className="mt-6 pt-5 border-t border-slate-100">
-            <h5 className="text-xs font-bold text-slate-700 mb-3 text-right">موجودہ سیٹ شدہ نمبر لمٹس کی لسٹ ({limits.length})</h5>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-3 gap-2">
+              <div className="relative w-full sm:w-48">
+                <Search className="w-3.5 h-3.5 absolute right-2.5 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="نمبر تلاش کریں..."
+                  value={limitSearchQuery}
+                  onChange={(e) => setLimitSearchQuery(e.target.value)}
+                  className="w-full text-right bg-slate-50 border border-slate-200 rounded-xl py-1.5 pl-3 pr-8 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
+                />
+              </div>
+              <h5 className="text-xs font-bold text-slate-700 text-right">
+                موجودہ سیٹ شدہ نمبر لمٹس کی لسٹ ({limits.length})
+              </h5>
+            </div>
+
             {limits.length === 0 ? (
               <p className="text-xs text-slate-400 text-center py-3 bg-slate-50 rounded-2xl">کوئی فعال نمبر لمٹ نہیں ہے۔</p>
             ) : (
-              <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
-                {limits.map((limit) => {
-                  const categoryMap: Record<DrawCategory, string> = {
-                    pakistan_bond: 'پاکستان پرائز بانڈ',
-                    thailand_lottery: 'تھائی لینڈ لاٹری'
-                  };
-                  return (
-                    <div key={limit.id} className="flex justify-between items-center bg-slate-50 hover:bg-slate-100 p-3 rounded-2xl text-xs transition-all border border-slate-200">
-                      <button
-                        onClick={async () => {
-                          if (window.confirm(`کیا آپ واقعی نمبر #${limit.number} کی لمٹ ختم کرنا چاہتے ہیں؟`)) {
-                            await onDeleteLimit(limit.id);
-                          }
-                        }}
-                        className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl transition-all cursor-pointer"
-                        title="حذف کریں"
-                      >
-                        <Trash className="w-4 h-4" />
-                      </button>
-                      <div className="text-right">
-                        <div className="font-bold text-slate-800 flex items-center justify-end gap-2">
-                          <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-lg font-mono font-bold">#{limit.number}</span>
-                          <span>{categoryMap[limit.category] || limit.category}</span>
+              <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+                {limits
+                  .filter(limit => {
+                    if (!limitSearchQuery.trim()) return true;
+                    const q = limitSearchQuery.trim().toLowerCase();
+                    return limit.number.includes(q) || limit.category.toLowerCase().includes(q);
+                  })
+                  .map((limit) => {
+                    const categoryMap: Record<DrawCategory, string> = {
+                      pakistan_bond: 'پاکستان پرائز بانڈ',
+                      thailand_lottery: 'تھائی لینڈ لاٹری'
+                    };
+                    const firstLimit = typeof limit.firstPrizeAmountLimit === 'number' ? limit.firstPrizeAmountLimit : limit.maxAmount;
+                    const secondLimit = typeof limit.secondPrizeAmountLimit === 'number' ? limit.secondPrizeAmountLimit : limit.maxAmount;
+
+                    return (
+                      <div key={limit.id} className="flex justify-between items-center bg-slate-50 hover:bg-slate-100/80 p-3 rounded-2xl text-xs transition-all border border-slate-200/80 shadow-xs">
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLimitCategory(limit.category);
+                              setLimitNumber(limit.number);
+                              setFirstPrizeLimit?.(String(firstLimit));
+                              setSecondPrizeLimit?.(String(secondLimit));
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                            className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-100/60 rounded-xl transition-all cursor-pointer"
+                            title="ترمیم کریں (Edit)"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (window.confirm(`کیا آپ واقعی نمبر #${limit.number} کی لمٹ ختم کرنا چاہتے ہیں؟`)) {
+                                await onDeleteLimit(limit.id);
+                              }
+                            }}
+                            className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl transition-all cursor-pointer"
+                            title="حذف کریں (Delete)"
+                          >
+                            <Trash className="w-3.5 h-3.5" />
+                          </button>
                         </div>
-                        <span className="text-[11px] text-slate-500 font-mono block mt-1">زیادہ سے زیادہ فرسٹ/سیکنڈ لمٹ: Rs. {limit.maxAmount.toLocaleString()}</span>
+
+                        <div className="text-right space-y-1">
+                          <div className="font-bold text-slate-800 flex items-center justify-end gap-2">
+                            <span className="text-[11px] text-slate-500 font-normal">
+                              {categoryMap[limit.category] || limit.category}
+                            </span>
+                            <span className="bg-amber-100 text-amber-900 border border-amber-200/60 px-2.5 py-0.5 rounded-lg font-mono font-bold text-xs">
+                              #{limit.number}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-end gap-2 text-[11px] font-mono">
+                            <span className="bg-amber-50 text-amber-900 border border-amber-200/60 px-2 py-0.5 rounded-md">
+                              1st Prize: {firstLimit > 0 ? `Rs. ${firstLimit.toLocaleString()}` : 'لامحدود (Open)'}
+                            </span>
+                            <span className="bg-indigo-50 text-indigo-900 border border-indigo-200/60 px-2 py-0.5 rounded-md">
+                              2nd Prize: {secondLimit > 0 ? `Rs. ${secondLimit.toLocaleString()}` : 'لامحدود (Open)'}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
             )}
           </div>

@@ -1474,13 +1474,16 @@ export async function addBooking(
       throw new Error('آپ کے والٹ میں کافی رقم موجود نہیں ہے');
     }
 
-    const limit = cachedLimits.find(l => (drawId ? l.drawId === drawId : l.category === category) && l.number === number);
+    const limit = cachedLimits.find(l => (drawId ? l.drawId === drawId : l.category === category) && normalizeBookingNumber(l.number) === normalizeBookingNumber(number));
     if (limit) {
-      if (firstAmount > limit.maxAmount) {
-        throw new Error(`اس نمبر (${number}) کے لئے فرسٹ کی انفرادی حد Rs. ${limit.maxAmount} ہے`);
+      const firstLimit = typeof limit.firstPrizeAmountLimit === 'number' ? limit.firstPrizeAmountLimit : limit.maxAmount;
+      const secondLimit = typeof limit.secondPrizeAmountLimit === 'number' ? limit.secondPrizeAmountLimit : limit.maxAmount;
+
+      if (firstLimit > 0 && firstAmount > firstLimit) {
+        throw new Error(`اس نمبر (${number}) کے لئے فرسٹ پرائز رقم کی حد Rs. ${firstLimit.toLocaleString()} ہے`);
       }
-      if (secondAmount > limit.maxAmount) {
-        throw new Error(`اس نمبر (${number}) کے لئے سیکنڈ کی انفرادی حد Rs. ${limit.maxAmount} ہے`);
+      if (secondLimit > 0 && secondAmount > secondLimit) {
+        throw new Error(`اس نمبر (${number}) کے لئے سیکنڈ پرائز رقم کی حد Rs. ${secondLimit.toLocaleString()} ہے`);
       }
     }
 
@@ -1764,18 +1767,39 @@ export async function cancelBookingByAdmin(bookingId: string): Promise<{ success
   }
 }
 
-export async function setOrUpdateLimit(category: DrawCategory, number: string, maxAmount: number, drawId?: string): Promise<void> {
+export async function setOrUpdateLimit(
+  category: DrawCategory,
+  number: string,
+  firstLimitOrMax: number,
+  secondLimit?: number,
+  drawId?: string
+): Promise<{ success: boolean; error?: string }> {
   const online = await checkInternetConnection();
-  if (!online) return;
+  if (!online) return { success: false, error: 'انٹرنیٹ کنکشن موجود نہیں ہے۔' };
 
-  const existing = cachedLimits.find(l => (drawId ? l.drawId === drawId : l.category === category) && l.number === number);
+  if (!isLoggedUserAdminOrSuper() && !isLoggedUserDataEntry()) {
+    return { success: false, error: 'صرف ایڈمن کو لمٹ تبدیل کرنے کا اختیار ہے۔' };
+  }
+
+  const normalized = normalizeBookingNumber(number);
+  if (!normalized) {
+    return { success: false, error: 'براہ کرم درست نمبر درج کریں۔' };
+  }
+
+  const firstPrizeAmountLimit = typeof firstLimitOrMax === 'number' && !isNaN(firstLimitOrMax) ? Math.max(0, firstLimitOrMax) : 0;
+  const secondPrizeAmountLimit = typeof secondLimit === 'number' && !isNaN(secondLimit) ? Math.max(0, secondLimit) : firstPrizeAmountLimit;
+  const maxAmount = Math.max(firstPrizeAmountLimit, secondPrizeAmountLimit);
+
+  const existing = cachedLimits.find(l => (drawId ? l.drawId === drawId : l.category === category) && normalizeBookingNumber(l.number) === normalized);
   const limitId = existing ? existing.id : 'limit-' + Date.now();
   
   const limit: NumberLimit = {
     id: limitId,
     category,
-    number,
+    number: normalized,
     maxAmount,
+    firstPrizeAmountLimit,
+    secondPrizeAmountLimit,
     ...(drawId && { drawId })
   };
   await set(ref(db, `limits/${limitId}`), limit);
@@ -1787,6 +1811,7 @@ export async function setOrUpdateLimit(category: DrawCategory, number: string, m
     cachedLimits.push(limit);
   }
   notifyListeners();
+  return { success: true };
 }
 
 export async function deleteLimit(id: string): Promise<void> {

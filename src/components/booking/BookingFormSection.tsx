@@ -168,12 +168,20 @@ export const BookingFormSection: React.FC<BookingFormSectionProps> = ({
             </div>
           ) : (
             <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
-              {relevantLimits.map((l) => (
-                <div key={l.id} className="flex justify-between items-center bg-white p-2 rounded-xl text-xs border border-slate-100">
-                  <span className="font-mono text-amber-700 font-semibold">Max: Rs. {l.maxAmount}</span>
-                  <span className="font-mono font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md">{l.number}</span>
-                </div>
-              ))}
+              {relevantLimits.map((l) => {
+                const firstLimit = typeof l.firstPrizeAmountLimit === 'number' ? l.firstPrizeAmountLimit : l.maxAmount;
+                const secondLimit = typeof l.secondPrizeAmountLimit === 'number' ? l.secondPrizeAmountLimit : l.maxAmount;
+                return (
+                  <div key={l.id} className="flex justify-between items-center bg-white p-2.5 rounded-xl text-xs border border-slate-200/80 shadow-xs">
+                    <div className="flex items-center gap-2 font-mono text-[11px]">
+                      <span className="text-amber-800 font-medium">1st: Rs. {firstLimit > 0 ? firstLimit.toLocaleString() : 'اوپن'}</span>
+                      <span className="text-slate-300">|</span>
+                      <span className="text-indigo-800 font-medium">2nd: Rs. {secondLimit > 0 ? secondLimit.toLocaleString() : 'اوپن'}</span>
+                    </div>
+                    <span className="font-mono font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md">#{l.number}</span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

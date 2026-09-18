@@ -59,6 +59,8 @@ export interface NumberLimit {
   category: DrawCategory;
   number: string;
   maxAmount: number;
+  firstPrizeAmountLimit?: number;
+  secondPrizeAmountLimit?: number;
   drawId?: string;
   isArchived?: boolean;
 }
