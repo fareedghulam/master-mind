@@ -11,7 +11,7 @@ import { AIThailandAnalysisTab } from './ai/AIThailandAnalysisTab';
 import { AIThaiFront3AnalysisTab } from './ai/AIThaiFront3AnalysisTab';
 import { AIHistoryTab } from './ai/AIHistoryTab';
 import { AIChatbotTab } from './ai/AIChatbotTab';
-import { normalizeDrawBondValue } from '../utils/bondAnalysisUtils';
+import { normalizeDrawBondValue, PK_CITIES_LIST } from '../utils/bondAnalysisUtils';
 import { 
   ThaiDrawDateFilter, 
   filterThaiLotteryDraws, 
@@ -213,18 +213,7 @@ export default function AIAnalysisPortal({
   const [citySubTab, setCitySubTab] = useState<'digits' | 'akras' | 'oddeven'>('digits');
   const [cityAnalysisType, setCityAnalysisType] = useState<'open' | 'close' | 'center' | 'fourth'>('open');
 
-  const pkCities = useMemo(() => [
-    { nameUrdu: 'کراچی', nameEng: 'Karachi', code: 'KHI' },
-    { nameUrdu: 'لاہور', nameEng: 'Lahore', code: 'LHR' },
-    { nameUrdu: 'فیصل آباد', nameEng: 'Faisalabad', code: 'FSL' },
-    { nameUrdu: 'مظفرآباد', nameEng: 'Muzaffarabad', code: 'MUZ' },
-    { nameUrdu: 'ملتان', nameEng: 'Multan', code: 'MUL' },
-    { nameUrdu: 'راولپنڈی', nameEng: 'Rawalpindi', code: 'RWD' },
-    { nameUrdu: 'حیدرآباد', nameEng: 'Hyderabad', code: 'HYD' },
-    { nameUrdu: 'پشاور', nameEng: 'Peshawar', code: 'PWR' },
-    { nameUrdu: 'کوئٹہ', nameEng: 'Quetta', code: 'QUE' },
-    { nameUrdu: 'سیالکوٹ', nameEng: 'Sialkot', code: 'SKT' }
-  ], []);
+  const pkCities = PK_CITIES_LIST;
 
   const cityAnalysisData = useMemo(() => {
     const draws = historicalDraws.filter(d => d.category === 'pakistan_bond' && d.city === selectedCity);

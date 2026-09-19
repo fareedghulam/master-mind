@@ -6,7 +6,7 @@ import {
 import { PakistanBondResult } from '../../types';
 import { 
   PK_BOND_CATEGORIES, PK_CITIES_LIST, normalizeDrawBondValue, 
-  computeAnalysisStats, BondAnalysisStats 
+  computeAnalysisStats, BondAnalysisStats, isBondMatchForAnalysis 
 } from '../../utils/bondAnalysisUtils';
 import { generateDrawHistoryPDF } from '../../utils/pdfGenerator';
 
@@ -29,19 +29,29 @@ export const AIBondAnalysisTab: React.FC<AIBondAnalysisTabProps> = ({
     const counts: Record<string, number> = {};
     PK_BOND_CATEGORIES.forEach(b => { counts[b.value] = 0; });
     
+    let total40k = 0;
     allBondResults.forEach(draw => {
       const norm = normalizeDrawBondValue(draw);
       counts[norm] = (counts[norm] || 0) + 1;
       counts['all'] = (counts['all'] || 0) + 1;
+      if (norm === 'Rs. 40,000' || norm === 'Rs. 40,000 Premium') {
+        total40k++;
+      }
     });
+
+    // IMPORTANT: For Analysis, Normal 40,000 and 40,000 Premium are combined into one common 40,000 analysis
+    counts['Rs. 40,000'] = total40k;
+    counts['Rs. 40,000 Premium'] = total40k;
 
     return counts;
   }, [allBondResults]);
 
   // Filter draws by selected bond value AND optional city filter
+  // For 40,000 analysis: Normal 40,000 + 40,000 Premium are combined into one common analysis
   const filteredDraws = useMemo(() => {
     return allBondResults.filter(draw => {
-      const matchesBond = selectedBond === 'all' || normalizeDrawBondValue(draw) === selectedBond;
+      const norm = normalizeDrawBondValue(draw);
+      const matchesBond = isBondMatchForAnalysis(norm, selectedBond);
       const matchesCity = selectedCity === 'all' || draw.city === selectedCity;
       return matchesBond && matchesCity;
     });
@@ -197,12 +207,27 @@ export const AIBondAnalysisTab: React.FC<AIBondAnalysisTabProps> = ({
           </div>
         </div>
 
+        {/* 40,000 COMBINED ANALYSIS BANNER */}
+        {(selectedBond === 'Rs. 40,000' || selectedBond === 'Rs. 40,000 Premium') && (
+          <div className="mb-5 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-right flex flex-col sm:flex-row-reverse items-center justify-between gap-2">
+            <span className="text-xs text-amber-400 font-bold flex items-center gap-1.5">
+              <Coins className="w-4 h-4 text-amber-400" />
+              <span>مشترکہ 40,000 اینالیسس: نارمل 40,000 اور 40,000 پریمیم کے تمام ڈراز کا مشترکہ تجزیہ</span>
+            </span>
+            <span className="text-[11px] font-mono text-amber-300 font-bold bg-amber-500/20 px-2.5 py-1 rounded-lg">
+              40,000 Analysis = Normal 40,000 + 40,000 Premium
+            </span>
+          </div>
+        )}
+
         {/* 3. KEY ANALYTICAL HIGHLIGHT STATS CARDS */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           <div className="bg-slate-900/70 p-3.5 rounded-xl border border-slate-800 text-center">
             <span className="text-[10px] text-slate-500 block uppercase font-bold">کل ڈراز (Total Draws)</span>
             <span className="font-mono text-lg font-bold text-white block mt-1">{stats.totalDraws} Records</span>
-            <span className="text-[9px] text-slate-400 block mt-0.5">{selectedBond}</span>
+            <span className="text-[9px] text-slate-400 block mt-0.5">
+              {selectedBond === 'Rs. 40,000' || selectedBond === 'Rs. 40,000 Premium' ? 'روپے 40,000 (مشترکہ اینالیسس)' : selectedBond}
+            </span>
           </div>
 
           <div className="bg-slate-900/70 p-3.5 rounded-xl border border-slate-800 text-center">

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { LayoutGrid, Download, ArrowLeftRight, Coins, MapPin, Trophy, TrendingUp } from 'lucide-react';
 import { PakistanBondResult } from '../../types';
-import { PK_BOND_CATEGORIES, normalizeDrawBondValue, computeAnalysisStats } from '../../utils/bondAnalysisUtils';
+import { PK_BOND_CATEGORIES, normalizeDrawBondValue, computeAnalysisStats, isBondMatchForAnalysis } from '../../utils/bondAnalysisUtils';
 import { generateDrawHistoryPDF } from '../../utils/pdfGenerator';
 
 interface AICityAnalysisTabProps {
@@ -53,7 +53,7 @@ export const AICityAnalysisTab: React.FC<AICityAnalysisTabProps> = ({
     if (!allBondResults || allBondResults.length === 0) return cityAnalysisData;
     const filtered = allBondResults.filter(d => {
       const matchCity = d.city === selectedCity;
-      const matchBond = selectedCityBond === 'all' || normalizeDrawBondValue(d) === selectedCityBond;
+      const matchBond = selectedCityBond === 'all' || isBondMatchForAnalysis(normalizeDrawBondValue(d), selectedCityBond);
       return matchCity && matchBond;
     });
     const computed = computeAnalysisStats(filtered);
@@ -78,7 +78,7 @@ export const AICityAnalysisTab: React.FC<AICityAnalysisTabProps> = ({
     if (!allBondResults || allBondResults.length === 0) return null;
     const filtered = allBondResults.filter(d => {
       const matchCity = d.city === city2;
-      const matchBond = selectedCityBond === 'all' || normalizeDrawBondValue(d) === selectedCityBond;
+      const matchBond = selectedCityBond === 'all' || isBondMatchForAnalysis(normalizeDrawBondValue(d), selectedCityBond);
       return matchCity && matchBond;
     });
     const computed = computeAnalysisStats(filtered);

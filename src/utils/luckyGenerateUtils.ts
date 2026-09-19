@@ -3,7 +3,8 @@ import {
   normalizeDrawBondValue, 
   PK_BOND_CATEGORIES, 
   PK_CITIES_LIST,
-  computeAnalysisStats 
+  computeAnalysisStats,
+  isBondMatchForAnalysis
 } from './bondAnalysisUtils';
 import { 
   filterThaiLotteryDraws, 
@@ -51,7 +52,7 @@ export function filterPakistanBondDraws(
   return draws.filter((draw) => {
     if (bondValue !== 'all') {
       const normalizedBond = normalizeDrawBondValue(draw);
-      if (normalizedBond !== bondValue) return false;
+      if (!isBondMatchForAnalysis(normalizedBond, bondValue)) return false;
     }
     if (city !== 'all') {
       if (draw.city !== city) return false;

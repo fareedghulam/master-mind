@@ -17,6 +17,7 @@ export const PK_BOND_CATEGORIES: BondCategoryInfo[] = [
   { value: 'Rs. 7,500', labelUrdu: 'روپے 7,500', labelEng: 'Rs. 7,500', firstPrizeAmount: '15,000,000' },
   { value: 'Rs. 15,000', labelUrdu: 'روپے 15,000', labelEng: 'Rs. 15,000', firstPrizeAmount: '30,000,000' },
   { value: 'Rs. 25,000 Premium', labelUrdu: 'روپے 25,000 پریمیم', labelEng: 'Rs. 25,000 Prem.', firstPrizeAmount: '50,000,000' },
+  { value: 'Rs. 40,000', labelUrdu: 'روپے 40,000 نارمل', labelEng: 'Rs. 40,000 Normal', firstPrizeAmount: '75,000,000' },
   { value: 'Rs. 40,000 Premium', labelUrdu: 'روپے 40,000 پریمیم', labelEng: 'Rs. 40,000 Prem.', firstPrizeAmount: '80,000,000' },
 ];
 
@@ -31,10 +32,15 @@ export const PK_CITIES_LIST = [
   { nameUrdu: 'پشاور', nameEng: 'Peshawar', code: 'PWR' },
   { nameUrdu: 'کوئٹہ', nameEng: 'Quetta', code: 'QUE' },
   { nameUrdu: 'سیالکوٹ', nameEng: 'Sialkot', code: 'SKT' },
+  { nameUrdu: 'گوجرانوالہ', nameEng: 'Gujranwala', code: 'GUJ' },
+  { nameUrdu: 'اسلام آباد', nameEng: 'Islamabad', code: 'ISB' },
+  { nameUrdu: 'سکھر', nameEng: 'Sukkur', code: 'SKR' },
+  { nameUrdu: 'بہاولپور', nameEng: 'Bahawalpur', code: 'BWP' },
 ];
 
 /**
- * Standardizes any draw's bond value into one of the canonical 8 PK bond values.
+ * Standardizes any draw's bond value into one of the canonical PK bond values.
+ * Distinguishes between Normal 40,000 ('Rs. 40,000') and 'Rs. 40,000 Premium'.
  */
 export function normalizeDrawBondValue(draw: {
   bondValue?: string;
@@ -45,7 +51,12 @@ export function normalizeDrawBondValue(draw: {
     .replace(/[\s,]+/g, '')
     .toLowerCase();
 
-  if (combined.includes('40000')) return 'Rs. 40,000 Premium';
+  if (combined.includes('40000')) {
+    if (combined.includes('prem') || combined.includes('پریمیم')) {
+      return 'Rs. 40,000 Premium';
+    }
+    return 'Rs. 40,000';
+  }
   if (combined.includes('25000')) return 'Rs. 25,000 Premium';
   if (combined.includes('15000')) return 'Rs. 15,000';
   if (combined.includes('7500')) return 'Rs. 7,500';
@@ -55,6 +66,24 @@ export function normalizeDrawBondValue(draw: {
   if (combined.includes('100')) return 'Rs. 100';
 
   return 'Rs. 200';
+}
+
+/**
+ * Helper to determine if a draw matches a selected bond value for analysis purposes.
+ * IMPORTANT ANALYSIS REQUIREMENT:
+ * Normal 40,000 and 40,000 Premium must NOT be analyzed separately.
+ * Both are combined into one common 40,000 Rupees analysis:
+ * 40,000 Analysis = Normal 40,000 + 40,000 Premium
+ */
+export function isBondMatchForAnalysis(drawBondNormalized: string, selectedBond: string): boolean {
+  if (selectedBond === 'all') return true;
+  const isSelected40k = selectedBond === 'Rs. 40,000' || selectedBond === 'Rs. 40,000 Premium' || selectedBond === '40000' || selectedBond === 'Rs. 40,000 Normal';
+  const isDraw40k = drawBondNormalized === 'Rs. 40,000' || drawBondNormalized === 'Rs. 40,000 Premium' || drawBondNormalized === '40000' || drawBondNormalized === 'Rs. 40,000 Normal';
+
+  if (isSelected40k && isDraw40k) {
+    return true;
+  }
+  return drawBondNormalized === selectedBond;
 }
 
 export interface FreqItem {

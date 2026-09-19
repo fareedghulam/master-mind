@@ -751,8 +751,8 @@ export const AIThailandAnalysisTab: React.FC<AIThailandAnalysisTabProps> = ({
                   <tbody className="divide-y divide-slate-800/60 font-mono">
                     {filteredDraws.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="text-center py-8 text-slate-500 font-sans">
-                          کوئی نتیجہ نہیں ملا۔ براہ کرم مختلف فلٹرز منتخب کریں۔
+                        <td colSpan={6} className="text-center py-8 text-slate-400 font-sans">
+                          اس filter کے لیے Historical Records دستیاب نہیں ہیں۔
                         </td>
                       </tr>
                     ) : (

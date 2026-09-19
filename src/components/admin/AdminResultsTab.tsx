@@ -264,12 +264,30 @@ export const AdminResultsTab: React.FC<AdminResultsTabProps> = ({
                 <input
                   id="result-form-city"
                   type="text"
-                  placeholder={resCategory === 'pakistan_bond' ? "مثلاً ملتان، کراچی" : "مثلاً بنکاک"}
+                  list="pk-results-cities-datalist"
+                  placeholder={resCategory === 'pakistan_bond' ? "مثلاً ملتان، کراچی، گوجرانوالہ" : "مثلاً بنکاک"}
                   value={resCity}
                   onChange={(e) => setResCity(e.target.value)}
                   required
                   className="w-full text-right bg-white border border-slate-200 rounded-xl py-2 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500 font-sans"
                 />
+                <datalist id="pk-results-cities-datalist">
+                  <option value="کراچی" />
+                  <option value="لاہور" />
+                  <option value="فیصل آباد" />
+                  <option value="ملتان" />
+                  <option value="راولپنڈی" />
+                  <option value="پشاور" />
+                  <option value="کوئٹہ" />
+                  <option value="حیدرآباد" />
+                  <option value="سیالکوٹ" />
+                  <option value="مظفرآباد" />
+                  <option value="گوجرانوالہ" />
+                  <option value="اسلام آباد" />
+                  <option value="سکھر" />
+                  <option value="بہاولپور" />
+                  <option value="بنکاک" />
+                </datalist>
               </div>
 
               {/* Conditional: Pakistan Bond Fields */}
@@ -290,6 +308,7 @@ export const AdminResultsTab: React.FC<AdminResultsTabProps> = ({
                       <option value="Rs. 7,500">Rs. 7,500</option>
                       <option value="Rs. 15,000">Rs. 15,000</option>
                       <option value="Rs. 25,000 Premium">Rs. 25,000 Premium</option>
+                      <option value="Rs. 40,000">Rs. 40,000 (نارمل / Normal)</option>
                       <option value="Rs. 40,000 Premium">Rs. 40,000 Premium</option>
                     </select>
                   </div>
