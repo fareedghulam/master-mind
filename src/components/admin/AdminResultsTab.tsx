@@ -85,26 +85,81 @@ export const AdminResultsTab: React.FC<AdminResultsTabProps> = ({
   handleDeleteClick
 }) => {
   const formRef = useRef<HTMLDivElement>(null);
-  const [scrollTrigger, setScrollTrigger] = useState(0);
+  const [editScrollPending, setEditScrollPending] = useState(false);
   const [isManualDate, setIsManualDate] = useState(true);
   const urduDatePreview = formatUrduDatePreview(resDate);
 
-  // Auto-scroll smoothly to Edit Result form when Edit is clicked
+  // Auto-scroll smoothly to Edit Result form once rendered in DOM
   useEffect(() => {
-    if (scrollTrigger > 0 && resultFormOpen) {
-      const timer = setTimeout(() => {
-        const target = formRef.current || document.getElementById('admin-result-form');
-        if (target) {
-          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      }, 70);
-      return () => clearTimeout(timer);
+    if (!editScrollPending || !resultFormOpen || resultFormMode !== 'edit') {
+      return;
     }
-  }, [scrollTrigger, resultFormOpen]);
+
+    let isMounted = true;
+    let attempts = 0;
+
+    const performScroll = () => {
+      if (!isMounted) return;
+      const target = formRef.current || document.getElementById('admin-result-form');
+      if (target) {
+        const rect = target.getBoundingClientRect();
+        const currentScroll = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+        // 90px offset accounts for sticky navigation & header
+        const targetY = Math.max(0, rect.top + currentScroll - 90);
+
+        // 1. Native scrollIntoView
+        try {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } catch {
+          target.scrollIntoView(true);
+        }
+
+        // 2. Direct window.scrollTo (critical for mobile Android browsers & iframes)
+        try {
+          window.scrollTo({
+            top: targetY,
+            behavior: 'smooth'
+          });
+        } catch {
+          window.scrollTo(0, targetY);
+        }
+
+        // 3. Fallback verification: ensure viewport reached target even if smooth scroll was aborted on mobile
+        setTimeout(() => {
+          if (!isMounted) return;
+          const currentY = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+          if (Math.abs(currentY - targetY) > 80) {
+            try {
+              window.scrollTo(0, targetY);
+            } catch {
+              target.scrollIntoView(true);
+            }
+          }
+        }, 280);
+
+        setEditScrollPending(false);
+      } else if (attempts < 10) {
+        attempts++;
+        requestAnimationFrame(performScroll);
+      } else {
+        setEditScrollPending(false);
+      }
+    };
+
+    // Use requestAnimationFrame so that browser paint completes and layout dimensions are known
+    const rafId = requestAnimationFrame(() => {
+      setTimeout(performScroll, 50);
+    });
+
+    return () => {
+      isMounted = false;
+      cancelAnimationFrame(rafId);
+    };
+  }, [editScrollPending, resultFormOpen, resultFormMode]);
 
   const handleEditWithScroll = (draw: PakistanBondResult | ThaiLotteryResult) => {
     handleEditClick(draw);
-    setScrollTrigger((prev) => prev + 1);
+    setEditScrollPending(true);
   };
 
   return (
