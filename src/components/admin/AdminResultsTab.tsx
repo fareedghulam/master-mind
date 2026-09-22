@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { PakistanBondResult, ThaiLotteryResult, DrawCategory } from '../../types';
 import { History, Plus, X, Search, Calendar, Edit3, Check } from 'lucide-react';
 import { normalizeDateInput, formatUrduDatePreview } from '../../utils/bondAnalysisUtils';
@@ -84,8 +84,28 @@ export const AdminResultsTab: React.FC<AdminResultsTabProps> = ({
   handleEditClick,
   handleDeleteClick
 }) => {
+  const formRef = useRef<HTMLDivElement>(null);
+  const [scrollTrigger, setScrollTrigger] = useState(0);
   const [isManualDate, setIsManualDate] = useState(true);
   const urduDatePreview = formatUrduDatePreview(resDate);
+
+  // Auto-scroll smoothly to Edit Result form when Edit is clicked
+  useEffect(() => {
+    if (scrollTrigger > 0 && resultFormOpen) {
+      const timer = setTimeout(() => {
+        const target = formRef.current || document.getElementById('admin-result-form');
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 70);
+      return () => clearTimeout(timer);
+    }
+  }, [scrollTrigger, resultFormOpen]);
+
+  const handleEditWithScroll = (draw: PakistanBondResult | ThaiLotteryResult) => {
+    handleEditClick(draw);
+    setScrollTrigger((prev) => prev + 1);
+  };
 
   return (
     <div id="module-result-management" className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-md space-y-6 text-right">
@@ -136,7 +156,7 @@ export const AdminResultsTab: React.FC<AdminResultsTabProps> = ({
 
       {/* Form Modal / Collapsible Section */}
       {resultFormOpen && (
-        <div id="admin-result-form" className="bg-slate-50 p-5 sm:p-6 rounded-3xl border border-slate-150 space-y-4 text-right">
+        <div id="admin-result-form" ref={formRef} className="bg-slate-50 p-5 sm:p-6 rounded-3xl border border-slate-150 space-y-4 text-right scroll-mt-24 sm:scroll-mt-28">
           <h5 className="text-sm font-bold text-slate-800 border-b border-slate-200 pb-2">
             {resultFormMode === 'add' ? 'نیا نتیجہ شامل کریں (Add New Result)' : 'نتیجہ ایڈٹ کریں (Edit Result)'}
           </h5>
@@ -532,7 +552,7 @@ export const AdminResultsTab: React.FC<AdminResultsTabProps> = ({
                     <td className="py-3 px-3 text-left flex gap-1.5">
                       <button
                         type="button"
-                        onClick={() => handleEditClick(draw)}
+                        onClick={() => handleEditWithScroll(draw)}
                         className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all"
                       >
                         ایڈٹ (Edit)
