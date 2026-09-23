@@ -103,8 +103,8 @@ export function parseThaiDrawDate(dateStr?: string): ParsedThaiDate {
         year: y,
         month: m,
         day: d,
-        is1st: d === 1,
-        is16th: d === 16,
+        is1st: d === 1 || d === 2 || d === 30 || d === 31,
+        is16th: d === 15 || d === 16 || d === 17,
         formattedDate: `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
         monthNameEng: ENG_MONTH_NAMES[m] || '',
         monthNameUrdu: URDU_MONTH_NAMES[m] || '',
@@ -124,8 +124,8 @@ export function parseThaiDrawDate(dateStr?: string): ParsedThaiDate {
         year: y,
         month: m,
         day: d,
-        is1st: d === 1,
-        is16th: d === 16,
+        is1st: d === 1 || d === 2 || d === 30 || d === 31,
+        is16th: d === 15 || d === 16 || d === 17,
         formattedDate: `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
         monthNameEng: ENG_MONTH_NAMES[m] || '',
         monthNameUrdu: URDU_MONTH_NAMES[m] || '',
@@ -145,8 +145,8 @@ export function parseThaiDrawDate(dateStr?: string): ParsedThaiDate {
         year: y,
         month: m,
         day: d,
-        is1st: d === 1,
-        is16th: d === 16,
+        is1st: d === 1 || d === 2 || d === 30 || d === 31,
+        is16th: d === 15 || d === 16 || d === 17,
         formattedDate: `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
         monthNameEng: ENG_MONTH_NAMES[m] || '',
         monthNameUrdu: URDU_MONTH_NAMES[m] || '',
@@ -168,9 +168,121 @@ export function parseThaiDrawDate(dateStr?: string): ParsedThaiDate {
 }
 
 /**
+ * Checks if a parsed Thailand Lottery draw date matches the specified date grouping filter:
+ * 
+ * 1 تاریخ کا Analysis (1st Draw):
+ *   - پچھلے مہینے کی 30 تاریخ (یا دسمبر / سال کی حد کے لیے 31 تاریخ)
+ *   - موجودہ مہینے کی 1 تاریخ
+ *   - موجودہ مہینے کی 2 تاریخ
+ *   یعنی: "30 ➔ 1 ➔ 2"
+ *   مثال:
+ *   - 1 September 2026 ➔ 30 August 2026 + 1 September 2026 + 2 September 2026
+ *   - 1 January 2026 ➔ 31 December 2025 (previous year) + 1 January 2026 + 2 January 2026
+ *   - 1 December 2026 ➔ 30 November 2026 + 1 December 2026 + 2 December 2026
+ * 
+ * 16 تاریخ کا Analysis (16th Draw):
+ *   - موجودہ مہینے کی 15 تاریخ
+ *   - موجودہ مہینے کی 16 تاریخ
+ *   - موجودہ مہینے کی 17 تاریخ
+ *   یعنی: "15 ➔ 16 ➔ 17"
+ *   مثال:
+ *   - 16 September 2026 ➔ 15 September 2026 + 16 September 2026 + 17 September 2026
+ */
+export function isThaiDrawMatchingFilters(
+  parsed: ParsedThaiDate,
+  dateFilter: ThaiDrawDateFilter = 'all',
+  monthFilter: string = 'all',
+  yearFilter: string = 'all'
+): boolean {
+  if (!parsed || !parsed.isValid) return false;
+
+  const { year, month, day } = parsed;
+  const hasSpecificMonth = monthFilter !== 'all';
+  const hasSpecificYear = yearFilter !== 'all';
+  const targetMonth = hasSpecificMonth ? parseInt(monthFilter, 10) : 0;
+  const targetYear = hasSpecificYear ? parseInt(yearFilter, 10) : 0;
+
+  // 1. DATE FILTER: '1st' (Group: Previous Month 30th/31st ➔ 1st ➔ 2nd)
+  if (dateFilter === '1st') {
+    // Both Month and Year specified
+    if (hasSpecificMonth && hasSpecificYear) {
+      // Current month draws: targetYear & targetMonth on day 1 or 2
+      const isCurrentMonthDraw = year === targetYear && month === targetMonth && (day === 1 || day === 2);
+
+      // Previous month calculation with month/year boundary
+      let prevMonth = targetMonth - 1;
+      let prevYear = targetYear;
+      if (prevMonth === 0) {
+        prevMonth = 12;
+        prevYear = targetYear - 1;
+      }
+
+      // Previous month draws: 30th (or 31st for December / end-of-month)
+      const isPrevMonthDraw = 
+        year === prevYear && 
+        month === prevMonth && 
+        (day === 30 || day === 31);
+
+      return isCurrentMonthDraw || isPrevMonthDraw;
+    }
+
+    // Only Month specified (across all years)
+    if (hasSpecificMonth && !hasSpecificYear) {
+      const isCurrentMonthDraw = month === targetMonth && (day === 1 || day === 2);
+
+      let prevMonth = targetMonth - 1;
+      if (prevMonth === 0) {
+        prevMonth = 12;
+      }
+
+      const isPrevMonthDraw = month === prevMonth && (day === 30 || day === 31);
+
+      return isCurrentMonthDraw || isPrevMonthDraw;
+    }
+
+    // Only Year specified (across all months of targetYear)
+    if (!hasSpecificMonth && hasSpecificYear) {
+      // 1st cycle draws for targetYear:
+      // In targetYear: day 1, 2 (all months), or day 30, 31 (all months)
+      const isCurrentYear1stDraw = 
+        year === targetYear && 
+        (day === 1 || day === 2 || day === 30 || day === 31);
+
+      // January of targetYear uses December of previous year (targetYear - 1)
+      const isJanPrevMonthDraw = 
+        year === targetYear - 1 && 
+        month === 12 && 
+        (day === 30 || day === 31);
+
+      return isCurrentYear1stDraw || isJanPrevMonthDraw;
+    }
+
+    // Date filter '1st' with all months and all years
+    return day === 1 || day === 2 || day === 30 || day === 31;
+  }
+
+  // 2. DATE FILTER: '16th' (Group: Current Month 15th ➔ 16th ➔ 17th)
+  if (dateFilter === '16th') {
+    const is16thDrawGroup = day === 15 || day === 16 || day === 17;
+    if (!is16thDrawGroup) return false;
+
+    if (hasSpecificMonth && month !== targetMonth) return false;
+    if (hasSpecificYear && year !== targetYear) return false;
+
+    return true;
+  }
+
+  // 3. DATE FILTER: 'all'
+  if (hasSpecificMonth && month !== targetMonth) return false;
+  if (hasSpecificYear && year !== targetYear) return false;
+
+  return true;
+}
+
+/**
  * Filter Thailand Lottery draws by Draw Date ('all' | '1st' | '16th'),
  * Month ('all' | '1' .. '12'), and Year ('all' | '2025' ..).
- * Safely excludes missing or invalid date records when filtering.
+ * Safely excludes missing or invalid date records and eliminates duplicates.
  */
 export function filterThaiLotteryDraws(
   draws: ThaiLotteryResult[],
@@ -180,35 +292,23 @@ export function filterThaiLotteryDraws(
 ): ThaiLotteryResult[] {
   if (!draws || draws.length === 0) return [];
 
-  return draws.filter((draw) => {
+  const seen = new Set<string>();
+  const filtered: ThaiLotteryResult[] = [];
+
+  for (const draw of draws) {
     const parsed = parseThaiDrawDate(draw.date);
+    if (!parsed.isValid) continue;
 
-    // If any date/month/year filter is specified, require a valid date
-    if (dateFilter !== 'all' || monthFilter !== 'all' || yearFilter !== 'all') {
-      if (!parsed.isValid) return false;
+    if (isThaiDrawMatchingFilters(parsed, dateFilter, monthFilter, yearFilter)) {
+      const key = draw.id || `${draw.date}-${draw.drawNo}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        filtered.push(draw);
+      }
     }
+  }
 
-    // 1. Draw Date Filter:
-    if (dateFilter === '1st') {
-      if (!parsed.is1st) return false;
-    } else if (dateFilter === '16th') {
-      if (!parsed.is16th) return false;
-    }
-
-    // 2. Month Filter:
-    if (monthFilter !== 'all') {
-      const targetMonth = parseInt(monthFilter, 10);
-      if (parsed.month !== targetMonth) return false;
-    }
-
-    // 3. Year Filter:
-    if (yearFilter !== 'all') {
-      const targetYear = parseInt(yearFilter, 10);
-      if (parsed.year !== targetYear) return false;
-    }
-
-    return true;
-  });
+  return filtered;
 }
 
 /**

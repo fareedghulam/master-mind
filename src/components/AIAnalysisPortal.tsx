@@ -16,7 +16,8 @@ import {
   ThaiDrawDateFilter, 
   filterThaiLotteryDraws, 
   getAvailableThaiYears, 
-  parseThaiDrawDate 
+  parseThaiDrawDate,
+  isThaiDrawMatchingFilters 
 } from '../utils/thaiAnalysisUtils';
 import { 
   generateLuckyNumberFromHistory, 
@@ -453,15 +454,12 @@ export default function AIAnalysisPortal({
       historyCity === 'all' ||
       draw.city === historyCity;
     
-    // Thailand Draw Date, Month and Year filtering
+    // Thailand Draw Date, Month and Year filtering (applying 1st: 30 ➔ 1 ➔ 2, 16th: 15 ➔ 16 ➔ 17)
     let matchesThaiFilters = true;
     if (draw.category === 'thailand_lottery' && (historyCategory === 'thailand_lottery' || historyCategory === 'all')) {
       if (thaiDrawDateFilter !== 'all' || thaiMonthFilter !== 'all' || thaiYearFilter !== 'all') {
         const parsed = parseThaiDrawDate(draw.date);
-        if (thaiDrawDateFilter === '1st' && !parsed.is1st) matchesThaiFilters = false;
-        if (thaiDrawDateFilter === '16th' && !parsed.is16th) matchesThaiFilters = false;
-        if (thaiMonthFilter !== 'all' && parsed.month !== parseInt(thaiMonthFilter, 10)) matchesThaiFilters = false;
-        if (thaiYearFilter !== 'all' && parsed.year !== parseInt(thaiYearFilter, 10)) matchesThaiFilters = false;
+        matchesThaiFilters = isThaiDrawMatchingFilters(parsed, thaiDrawDateFilter, thaiMonthFilter, thaiYearFilter);
       }
     }
 

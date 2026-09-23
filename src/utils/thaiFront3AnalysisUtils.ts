@@ -5,7 +5,8 @@ import {
   filterThaiLotteryDraws, 
   getAvailableThaiYears, 
   parseThaiDrawDate,
-  ParsedThaiDate 
+  ParsedThaiDate,
+  isThaiDrawMatchingFilters 
 } from './thaiAnalysisUtils';
 
 export interface Front3Record {
@@ -229,6 +230,7 @@ export function buildFront3Records(draws: ThaiLotteryResult[]): Front3Record[] {
 
 /**
  * Filter Front3 records by Date ('all' | '1st' | '16th'), Month ('all' | '1'..'12'), and Year.
+ * Applies Thailand Lottery date grouping (1st: 30 ➔ 1 ➔ 2, 16th: 15 ➔ 16 ➔ 17) and excludes duplicates.
  */
 export function filterFront3Records(
   records: Front3Record[],
@@ -238,27 +240,23 @@ export function filterFront3Records(
 ): Front3Record[] {
   if (!records || records.length === 0) return [];
 
-  return records.filter((r) => {
+  const seen = new Set<string>();
+  const filtered: Front3Record[] = [];
+
+  for (const r of records) {
     const parsed = r.parsedDate;
-    if (dateFilter !== 'all' || monthFilter !== 'all' || yearFilter !== 'all') {
-      if (!parsed.isValid) return false;
+    if (!parsed || !parsed.isValid) continue;
+
+    if (isThaiDrawMatchingFilters(parsed, dateFilter, monthFilter, yearFilter)) {
+      const key = r.id || `${r.date}-${r.drawNo}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        filtered.push(r);
+      }
     }
+  }
 
-    if (dateFilter === '1st' && !parsed.is1st) return false;
-    if (dateFilter === '16th' && !parsed.is16th) return false;
-
-    if (monthFilter !== 'all') {
-      const targetMonth = parseInt(monthFilter, 10);
-      if (parsed.month !== targetMonth) return false;
-    }
-
-    if (yearFilter !== 'all') {
-      const targetYear = parseInt(yearFilter, 10);
-      if (parsed.year !== targetYear) return false;
-    }
-
-    return true;
-  });
+  return filtered;
 }
 
 /**

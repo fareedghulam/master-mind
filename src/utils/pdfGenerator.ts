@@ -17,7 +17,7 @@ const DownloadPdf = registerPlugin<DownloadPdfPlugin>('DownloadPdf');
  * Universal safe PDF saver that handles standard browser downloads,
  * Android WebView environments, Blob creation, and mobile fallbacks.
  */
-async function savePdfDocument(
+export async function savePdfDocument(
   doc: any,
   filename: string
 ): Promise<{ success: boolean; error?: string }> {
@@ -795,3 +795,12 @@ export async function generateAdminBookingsPDF(
     return { success: false, error: err?.message || 'ایڈمن بکنگ رپورٹ بنانے میں خرابی پیش آئی۔' };
   }
 }
+
+export {
+  generateThaiFullAnalysisPDF,
+  generateThaiPositionAnalysisPDF,
+  generateThaiDigitFrequencyPDF,
+  generateThaiAkraL2PDF,
+  generateThaiOddEvenPDF,
+  generateThaiDrawRecordsPDF
+} from './thaiAnalysisPdf';

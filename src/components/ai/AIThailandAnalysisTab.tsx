@@ -5,6 +5,8 @@ import {
   Filter, 
   RotateCcw, 
   Download, 
+  FileText,
+  Loader2,
   Flame, 
   Snowflake, 
   Layers, 
@@ -23,7 +25,14 @@ import {
   computeThaiAnalysisMetrics,
   parseThaiDrawDate
 } from '../../utils/thaiAnalysisUtils';
-import { generateDrawHistoryPDF } from '../../utils/pdfGenerator';
+import { 
+  generateThaiFullAnalysisPDF,
+  generateThaiPositionAnalysisPDF,
+  generateThaiDigitFrequencyPDF,
+  generateThaiAkraL2PDF,
+  generateThaiOddEvenPDF,
+  generateThaiDrawRecordsPDF
+} from '../../utils/thaiAnalysisPdf';
 
 interface AIThailandAnalysisTabProps {
   allThaiResults: ThaiLotteryResult[];
@@ -42,6 +51,7 @@ export const AIThailandAnalysisTab: React.FC<AIThailandAnalysisTabProps> = ({
   const [selectedPosition, setSelectedPosition] = useState<number>(0); // 0 = Open, 5 = Last
 
   const [statusMsg, setStatusMsg] = useState<{ text: string; isError?: boolean } | null>(null);
+  const [isExporting, setIsExporting] = useState<boolean>(false);
 
   // Dynamically extract available years from all results
   const availableYears = useMemo(() => {
@@ -58,6 +68,13 @@ export const AIThailandAnalysisTab: React.FC<AIThailandAnalysisTabProps> = ({
     return computeThaiAnalysisMetrics(filteredDraws);
   }, [filteredDraws]);
 
+  // Filter context for PDF export
+  const filterContext = useMemo(() => ({
+    drawDateFilter,
+    monthFilter,
+    yearFilter
+  }), [drawDateFilter, monthFilter, yearFilter]);
+
   // Reset all filters to default ('all')
   const handleResetFilters = () => {
     setDrawDateFilter('all');
@@ -67,42 +84,166 @@ export const AIThailandAnalysisTab: React.FC<AIThailandAnalysisTabProps> = ({
     setTimeout(() => setStatusMsg(null), 3000);
   };
 
-  // Download PDF report of the current filtered results
-  const handleDownloadPDF = async () => {
+  // 1. Export Full Thailand Analysis PDF (all sections combined)
+  const handleExportFullPDF = async () => {
     if (filteredDraws.length === 0) {
       setStatusMsg({ text: 'ڈاؤن لوڈ کے لیے کوئی ریکارڈ موجود نہیں ہے۔', isError: true });
       setTimeout(() => setStatusMsg(null), 4000);
       return;
     }
-
-    const monthObj = THAI_MONTHS_LIST.find(m => m.value === monthFilter);
-    const dateLabel = drawDateFilter === '1st' ? '1st Date' : drawDateFilter === '16th' ? '16th Date' : 'All Dates';
-    const monthLabel = monthObj ? monthObj.labelEng : 'All Months';
-
-    const res = await generateDrawHistoryPDF(
-      filteredDraws as any, 
-      'thailand_lottery', 
-      {
-        bondValue: `${dateLabel} | ${monthLabel} | Year: ${yearFilter}`,
-        city: 'بنکاک'
+    setIsExporting(true);
+    setStatusMsg({ text: 'مکمل تھائی لینڈ تجزیہ پی ڈی ایف تیار ہو رہی ہے، براہ کرم انتظار کریں...', isError: false });
+    try {
+      const res = await generateThaiFullAnalysisPDF(filteredDraws, stats, filterContext);
+      if (res.success) {
+        setStatusMsg({ text: 'تھائی لینڈ لاٹری مکمل اینالیسس رپورٹ پی ڈی ایف کامیابی سے تیار ہو گئی ہے!', isError: false });
+      } else {
+        setStatusMsg({ text: res.error || 'پی ڈی ایف بنانے میں خرابی پیش آئی۔', isError: true });
       }
-    );
-
-    if (res.success) {
-      setStatusMsg({ text: 'تھائی لاٹری تجزیاتی رپورٹ پی ڈی ایف کامیابی سے تیار ہو گئی ہے!', isError: false });
-      setTimeout(() => setStatusMsg(null), 4000);
-    } else {
-      setStatusMsg({ text: res.error || 'پی ڈی ایف بنانے میں خرابی پیش آئی۔', isError: true });
-      setTimeout(() => setStatusMsg(null), 4000);
+    } catch (e: any) {
+      setStatusMsg({ text: e?.message || 'پی ڈی ایف ایکسپورٹ کے دوران خرابی پیش آئی۔', isError: true });
+    } finally {
+      setIsExporting(false);
+      setTimeout(() => setStatusMsg(null), 5000);
     }
+  };
+
+  // 2. Export Position Analysis PDF
+  const handleExportPositionsPDF = async () => {
+    if (filteredDraws.length === 0) {
+      setStatusMsg({ text: 'ڈاؤن لوڈ کے لیے کوئی ریکارڈ موجود نہیں ہے۔', isError: true });
+      setTimeout(() => setStatusMsg(null), 4000);
+      return;
+    }
+    setIsExporting(true);
+    setStatusMsg({ text: 'پوزیشن وار تجزیہ پی ڈی ایف تیار ہو رہی ہے...', isError: false });
+    try {
+      const res = await generateThaiPositionAnalysisPDF(filteredDraws, stats, selectedPosition, filterContext);
+      if (res.success) {
+        setStatusMsg({ text: 'پوزیشن وار تجزیاتی پی ڈی ایف کامیابی سے ڈاؤن لوڈ ہو گئی ہے!', isError: false });
+      } else {
+        setStatusMsg({ text: res.error || 'پی ڈی ایف بنانے میں خرابی پیش آئی۔', isError: true });
+      }
+    } catch (e: any) {
+      setStatusMsg({ text: e?.message || 'خرابی پیش آئی۔', isError: true });
+    } finally {
+      setIsExporting(false);
+      setTimeout(() => setStatusMsg(null), 5000);
+    }
+  };
+
+  // 3. Export Single Digit Frequency PDF
+  const handleExportDigitFreqPDF = async () => {
+    if (filteredDraws.length === 0) {
+      setStatusMsg({ text: 'ڈاؤن لوڈ کے لیے کوئی ریکارڈ موجود نہیں ہے۔', isError: true });
+      setTimeout(() => setStatusMsg(null), 4000);
+      return;
+    }
+    setIsExporting(true);
+    setStatusMsg({ text: 'ہندساتی فریکوئنسی 0 تا 9 پی ڈی ایف تیار ہو رہی ہے...', isError: false });
+    try {
+      const res = await generateThaiDigitFrequencyPDF(filteredDraws, stats, filterContext);
+      if (res.success) {
+        setStatusMsg({ text: 'ہندساتی فریکوئنسی پی ڈی ایف کامیابی سے ڈاؤن لوڈ ہو گئی ہے!', isError: false });
+      } else {
+        setStatusMsg({ text: res.error || 'پی ڈی ایف بنانے میں خرابی پیش آئی۔', isError: true });
+      }
+    } catch (e: any) {
+      setStatusMsg({ text: e?.message || 'خرابی پیش آئی۔', isError: true });
+    } finally {
+      setIsExporting(false);
+      setTimeout(() => setStatusMsg(null), 5000);
+    }
+  };
+
+  // 4. Export Akra & Last 2 PDF
+  const handleExportAkraL2PDF = async () => {
+    if (filteredDraws.length === 0) {
+      setStatusMsg({ text: 'ڈاؤن لوڈ کے لیے کوئی ریکارڈ موجود نہیں ہے۔', isError: true });
+      setTimeout(() => setStatusMsg(null), 4000);
+      return;
+    }
+    setIsExporting(true);
+    setStatusMsg({ text: 'آکڑا اور ایل 2 تجزیاتی پی ڈی ایف تیار ہو رہی ہے...', isError: false });
+    try {
+      const res = await generateThaiAkraL2PDF(filteredDraws, stats, filterContext);
+      if (res.success) {
+        setStatusMsg({ text: 'آکڑا اور ایل 2 تجزیاتی پی ڈی ایف کامیابی سے ڈاؤن لوڈ ہو گئی ہے!', isError: false });
+      } else {
+        setStatusMsg({ text: res.error || 'پی ڈی ایف بنانے میں خرابی پیش آئی۔', isError: true });
+      }
+    } catch (e: any) {
+      setStatusMsg({ text: e?.message || 'خرابی پیش آئی۔', isError: true });
+    } finally {
+      setIsExporting(false);
+      setTimeout(() => setStatusMsg(null), 5000);
+    }
+  };
+
+  // 5. Export Odd vs Even PDF
+  const handleExportOddEvenPDF = async () => {
+    if (filteredDraws.length === 0) {
+      setStatusMsg({ text: 'ڈاؤن لوڈ کے لیے کوئی ریکارڈ موجود نہیں ہے۔', isError: true });
+      setTimeout(() => setStatusMsg(null), 4000);
+      return;
+    }
+    setIsExporting(true);
+    setStatusMsg({ text: 'طاق و جفت تجزیاتی پی ڈی ایف تیار ہو رہی ہے...', isError: false });
+    try {
+      const res = await generateThaiOddEvenPDF(filteredDraws, stats, filterContext);
+      if (res.success) {
+        setStatusMsg({ text: 'طاق و جفت تجزیاتی پی ڈی ایف کامیابی سے ڈاؤن لوڈ ہو گئی ہے!', isError: false });
+      } else {
+        setStatusMsg({ text: res.error || 'پی ڈی ایف بنانے میں خرابی پیش آئی۔', isError: true });
+      }
+    } catch (e: any) {
+      setStatusMsg({ text: e?.message || 'خرابی پیش آئی۔', isError: true });
+    } finally {
+      setIsExporting(false);
+      setTimeout(() => setStatusMsg(null), 5000);
+    }
+  };
+
+  // 6. Export Filtered Draw Records PDF
+  const handleExportRecordsPDF = async () => {
+    if (filteredDraws.length === 0) {
+      setStatusMsg({ text: 'ڈاؤن لوڈ کے لیے کوئی ریکارڈ موجود نہیں ہے۔', isError: true });
+      setTimeout(() => setStatusMsg(null), 4000);
+      return;
+    }
+    setIsExporting(true);
+    setStatusMsg({ text: 'ڈرا ریکارڈز فہرست پی ڈی ایف تیار ہو رہی ہے...', isError: false });
+    try {
+      const res = await generateThaiDrawRecordsPDF(filteredDraws, filterContext);
+      if (res.success) {
+        setStatusMsg({ text: 'ڈرا ریکارڈز پی ڈی ایف کامیابی سے ڈاؤن لوڈ ہو گئی ہے!', isError: false });
+      } else {
+        setStatusMsg({ text: res.error || 'پی ڈی ایف بنانے میں خرابی پیش آئی۔', isError: true });
+      }
+    } catch (e: any) {
+      setStatusMsg({ text: e?.message || 'خرابی پیش آئی۔', isError: true });
+    } finally {
+      setIsExporting(false);
+      setTimeout(() => setStatusMsg(null), 5000);
+    }
+  };
+
+  // Dispatch export according to the current active sub-view
+  const handleExportActiveSectionPDF = () => {
+    if (activeAnalysisView === 'positions') return handleExportPositionsPDF();
+    if (activeAnalysisView === 'singleDigits') return handleExportDigitFreqPDF();
+    if (activeAnalysisView === 'akras') return handleExportAkraL2PDF();
+    if (activeAnalysisView === 'oddeven') return handleExportOddEvenPDF();
+    if (activeAnalysisView === 'records') return handleExportRecordsPDF();
+    return handleExportFullPDF();
   };
 
   // Format active filter summary text
   const activeFilterSummary = useMemo(() => {
     const parts: string[] = ['تھائی لاٹری'];
     
-    if (drawDateFilter === '1st') parts.push('یکم تاریخ (1st Draw)');
-    else if (drawDateFilter === '16th') parts.push('16 تاریخ (16th Draw)');
+    if (drawDateFilter === '1st') parts.push('1 تاریخ (30 ➔ 1 ➔ 2)');
+    else if (drawDateFilter === '16th') parts.push('16 تاریخ (15 ➔ 16 ➔ 17)');
     else parts.push('تمام تاریخیں (All Dates)');
 
     const mObj = THAI_MONTHS_LIST.find(m => m.value === monthFilter);
@@ -126,8 +267,8 @@ export const AIThailandAnalysisTab: React.FC<AIThailandAnalysisTabProps> = ({
       <div className="bg-slate-800/50 p-4 sm:p-6 rounded-2xl border border-slate-700/50">
         
         {/* Main Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 border-b border-slate-800 pb-5">
-          <div className="flex flex-row-reverse gap-2 items-center w-full justify-between sm:justify-start">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6 border-b border-slate-800 pb-5">
+          <div className="flex flex-row-reverse gap-2 items-center w-full justify-between lg:justify-start">
             <div className="text-right">
               <div className="flex items-center justify-end gap-2">
                 <span className="bg-amber-500/20 text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-md border border-amber-500/30">
@@ -144,14 +285,30 @@ export const AIThailandAnalysisTab: React.FC<AIThailandAnalysisTabProps> = ({
             </div>
           </div>
 
-          <button
-            id="download-thai-pdf-btn"
-            onClick={handleDownloadPDF}
-            className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold py-2 px-3.5 rounded-xl flex items-center gap-1.5 shadow-sm shadow-amber-500/10 cursor-pointer transition-all self-end sm:self-auto"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>اس تجزیے کا پی ڈی ایف رپورٹ ڈاؤن لوڈ کریں</span>
-          </button>
+          {/* PDF Export Action Buttons */}
+          <div className="flex flex-wrap items-center gap-2 self-end lg:self-auto">
+            <button
+              id="export-active-section-pdf-btn"
+              onClick={handleExportActiveSectionPDF}
+              disabled={isExporting}
+              className="bg-slate-900 hover:bg-slate-800 text-amber-400 hover:text-amber-300 text-xs font-bold py-2 px-3.5 rounded-xl flex items-center gap-1.5 border border-amber-500/40 shadow-sm cursor-pointer transition-all disabled:opacity-50"
+              title="موجودہ اینالیسس سیکشن کی پی ڈی ایف رپورٹ بنائیں"
+            >
+              {isExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" /> : <Download className="w-3.5 h-3.5 text-amber-400" />}
+              <span>Export PDF (موجودہ سیکشن)</span>
+            </button>
+
+            <button
+              id="export-full-thai-pdf-btn"
+              onClick={handleExportFullPDF}
+              disabled={isExporting}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold py-2 px-3.5 rounded-xl flex items-center gap-1.5 shadow-md shadow-amber-500/10 cursor-pointer transition-all disabled:opacity-50"
+              title="تمام اینالیسس سیکشنز اور ہسٹری کی مکمل پی ڈی ایف رپورٹ بنائیں"
+            >
+              {isExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-950" /> : <FileText className="w-3.5 h-3.5" />}
+              <span>Export Full Analysis PDF (مکمل رپورٹ)</span>
+            </button>
+          </div>
         </div>
 
         {statusMsg && (
@@ -162,6 +319,7 @@ export const AIThailandAnalysisTab: React.FC<AIThailandAnalysisTabProps> = ({
 
         {/* 1. FILTER CONTROLS BAR */}
         <div className="bg-slate-950/70 p-4 sm:p-5 rounded-2xl border border-slate-800 mb-6 space-y-4">
+
           
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-800/80 pb-3">
             <div className="flex items-center gap-2">
@@ -409,12 +567,25 @@ export const AIThailandAnalysisTab: React.FC<AIThailandAnalysisTabProps> = ({
         {activeAnalysisView === 'positions' && (
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-2">
-              <span className="text-xs font-bold text-slate-400">
-                پوزیشن منتخب کریں (Select Digit Position):
-              </span>
-              <span className="text-[11px] text-amber-400 font-bold">
-                تھائی لینڈ لاٹری کے فرسٹ پرائز میں 6 ہندسے ہوتے ہیں
-              </span>
+              <button
+                id="export-positions-pdf-btn"
+                onClick={handleExportPositionsPDF}
+                disabled={isExporting}
+                className="bg-slate-900 hover:bg-slate-800 text-amber-400 hover:text-amber-300 text-xs font-bold py-1.5 px-3 rounded-lg border border-amber-500/30 flex items-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
+                title="پوزیشن وار اینالیسس پی ڈی ایف رپورٹ ڈاؤن لوڈ کریں"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export PDF (پوزیشن اینالیسس)</span>
+              </button>
+
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                <span className="text-xs font-bold text-slate-400">
+                  پوزیشن منتخب کریں (Select Digit Position):
+                </span>
+                <span className="text-[11px] text-amber-400 font-bold">
+                  تھائی لینڈ لاٹری کے فرسٹ پرائز میں 6 ہندسے ہوتے ہیں
+                </span>
+              </div>
             </div>
 
             {/* Position Selector Buttons */}
@@ -518,13 +689,26 @@ export const AIThailandAnalysisTab: React.FC<AIThailandAnalysisTabProps> = ({
         {/* 5. SUB-TAB 2: SINGLE DIGIT ANALYSIS 0 TO 9 */}
         {activeAnalysisView === 'singleDigits' && (
           <div className="space-y-4">
-            <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 flex justify-between items-center text-xs">
-              <span className="text-slate-400 font-mono">
-                کل ہندساتی نمونہ سائز: <strong className="text-amber-400">{stats.totalDigitsAnalyzed}</strong> ہندسے
-              </span>
-              <span className="font-bold text-white">
-                تمام پوزیشنز پر 0 تا 9 ہندسوں کا مجموعی تجزیہ
-              </span>
+            <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs">
+              <button
+                id="export-single-digits-pdf-btn"
+                onClick={handleExportDigitFreqPDF}
+                disabled={isExporting}
+                className="bg-slate-900 hover:bg-slate-800 text-amber-400 hover:text-amber-300 text-xs font-bold py-1.5 px-3 rounded-lg border border-amber-500/30 flex items-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
+                title="ہندساتی فریکوئنسی پی ڈی ایف رپورٹ ڈاؤن لوڈ کریں"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export PDF (ہندساتی فریکوئنسی 0 تا 9)</span>
+              </button>
+
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                <span className="text-slate-400 font-mono">
+                  کل ہندساتی نمونہ سائز: <strong className="text-amber-400">{stats.totalDigitsAnalyzed}</strong> ہندسے
+                </span>
+                <span className="font-bold text-white">
+                  تمام پوزیشنز پر 0 تا 9 ہندسوں کا مجموعی تجزیہ
+                </span>
+              </div>
             </div>
 
             <div className="bg-slate-950/50 rounded-xl border border-slate-800 overflow-hidden">
@@ -583,7 +767,24 @@ export const AIThailandAnalysisTab: React.FC<AIThailandAnalysisTabProps> = ({
 
         {/* 6. SUB-TAB 3: AKRAS & LAST 2 (L2) PAIRS */}
         {activeAnalysisView === 'akras' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-4">
+            <div className="flex justify-between items-center bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+              <button
+                id="export-akra-l2-pdf-btn"
+                onClick={handleExportAkraL2PDF}
+                disabled={isExporting}
+                className="bg-slate-900 hover:bg-slate-800 text-amber-400 hover:text-amber-300 text-xs font-bold py-1.5 px-3 rounded-lg border border-amber-500/30 flex items-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
+                title="آکڑا اور ایل 2 پی ڈی ایف ڈاؤن لوڈ کریں"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export PDF (آکڑا اور ایل 2 جوڑیاں)</span>
+              </button>
+              <span className="text-xs font-bold text-slate-300">
+                فرسٹ 2 (آکڑا) اور لاسٹ 2 (ڈاؤن) جوڑیوں کا تجزیہ
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             
             {/* Front 2 (Akra) */}
             <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800">
@@ -646,11 +847,28 @@ export const AIThailandAnalysisTab: React.FC<AIThailandAnalysisTabProps> = ({
             </div>
 
           </div>
+        </div>
         )}
 
         {/* 7. SUB-TAB 4: ODD VS EVEN ANALYSIS */}
         {activeAnalysisView === 'oddeven' && (
           <div className="space-y-4">
+            <div className="flex justify-between items-center bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+              <button
+                id="export-oddeven-pdf-btn"
+                onClick={handleExportOddEvenPDF}
+                disabled={isExporting}
+                className="bg-slate-900 hover:bg-slate-800 text-amber-400 hover:text-amber-300 text-xs font-bold py-1.5 px-3 rounded-lg border border-amber-500/30 flex items-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
+                title="طاق و جفت پی ڈی ایف ڈاؤن لوڈ کریں"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export PDF (طاق و جفت تجزیہ)</span>
+              </button>
+              <span className="text-xs font-bold text-slate-300">
+                طاق بمقابلہ جفت کا مکمل ہندساتی و فرسٹ پرائز اختتام تجزیہ
+              </span>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               
               {/* Digit Level Odd vs Even */}
@@ -728,11 +946,24 @@ export const AIThailandAnalysisTab: React.FC<AIThailandAnalysisTabProps> = ({
         {/* 8. SUB-TAB 5: FILTERED DRAW RECORDS TABLE */}
         {activeAnalysisView === 'records' && (
           <div className="space-y-3">
-            <div className="flex justify-between items-center text-xs font-bold text-slate-400 mb-2">
-              <span className="font-mono text-amber-400">
-                ریکارڈز: {filteredDraws.length}
-              </span>
-              <span>فلٹر شدہ قرعہ اندازی کے نتائج کی فہرست</span>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs font-bold text-slate-400 mb-2">
+              <button
+                id="export-records-pdf-btn"
+                onClick={handleExportRecordsPDF}
+                disabled={isExporting}
+                className="bg-slate-900 hover:bg-slate-800 text-amber-400 hover:text-amber-300 text-xs font-bold py-1.5 px-3 rounded-lg border border-amber-500/30 flex items-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
+                title="فلٹر شدہ ڈرا ریکارڈز پی ڈی ایف ڈاؤن لوڈ کریں"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export PDF (ڈرا ریکارڈز فہرست)</span>
+              </button>
+
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-amber-400">
+                  ریکارڈز: {filteredDraws.length}
+                </span>
+                <span>فلٹر شدہ قرعہ اندازی کے نتائج کی فہرست</span>
+              </div>
             </div>
 
             <div className="bg-slate-950/50 rounded-xl border border-slate-800 overflow-hidden">
