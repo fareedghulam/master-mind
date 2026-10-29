@@ -56,6 +56,7 @@ import AdminPortal from './components/AdminPortal';
 import PwaInstaller from './components/PwaInstaller';
 import AIAnalysisPortal from './components/AIAnalysisPortal';
 import ProfileSetupModal from './components/ProfileSetupModal';
+import PrivacyPolicyPage from './components/PrivacyPolicyPage';
 import { PRIVACY_POLICY_URL, DELETE_ACCOUNT_URL, openExternalUrl } from './utils/appUrls';
 import { LayoutDashboard, Award, ScrollText, CalendarRange, Shield, HelpCircle, Sparkles, Globe, Music, FileText } from 'lucide-react';
 
@@ -63,6 +64,12 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
+  const [privacyReturnTab, setPrivacyReturnTab] = useState<string>('dashboard');
+  const openPrivacyPolicy = () => {
+    if (activeTab !== 'privacy') setPrivacyReturnTab(activeTab);
+    setActiveTab('privacy');
+  };
+  const closePrivacyPolicy = () => setActiveTab(privacyReturnTab);
   const [users, setUsers] = useState<User[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [dealerBookings, setDealerBookings] = useState<DealerBooking[]>([]);
@@ -819,6 +826,10 @@ export default function App() {
     );
   }
 
+  if (activeTab === 'privacy') {
+    return <PrivacyPolicyPage onBack={closePrivacyPolicy} />;
+  }
+
   if (!currentUser) {
     return (
       <>
@@ -826,6 +837,7 @@ export default function App() {
           onRegister={handleRegister} 
           onLoginWithCredentials={handleLoginWithCredentials} 
           onGoogleLogin={handleGoogleLogin}
+          onOpenPrivacyPolicy={openPrivacyPolicy}
         />
       </>
     );
@@ -948,6 +960,7 @@ export default function App() {
             <UserProfilePage
               user={currentUser}
               totalBookingsCount={bookings.filter(b => b.userEmail === currentUser.email).length}
+              onOpenPrivacyPolicy={openPrivacyPolicy}
             />
           )}
 
@@ -1043,13 +1056,8 @@ export default function App() {
           {/* Policy Links */}
           <div className="flex flex-wrap items-center justify-center gap-3 text-[11px] font-sans">
             <a
-              href={PRIVACY_POLICY_URL}
-              onClick={(e) => {
-                e.preventDefault();
-                openExternalUrl(PRIVACY_POLICY_URL);
-              }}
-              target="_blank"
-              rel="noopener noreferrer"
+              href="/privacy-policy.html"
+              onClick={(e) => { e.preventDefault(); openPrivacyPolicy(); }}
               className="text-slate-400 hover:text-amber-400 transition-colors underline cursor-pointer"
             >
               رازداری کی پالیسی (Privacy Policy)

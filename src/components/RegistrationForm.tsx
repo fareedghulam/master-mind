@@ -1,15 +1,16 @@
 import React, { useState, FormEvent } from 'react';
 import { User, Phone, MapPin, Mail, Sparkles, LogIn, Lock, MessageCircle } from 'lucide-react';
 import { getSupportWhatsAppNumber, checkInternetConnection, sendPasswordResetLink } from '../utils/store';
-import { PRIVACY_POLICY_URL, DELETE_ACCOUNT_URL, openExternalUrl } from '../utils/appUrls';
+import { DELETE_ACCOUNT_URL, openExternalUrl } from '../utils/appUrls';
 
 interface RegistrationFormProps {
   onRegister: (name: string, phone: string, city: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   onLoginWithCredentials: (identifier: string, password: string) => Promise<{ success: boolean; error?: string }>;
   onGoogleLogin?: () => Promise<{ success: boolean; error?: string }>;
+  onOpenPrivacyPolicy: () => void;
 }
 
-export default function RegistrationForm({ onRegister, onLoginWithCredentials, onGoogleLogin }: RegistrationFormProps) {
+export default function RegistrationForm({ onRegister, onLoginWithCredentials, onGoogleLogin, onOpenPrivacyPolicy }: RegistrationFormProps) {
   const [isLoginTab, setIsLoginTab] = useState(true); // Default to login tab
   const whatsappNumber = getSupportWhatsAppNumber();
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent("السلام علیکم! مجھے ماسٹر مائینڈ قریشی انٹرپرائز پرائز بانڈ سسٹم کے بارے میں مدد چاہئے۔")}`;
@@ -487,13 +488,8 @@ export default function RegistrationForm({ onRegister, onLoginWithCredentials, o
             {/* Public Compliance & Deletion Links */}
             <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-center gap-3 text-[11px] text-slate-500 font-sans">
               <a
-                href={PRIVACY_POLICY_URL}
-                onClick={(e) => {
-                  e.preventDefault();
-                  openExternalUrl(PRIVACY_POLICY_URL);
-                }}
-                target="_blank"
-                rel="noopener noreferrer"
+                href="/privacy-policy.html"
+                onClick={(e) => { e.preventDefault(); onOpenPrivacyPolicy(); }}
                 className="hover:text-amber-600 transition-colors underline cursor-pointer"
               >
                 رازداری کی پالیسی (Privacy Policy)

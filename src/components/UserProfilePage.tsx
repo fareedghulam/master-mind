@@ -22,14 +22,15 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { getSupportWhatsAppNumber, updateUserProfile, deleteOwnAccount, deleteOwnAccountWithGoogle, isSuperOwner } from '../utils/store';
-import { DELETE_ACCOUNT_URL, PRIVACY_POLICY_URL, openExternalUrl } from '../utils/appUrls';
+import { PRIVACY_POLICY_URL } from '../utils/appUrls';
 
 interface ProfileProps {
   user: User;
   totalBookingsCount: number;
+  onOpenPrivacyPolicy: () => void;
 }
 
-export default function UserProfilePage({ user, totalBookingsCount }: ProfileProps) {
+export default function UserProfilePage({ user, totalBookingsCount, onOpenPrivacyPolicy }: ProfileProps) {
   const whatsappNumber = getSupportWhatsAppNumber();
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent("السلام علیکم! مجھے ماسٹر مائینڈ قریشی انٹرپرائز پرائز بانڈ سسٹم کے بارے میں مدد چاہئے۔")}`;
 
@@ -451,13 +452,8 @@ export default function UserProfilePage({ user, totalBookingsCount }: ProfilePro
           <div className="flex items-center justify-between border-b border-red-100 pb-3">
             <div className="flex items-center gap-2">
               <a
-                href={DELETE_ACCOUNT_URL}
-                onClick={(e) => {
-                  e.preventDefault();
-                  openExternalUrl(DELETE_ACCOUNT_URL);
-                }}
-                target="_blank"
-                rel="noopener noreferrer"
+                href={PRIVACY_POLICY_URL}
+                onClick={(e) => { e.preventDefault(); onOpenPrivacyPolicy(); }}
                 className="text-[11px] text-red-600 hover:text-red-700 underline font-semibold flex items-center gap-1 cursor-pointer"
               >
                 <span>پالیسی معلومات (Policy)</span>
