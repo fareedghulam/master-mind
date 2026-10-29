@@ -1,8 +1,7 @@
 import React, { useState, FormEvent } from 'react';
 import { User, Phone, MapPin, Mail, Sparkles, LogIn, Lock, MessageCircle } from 'lucide-react';
 import { getSupportWhatsAppNumber, checkInternetConnection, sendPasswordResetLink } from '../utils/store';
-import { PRIVACY_POLICY_URL, DELETE_ACCOUNT_URL } from '../utils/appUrls';
-import PolicyViewerModal from './PolicyViewerModal';
+import { PRIVACY_POLICY_URL, DELETE_ACCOUNT_URL, openExternalUrl } from '../utils/appUrls';
 
 interface RegistrationFormProps {
   onRegister: (name: string, phone: string, city: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
@@ -12,13 +11,6 @@ interface RegistrationFormProps {
 
 export default function RegistrationForm({ onRegister, onLoginWithCredentials, onGoogleLogin }: RegistrationFormProps) {
   const [isLoginTab, setIsLoginTab] = useState(true); // Default to login tab
-  const [policyModal, setPolicyModal] = useState<{
-    isOpen: boolean;
-    type: 'privacy' | 'deletion';
-  }>({
-    isOpen: false,
-    type: 'privacy'
-  });
   const whatsappNumber = getSupportWhatsAppNumber();
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent("السلام علیکم! مجھے ماسٹر مائینڈ قریشی انٹرپرائز پرائز بانڈ سسٹم کے بارے میں مدد چاہئے۔")}`;
   
@@ -498,7 +490,7 @@ export default function RegistrationForm({ onRegister, onLoginWithCredentials, o
                 href={PRIVACY_POLICY_URL}
                 onClick={(e) => {
                   e.preventDefault();
-                  setPolicyModal({ isOpen: true, type: 'privacy' });
+                  openExternalUrl(PRIVACY_POLICY_URL);
                 }}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -511,7 +503,7 @@ export default function RegistrationForm({ onRegister, onLoginWithCredentials, o
                 href={DELETE_ACCOUNT_URL}
                 onClick={(e) => {
                   e.preventDefault();
-                  setPolicyModal({ isOpen: true, type: 'deletion' });
+                  openExternalUrl(DELETE_ACCOUNT_URL);
                 }}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -523,13 +515,6 @@ export default function RegistrationForm({ onRegister, onLoginWithCredentials, o
           </div>
         </div>
       </div>
-
-      {/* Policy & Account Deletion In-App Modal */}
-      <PolicyViewerModal
-        isOpen={policyModal.isOpen}
-        onClose={() => setPolicyModal(prev => ({ ...prev, isOpen: false }))}
-        initialType={policyModal.type}
-      />
     </div>
   );
 }

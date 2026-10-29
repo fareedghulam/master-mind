@@ -22,8 +22,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { getSupportWhatsAppNumber, updateUserProfile, deleteOwnAccount, deleteOwnAccountWithGoogle, isSuperOwner } from '../utils/store';
-import { DELETE_ACCOUNT_URL, PRIVACY_POLICY_URL } from '../utils/appUrls';
-import PolicyViewerModal from './PolicyViewerModal';
+import { DELETE_ACCOUNT_URL, PRIVACY_POLICY_URL, openExternalUrl } from '../utils/appUrls';
 
 interface ProfileProps {
   user: User;
@@ -50,7 +49,6 @@ export default function UserProfilePage({ user, totalBookingsCount }: ProfilePro
   const [deleteError, setDeleteError] = useState<string>('');
   const [deleteSuccess, setDeleteSuccess] = useState<string>('');
   const [requiresRecentLogin, setRequiresRecentLogin] = useState<boolean>(false);
-  const [isPolicyModalOpen, setIsPolicyModalOpen] = useState<boolean>(false);
 
   const isUserSuperOwner = isSuperOwner(user.email);
 
@@ -456,7 +454,7 @@ export default function UserProfilePage({ user, totalBookingsCount }: ProfilePro
                 href={DELETE_ACCOUNT_URL}
                 onClick={(e) => {
                   e.preventDefault();
-                  setIsPolicyModalOpen(true);
+                  openExternalUrl(DELETE_ACCOUNT_URL);
                 }}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -679,15 +677,6 @@ export default function UserProfilePage({ user, totalBookingsCount }: ProfilePro
           </div>
         )}
       </div>
-
-      {/* Policy & Deletion Modal */}
-      <PolicyViewerModal
-        isOpen={isPolicyModalOpen}
-        onClose={() => setIsPolicyModalOpen(false)}
-        initialType="deletion"
-        currentUser={user}
-        onTriggerInAppDelete={() => setIsDeleteModalOpen(true)}
-      />
     </div>
   );
 }

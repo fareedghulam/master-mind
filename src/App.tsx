@@ -56,21 +56,13 @@ import AdminPortal from './components/AdminPortal';
 import PwaInstaller from './components/PwaInstaller';
 import AIAnalysisPortal from './components/AIAnalysisPortal';
 import ProfileSetupModal from './components/ProfileSetupModal';
-import PolicyViewerModal from './components/PolicyViewerModal';
-import { PRIVACY_POLICY_URL, DELETE_ACCOUNT_URL } from './utils/appUrls';
+import { PRIVACY_POLICY_URL, DELETE_ACCOUNT_URL, openExternalUrl } from './utils/appUrls';
 import { LayoutDashboard, Award, ScrollText, CalendarRange, Shield, HelpCircle, Sparkles, Globe, Music, FileText } from 'lucide-react';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
-  const [policyModal, setPolicyModal] = useState<{
-    isOpen: boolean;
-    type: 'privacy' | 'deletion';
-  }>({
-    isOpen: false,
-    type: 'privacy'
-  });
   const [users, setUsers] = useState<User[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [dealerBookings, setDealerBookings] = useState<DealerBooking[]>([]);
@@ -1054,7 +1046,7 @@ export default function App() {
               href={PRIVACY_POLICY_URL}
               onClick={(e) => {
                 e.preventDefault();
-                setPolicyModal({ isOpen: true, type: 'privacy' });
+                openExternalUrl(PRIVACY_POLICY_URL);
               }}
               target="_blank"
               rel="noopener noreferrer"
@@ -1067,7 +1059,7 @@ export default function App() {
               href={DELETE_ACCOUNT_URL}
               onClick={(e) => {
                 e.preventDefault();
-                setPolicyModal({ isOpen: true, type: 'deletion' });
+                openExternalUrl(DELETE_ACCOUNT_URL);
               }}
               target="_blank"
               rel="noopener noreferrer"
@@ -1083,15 +1075,6 @@ export default function App() {
           </div>
         </div>
       </footer>
-
-      {/* Policy and Account Deletion Modal */}
-      <PolicyViewerModal
-        isOpen={policyModal.isOpen}
-        onClose={() => setPolicyModal(prev => ({ ...prev, isOpen: false }))}
-        initialType={policyModal.type}
-        currentUser={currentUser}
-        onTriggerInAppDelete={() => setActiveTab('profile')}
-      />
 
       {/* Mandatory Profile Setup Modal for Incomplete Profiles */}
       {currentUser && !currentUser.isAdmin && currentUser.role !== 'superAdmin' && currentUser.role !== 'dataEntryAdmin' && currentUser.role !== 'admin' && (isMandatorySetupOpen || (!currentUser.profileCompleted && (!currentUser.phone?.trim() || !currentUser.city?.trim()))) && (
