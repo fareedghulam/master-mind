@@ -22,6 +22,8 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { getSupportWhatsAppNumber, updateUserProfile, deleteOwnAccount, deleteOwnAccountWithGoogle, isSuperOwner } from '../utils/store';
+import { DELETE_ACCOUNT_URL, PRIVACY_POLICY_URL } from '../utils/appUrls';
+import PolicyViewerModal from './PolicyViewerModal';
 
 interface ProfileProps {
   user: User;
@@ -48,6 +50,7 @@ export default function UserProfilePage({ user, totalBookingsCount }: ProfilePro
   const [deleteError, setDeleteError] = useState<string>('');
   const [deleteSuccess, setDeleteSuccess] = useState<string>('');
   const [requiresRecentLogin, setRequiresRecentLogin] = useState<boolean>(false);
+  const [isPolicyModalOpen, setIsPolicyModalOpen] = useState<boolean>(false);
 
   const isUserSuperOwner = isSuperOwner(user.email);
 
@@ -450,10 +453,14 @@ export default function UserProfilePage({ user, totalBookingsCount }: ProfilePro
           <div className="flex items-center justify-between border-b border-red-100 pb-3">
             <div className="flex items-center gap-2">
               <a
-                href="/delete-account.html"
+                href={DELETE_ACCOUNT_URL}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setIsPolicyModalOpen(true);
+                }}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[11px] text-red-600 hover:text-red-700 underline font-semibold flex items-center gap-1"
+                className="text-[11px] text-red-600 hover:text-red-700 underline font-semibold flex items-center gap-1 cursor-pointer"
               >
                 <span>پالیسی معلومات (Policy)</span>
                 <ExternalLink className="w-3 h-3" />
@@ -672,6 +679,15 @@ export default function UserProfilePage({ user, totalBookingsCount }: ProfilePro
           </div>
         )}
       </div>
+
+      {/* Policy & Deletion Modal */}
+      <PolicyViewerModal
+        isOpen={isPolicyModalOpen}
+        onClose={() => setIsPolicyModalOpen(false)}
+        initialType="deletion"
+        currentUser={user}
+        onTriggerInAppDelete={() => setIsDeleteModalOpen(true)}
+      />
     </div>
   );
 }

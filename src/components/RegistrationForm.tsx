@@ -1,6 +1,8 @@
 import React, { useState, FormEvent } from 'react';
 import { User, Phone, MapPin, Mail, Sparkles, LogIn, Lock, MessageCircle } from 'lucide-react';
 import { getSupportWhatsAppNumber, checkInternetConnection, sendPasswordResetLink } from '../utils/store';
+import { PRIVACY_POLICY_URL, DELETE_ACCOUNT_URL } from '../utils/appUrls';
+import PolicyViewerModal from './PolicyViewerModal';
 
 interface RegistrationFormProps {
   onRegister: (name: string, phone: string, city: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
@@ -10,6 +12,13 @@ interface RegistrationFormProps {
 
 export default function RegistrationForm({ onRegister, onLoginWithCredentials, onGoogleLogin }: RegistrationFormProps) {
   const [isLoginTab, setIsLoginTab] = useState(true); // Default to login tab
+  const [policyModal, setPolicyModal] = useState<{
+    isOpen: boolean;
+    type: 'privacy' | 'deletion';
+  }>({
+    isOpen: false,
+    type: 'privacy'
+  });
   const whatsappNumber = getSupportWhatsAppNumber();
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent("السلام علیکم! مجھے ماسٹر مائینڈ قریشی انٹرپرائز پرائز بانڈ سسٹم کے بارے میں مدد چاہئے۔")}`;
   
@@ -486,19 +495,27 @@ export default function RegistrationForm({ onRegister, onLoginWithCredentials, o
             {/* Public Compliance & Deletion Links */}
             <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-center gap-3 text-[11px] text-slate-500 font-sans">
               <a
-                href="/privacy-policy.html"
+                href={PRIVACY_POLICY_URL}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setPolicyModal({ isOpen: true, type: 'privacy' });
+                }}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hover:text-amber-600 transition-colors underline"
+                className="hover:text-amber-600 transition-colors underline cursor-pointer"
               >
                 رازداری کی پالیسی (Privacy Policy)
               </a>
               <span>•</span>
               <a
-                href="/delete-account.html"
+                href={DELETE_ACCOUNT_URL}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setPolicyModal({ isOpen: true, type: 'deletion' });
+                }}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hover:text-red-600 transition-colors underline"
+                className="hover:text-red-600 transition-colors underline cursor-pointer"
               >
                 اکاؤنٹ خاتمہ (Delete Account)
               </a>
@@ -506,6 +523,13 @@ export default function RegistrationForm({ onRegister, onLoginWithCredentials, o
           </div>
         </div>
       </div>
+
+      {/* Policy & Account Deletion In-App Modal */}
+      <PolicyViewerModal
+        isOpen={policyModal.isOpen}
+        onClose={() => setPolicyModal(prev => ({ ...prev, isOpen: false }))}
+        initialType={policyModal.type}
+      />
     </div>
   );
 }
