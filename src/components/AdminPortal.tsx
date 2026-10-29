@@ -1,7 +1,7 @@
 import React, { useState, useEffect, FormEvent } from 'react';
 import { User, AdminRole, NumberLimit, Demand, DrawDeadline, Booking, DealerBooking, PakistanBondResult, ThaiLotteryResult, AllResultType, DrawCategory, HardFavoriteNumber } from '../types';
 import { ShieldCheck, UserCheck, Sparkles, Clock, History, Building2 } from 'lucide-react';
-import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, getAdminConfiguredEmail, updateCustomerPassword, registerInAuthOnly, changeLoggedAdminPassword, assignDealerRole, cancelDealerBookingByAdmin } from '../utils/store';
+import { getSupportWhatsAppNumber, setSupportWhatsAppNumber, getAdminConfiguredEmail, updateCustomerPassword, registerInAuthOnly, changeLoggedAdminPassword, assignDealerRole, cancelDealerBookingByAdmin, adminDeleteUserRecord, isSuperOwner } from '../utils/store';
 import { db } from '../lib/firebase';
 import { ref, set, update, remove } from 'firebase/database';
 import { normalizeDateInput } from '../utils/bondAnalysisUtils';
@@ -605,13 +605,17 @@ export default function AdminPortal({
 
   const handleDeleteAdmin = async (email: string) => {
     const emailClean = email.toLowerCase().trim();
-    const mainOwnerEmail = getAdminConfiguredEmail().toLowerCase().trim();
-    if (emailClean === mainOwnerEmail || emailClean === currentUser?.email?.toLowerCase().trim()) {
-      alert('سپر مالک (Super Owner) یا خود کو حذف نہیں کیا جا سکتا۔');
+    if (isSuperOwner(emailClean)) {
+      setAdminManageError('سپر مالک (Super Owner) اکاؤنٹ کا ڈیٹا بیس ریکارڈ حذف نہیں کیا جا سکتا۔');
+      return;
+    }
+    if (emailClean === currentUser?.email?.toLowerCase().trim()) {
+      setAdminManageError('آپ ایڈمن پورٹل سے اپنا اکاؤنٹ خود حذف نہیں کر سکتے۔ ذاتی پروفائل اسکرین استعمال کریں۔');
       return;
     }
 
-    if (!window.confirm(`کیا آپ واقعی ایڈمن (${email}) کو حذف کرنا چاہتے ہیں؟`)) {
+    if (!currentUser || (!currentUser.isAdmin && currentUser.role !== 'superAdmin')) {
+      setAdminManageError('صرف سپر ایڈمن کو صارفین کے ریکارڈز حذف کرنے کا اختیار حاصل ہے۔');
       return;
     }
 
@@ -619,12 +623,12 @@ export default function AdminPortal({
     setAdminManageSuccess('');
 
     try {
-      const cached = users.find(u => (u.email || '').toLowerCase() === emailClean);
-      if (!cached || !cached.uid) {
-        throw new Error('ایڈمن کا UID نہیں ملا۔ (Admin UID not found.)');
+      const res = await adminDeleteUserRecord(emailClean, currentUser);
+      if (res.success) {
+        setAdminManageSuccess(res.message || `کامیاب: ایڈمن (${email}) کا ڈیٹا بیس پروفائل اور تمام رسائیاں حذف کر دی گئی ہیں۔`);
+      } else {
+        setAdminManageError(res.error || 'ایڈمن ریکارڈ حذف کرنے میں خرابی پیش آئی۔');
       }
-      await remove(ref(db, `users/${cached.uid}`));
-      setAdminManageSuccess(`کامیاب: ایڈمن (${email}) کا ریکارڈ کامیابی سے حذف کر دیا گیا ہے۔`);
     } catch (err: any) {
       console.error("Delete admin error:", err);
       setAdminManageError(err?.message || 'ایڈمن ریکارڈ حذف کرنے میں خرابی پیش آئی۔');
@@ -633,9 +637,8 @@ export default function AdminPortal({
 
   const handleToggleActiveAdmin = async (email: string, currentActive: boolean) => {
     const emailClean = email.toLowerCase().trim();
-    const mainOwnerEmail = getAdminConfiguredEmail().toLowerCase().trim();
-    if (emailClean === mainOwnerEmail || emailClean === currentUser?.email?.toLowerCase().trim()) {
-      alert('سپر مالک (Super Owner) کے سٹیٹس میں تبدیلی نہیں کی جا سکتی۔');
+    if (isSuperOwner(emailClean) || emailClean === currentUser?.email?.toLowerCase().trim()) {
+      setAdminManageError('سپر مالک (Super Owner) یا ذاتی اکاؤنٹ کے سٹیٹس میں تبدیلی نہیں کی جا سکتی۔');
       return;
     }
 
@@ -660,9 +663,8 @@ export default function AdminPortal({
 
   const handleChangeAdminRole = async (email: string, roleToSet: AdminRole) => {
     const emailClean = email.toLowerCase().trim();
-    const mainOwnerEmail = getAdminConfiguredEmail().toLowerCase().trim();
-    if (emailClean === mainOwnerEmail || emailClean === currentUser?.email?.toLowerCase().trim()) {
-      alert('سپر مالک (Super Owner) کا رول تبدیل نہیں کیا جا سکتا۔');
+    if (isSuperOwner(emailClean) || emailClean === currentUser?.email?.toLowerCase().trim()) {
+      setAdminManageError('سپر مالک (Super Owner) کا رول تبدیل نہیں کیا جا سکتا۔');
       return;
     }
 
@@ -980,6 +982,7 @@ export default function AdminPortal({
           userConfirmPassword={userConfirmPassword}
           setUserConfirmPassword={setUserConfirmPassword}
           handleUserPasswordReset={handleUserPasswordReset}
+          onDeleteUserDatabaseRecord={handleDeleteAdmin}
         />
       )}
 

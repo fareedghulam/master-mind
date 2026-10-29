@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { User, AdminRole } from '../../types';
-import { ShieldCheck, Plus, Trash, Sparkles, UserCheck, Building2, UserX } from 'lucide-react';
-import { getAdminConfiguredEmail } from '../../utils/store';
+import { ShieldCheck, Plus, Trash, Sparkles, UserCheck, Building2, UserX, AlertTriangle, X, CheckCircle } from 'lucide-react';
+import { getAdminConfiguredEmail, isSuperOwner } from '../../utils/store';
 
 interface AdminManagementTabProps {
   users: User[];
@@ -45,6 +45,7 @@ export const AdminManagementTab: React.FC<AdminManagementTabProps> = ({
   safeFormatDate
 }) => {
   const [filterType, setFilterType] = useState<'all' | 'admins' | 'dealers'>('all');
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
 
   const privilegedUsers = users.filter(u => 
     u.isAdmin === true || 
@@ -284,7 +285,7 @@ export const AdminManagementTab: React.FC<AdminManagementTabProps> = ({
                 </tr>
               ) : (
                 filteredUsers.map((admin) => {
-                  const isMainOwner = (admin.email || '').toLowerCase() === getAdminConfiguredEmail().toLowerCase().trim();
+                  const isProtectedOwner = isSuperOwner(admin.email) || (admin.email || '').toLowerCase() === getAdminConfiguredEmail().toLowerCase().trim();
                   const isActive = admin.active !== false;
                   const loginTime = admin.lastLogin ? safeFormatDate(admin.lastLogin, 'ur-PK', { timeZone: 'Asia/Karachi' }) : 'N/A';
                   const formattedLogin = loginTime === 'N/A' ? 'لاگ ان نہیں ہوا (No Login)' : loginTime;
@@ -294,13 +295,13 @@ export const AdminManagementTab: React.FC<AdminManagementTabProps> = ({
                     <tr key={admin.email || admin.uid} className="hover:bg-slate-50/50 transition-colors">
                       {/* Actions Column */}
                       <td className="py-3 px-3 text-left">
-                        {!isMainOwner ? (
+                        {!isProtectedOwner ? (
                           <div className="flex flex-wrap gap-1.5 items-center">
-                            {/* Delete Button */}
+                            {/* Delete Database Record Button */}
                             <button
-                              onClick={() => handleDeleteAdmin(admin.email)}
+                              onClick={() => setDeleteTarget(admin)}
                               className="bg-red-50 hover:bg-red-100 text-red-600 p-1.5 rounded-xl border border-red-200 transition-all cursor-pointer"
-                              title="اکاؤنٹ حذف کریں"
+                              title="ڈیٹا بیس ریکارڈ اور رسائی حذف کریں"
                             >
                               <Trash className="w-3.5 h-3.5" />
                             </button>
@@ -349,7 +350,7 @@ export const AdminManagementTab: React.FC<AdminManagementTabProps> = ({
                             )}
                           </div>
                         ) : (
-                          <span className="text-[10px] text-slate-400 font-sans italic">سپر مالک (Owner)</span>
+                          <span className="text-[10px] text-slate-400 font-sans italic font-semibold">سپر مالک (Owner)</span>
                         )}
                       </td>
 
@@ -404,6 +405,70 @@ export const AdminManagementTab: React.FC<AdminManagementTabProps> = ({
           </table>
         </div>
       </div>
+
+      {/* Admin Deletion Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white max-w-lg w-full rounded-3xl border border-red-200 shadow-2xl p-6 sm:p-8 text-right font-sans animate-in fade-in">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="flex items-center gap-2">
+                <h4 className="text-base font-bold text-red-600">
+                  ڈیٹا بیس ریکارڈ اور رسائی حذف کرنے کی تصدیق
+                </h4>
+                <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
+              </div>
+            </div>
+
+            <div className="space-y-3 mb-6 text-xs text-slate-600 leading-relaxed">
+              <div className="bg-red-50/70 border border-red-200 p-3.5 rounded-2xl text-red-900">
+                <p className="font-bold mb-1">
+                  صارف: {deleteTarget.name} ({deleteTarget.email})
+                </p>
+                <p className="text-[11px] text-red-800">
+                  عہدہ (Role): {deleteTarget.role || 'Admin/Dealer'} | UID: {deleteTarget.uid || 'N/A'}
+                </p>
+              </div>
+
+              <p className="text-slate-700">
+                یہ کارروائی اس صارف کی ڈیٹا بیس پروفائل، ایڈمن اختیارات، اور ڈیلرشپ ریکارڈ کو Realtime Database (<code className="font-mono text-red-600">users/{deleteTarget.uid}</code>) سے مستقل طور پر حذف کر دے گی۔
+              </p>
+
+              <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl text-amber-900 text-[11px]">
+                <strong>اہم وضاحت (Notice):</strong> سیکیورٹی اصولوں کے تحت کلائنٹ کوڈ میں سرور کی پرائیویٹ ایڈمن کیز (Admin SDK Keys) محفوظ نہیں کی جاتیں۔ لہٰذا فائر بیس آتھ (Authentication) کا اکاؤنٹ اگر درکار ہو تو فائر بیس کنسول سے مانیٹر کیا جا سکتا ہے۔ اس صارف کی سسٹم تک رسائی فوری طور پر بند ہو جائے گی۔
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold transition-all cursor-pointer"
+              >
+                منسوخ کریں (Cancel)
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const email = deleteTarget.email;
+                  setDeleteTarget(null);
+                  handleDeleteAdmin(email);
+                }}
+                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-md hover:-translate-y-0.5"
+              >
+                <Trash className="w-4 h-4" />
+                <span>ریکارڈ مستقل حذف کریں (Confirm Delete)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

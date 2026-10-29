@@ -25,7 +25,69 @@ import {
 import { pakistanBondDraws } from './pakistanBondData';
 import { thailandLotteryDraws } from './thailandLotteryData';
 
-import { registerInAuthOnly as registerInAuthOnlyService, sendPasswordResetLink as sendPasswordResetLinkService } from '../services/userService';
+import { 
+  registerInAuthOnly as registerInAuthOnlyService, 
+  sendPasswordResetLink as sendPasswordResetLinkService,
+  deleteCurrentUserAccount as deleteCurrentUserAccountService,
+  reauthenticateGoogleAndDelete as reauthenticateGoogleAndDeleteService,
+  adminDeleteUserDatabaseRecord as adminDeleteUserDatabaseRecordService,
+  SUPER_OWNER_EMAILS,
+  isSuperOwner,
+  DeleteAccountResult,
+  AdminDeleteUserResult
+} from '../services/userService';
+
+export { SUPER_OWNER_EMAILS, isSuperOwner };
+export type { DeleteAccountResult, AdminDeleteUserResult };
+
+export async function deleteOwnAccount(password?: string): Promise<DeleteAccountResult> {
+  const online = await checkInternetConnection();
+  if (!online) {
+    return { success: false, error: 'انٹرنیٹ کنکشن دستیاب نہیں ہے۔ براہ کرم انٹرنیٹ چیک کریں۔' };
+  }
+
+  const currentAuthUid = auth.currentUser?.uid;
+  const res = await deleteCurrentUserAccountService(password);
+  if (res.success) {
+    if (currentAuthUid) {
+      cachedUsers = cachedUsers.filter(u => u.uid !== currentAuthUid);
+    }
+    notifyListeners();
+  }
+  return res;
+}
+
+export async function deleteOwnAccountWithGoogle(): Promise<DeleteAccountResult> {
+  const online = await checkInternetConnection();
+  if (!online) {
+    return { success: false, error: 'انٹرنیٹ کنکشن دستیاب نہیں ہے۔ براہ کرم انٹرنیٹ چیک کریں۔' };
+  }
+
+  const currentAuthUid = auth.currentUser?.uid;
+  const res = await reauthenticateGoogleAndDeleteService();
+  if (res.success) {
+    if (currentAuthUid) {
+      cachedUsers = cachedUsers.filter(u => u.uid !== currentAuthUid);
+    }
+    notifyListeners();
+  }
+  return res;
+}
+
+export async function adminDeleteUserRecord(targetEmail: string, actor: User | null): Promise<AdminDeleteUserResult> {
+  const online = await checkInternetConnection();
+  if (!online) {
+    return { success: false, error: 'انٹرنیٹ کنکشن دستیاب نہیں ہے۔' };
+  }
+
+  const res = await adminDeleteUserDatabaseRecordService(targetEmail, actor, cachedUsers);
+  if (res.success) {
+    const cleanTarget = targetEmail.toLowerCase().trim();
+    cachedUsers = cachedUsers.filter(u => (u.email || '').toLowerCase().trim() !== cleanTarget);
+    notifyListeners();
+  }
+  return res;
+}
 
 export async function registerInAuthOnly(email: string, passwordInput: string): Promise<string> {
   return registerInAuthOnlyService(email, passwordInput, cachedUsers);

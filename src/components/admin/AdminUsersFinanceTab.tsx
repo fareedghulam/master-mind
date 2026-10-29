@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { User, DealerBooking } from '../../types';
-import { MessageCircle, ShieldCheck, UserCheck, Search, Database, RefreshCw, CheckCircle, AlertTriangle, FileUp } from 'lucide-react';
-import { getAdminConfiguredEmail } from '../../utils/store';
+import { MessageCircle, ShieldCheck, UserCheck, Search, Database, RefreshCw, CheckCircle, AlertTriangle, FileUp, Trash2, X } from 'lucide-react';
+import { getAdminConfiguredEmail, isSuperOwner } from '../../utils/store';
 import { migrateAllFirestoreUsersToRtdb, migrateUsersFromJson, MigrationReport } from '../../utils/userMigration';
 
 interface AdminUsersFinanceTabProps {
@@ -34,6 +34,7 @@ interface AdminUsersFinanceTabProps {
   userConfirmPassword: string;
   setUserConfirmPassword: (val: string) => void;
   handleUserPasswordReset: (e: React.FormEvent) => void;
+  onDeleteUserDatabaseRecord?: (email: string) => void;
 }
 
 export const AdminUsersFinanceTab: React.FC<AdminUsersFinanceTabProps> = ({
@@ -65,13 +66,15 @@ export const AdminUsersFinanceTab: React.FC<AdminUsersFinanceTabProps> = ({
   setUserNewPassword,
   userConfirmPassword,
   setUserConfirmPassword,
-  handleUserPasswordReset
+  handleUserPasswordReset,
+  onDeleteUserDatabaseRecord
 }) => {
   const [migrating, setMigrating] = useState(false);
   const [migrationReport, setMigrationReport] = useState<MigrationReport | null>(null);
   const [migrationError, setMigrationError] = useState('');
   const [showJsonInput, setShowJsonInput] = useState(false);
   const [jsonText, setJsonText] = useState('');
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState<User | null>(null);
 
   const handleRunMigration = async () => {
     setMigrating(true);
@@ -592,10 +595,93 @@ export const AdminUsersFinanceTab: React.FC<AdminUsersFinanceTabProps> = ({
                   <span>پاس ورڈ محفوظ کریں (Save Password)</span>
                 </button>
               </form>
+
+              {/* Secure Database Record Removal for Searched User */}
+              {onDeleteUserDatabaseRecord && !isSuperOwner(foundUser.email) && (
+                <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-3">
+                  <span className="text-[10px] text-slate-500 text-right">
+                    نوٹ: یہ عمل صارف کی ڈیٹا بیس پروفائل اور تمام رسائیاں منسوخ کر دے گا۔
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteUser(foundUser)}
+                    className="w-full sm:w-auto px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>صارف کا ڈیٹا بیس ریکارڈ حذف کریں (Delete DB Profile)</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
+
+      {/* Database Deletion Confirmation Modal for Searched User */}
+      {confirmDeleteUser && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white max-w-lg w-full rounded-3xl border border-red-200 shadow-2xl p-6 sm:p-8 text-right font-sans animate-in fade-in">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
+              <button
+                onClick={() => setConfirmDeleteUser(null)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="flex items-center gap-2">
+                <h4 className="text-base font-bold text-red-600">
+                  صارف کا ڈیٹا بیس ریکارڈ حذف کرنے کی تصدیق
+                </h4>
+                <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
+              </div>
+            </div>
+
+            <div className="space-y-3 mb-6 text-xs text-slate-600 leading-relaxed">
+              <div className="bg-red-50/70 border border-red-200 p-3.5 rounded-2xl text-red-900">
+                <p className="font-bold mb-1">
+                  صارف: {confirmDeleteUser.name} ({confirmDeleteUser.email})
+                </p>
+                <p className="text-[11px] text-red-800">
+                  UID: {confirmDeleteUser.uid || 'N/A'} | رول: {confirmDeleteUser.role || 'customer'}
+                </p>
+              </div>
+
+              <p className="text-slate-700">
+                کیا آپ واقعی اس صارف کا ریکارڈ Realtime Database سے حذف کرنا چاہتے ہیں؟ اس سے صارف کی پروفائل، معلومات اور والٹ لنکیج فوری منسوخ ہو جائے گی۔
+              </p>
+
+              <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl text-amber-900 text-[11px]">
+                <strong>اہم وضاحت:</strong> کلائنٹ سیکیورٹی ضوابط کی وجہ سے فائر بیس آتھ کا ریکارڈ ایڈمن فائر بیس کنسول سے مانیٹر یا ڈیلیٹ کر سکتا ہے۔ صارف کی سسٹم تک رسائی فوری بند ہو جائے گی۔
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteUser(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold transition-all cursor-pointer"
+              >
+                منسوخ کریں (Cancel)
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const email = confirmDeleteUser.email;
+                  setConfirmDeleteUser(null);
+                  if (onDeleteUserDatabaseRecord) {
+                    onDeleteUserDatabaseRecord(email);
+                  }
+                }}
+                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-md hover:-translate-y-0.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>ریکارڈ مستقل حذف کریں (Confirm Delete)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

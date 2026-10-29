@@ -1039,6 +1039,27 @@ export default function App() {
             <span>مدد اور واٹس ایپ رابطہ (WhatsApp Support)</span>
           </a>
 
+          {/* Policy Links */}
+          <div className="flex flex-wrap items-center justify-center gap-3 text-[11px] font-sans">
+            <a
+              href="/privacy-policy.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-slate-400 hover:text-amber-400 transition-colors underline"
+            >
+              رازداری کی پالیسی (Privacy Policy)
+            </a>
+            <span className="text-slate-600">•</span>
+            <a
+              href="/delete-account.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-slate-400 hover:text-red-400 transition-colors underline"
+            >
+              اکاؤنٹ خاتمہ (Delete Account)
+            </a>
+          </div>
+
           <div className="flex gap-4 text-[11px] font-mono">
             <span className="text-amber-500">Fast Booking Systems</span>
             <span>Secure Wallet Node</span>

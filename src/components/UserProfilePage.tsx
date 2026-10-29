@@ -14,9 +14,14 @@ import {
   Loader2, 
   CheckCircle, 
   AlertCircle,
-  Lock
+  Lock,
+  Trash2,
+  AlertTriangle,
+  KeyRound,
+  ExternalLink,
+  ShieldAlert
 } from 'lucide-react';
-import { getSupportWhatsAppNumber, updateUserProfile } from '../utils/store';
+import { getSupportWhatsAppNumber, updateUserProfile, deleteOwnAccount, deleteOwnAccountWithGoogle, isSuperOwner } from '../utils/store';
 
 interface ProfileProps {
   user: User;
@@ -33,6 +38,67 @@ export default function UserProfilePage({ user, totalBookingsCount }: ProfilePro
   const [city, setCity] = useState<string>(user.city || '');
   const [loading, setLoading] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // Secure Account Deletion States
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
+  const [deletePassword, setDeletePassword] = useState<string>('');
+  const [confirmKeyword, setConfirmKeyword] = useState<string>('');
+  const [confirmCheckbox, setConfirmCheckbox] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [deleteError, setDeleteError] = useState<string>('');
+  const [deleteSuccess, setDeleteSuccess] = useState<string>('');
+  const [requiresRecentLogin, setRequiresRecentLogin] = useState<boolean>(false);
+
+  const isUserSuperOwner = isSuperOwner(user.email);
+
+  const handleDeleteAccount = async () => {
+    setDeleteError('');
+    setDeleteSuccess('');
+    setIsDeleting(true);
+
+    try {
+      const res = await deleteOwnAccount(deletePassword.trim());
+      if (res.success) {
+        setDeleteSuccess(res.message || 'آپ کا اکاؤنٹ اور تمام ذاتی ڈیٹا کامیابی سے مستقل طور پر حذف کر دیا گیا ہے۔');
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
+      } else {
+        if (res.requiresRecentLogin) {
+          setRequiresRecentLogin(true);
+          setDeleteError('سیکیورٹی تقاضے کے تحت، براہ کرم اپنے پاس ورڈ یا گوگل اکاؤنٹ سے دوبارہ تصدیق کریں۔');
+        } else {
+          setDeleteError(res.error || 'اکاؤنٹ حذف کرنے میں خرابی پیش آئی۔');
+        }
+      }
+    } catch (err: any) {
+      setDeleteError(err?.message || 'خرابی پیش آئی۔');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleGoogleDelete = async () => {
+    setDeleteError('');
+    setDeleteSuccess('');
+    setIsDeleting(true);
+
+    try {
+      const res = await deleteOwnAccountWithGoogle();
+      if (res.success) {
+        setDeleteSuccess(res.message || 'آپ کا اکاؤنٹ اور تمام ذاتی ڈیٹا کامیابی سے مستقل طور پر حذف کر دیا گیا ہے۔');
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
+      } else {
+        setDeleteError(res.error || 'گوگل تصدیق کے دوران خرابی پیش آئی۔');
+      }
+    } catch (err: any) {
+      setDeleteError(err?.message || 'خرابی پیش آئی۔');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   useEffect(() => {
     if (!isEditing) {
@@ -378,6 +444,233 @@ export default function UserProfilePage({ user, totalBookingsCount }: ProfilePro
             </p>
           </div>
         </div>
+
+        {/* Danger Zone: Google Play Compliant Account & Data Deletion */}
+        <div className="bg-red-50/50 border-2 border-red-200 rounded-3xl p-5 sm:p-6 mt-8 space-y-4 text-right">
+          <div className="flex items-center justify-between border-b border-red-100 pb-3">
+            <div className="flex items-center gap-2">
+              <a
+                href="/delete-account.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-red-600 hover:text-red-700 underline font-semibold flex items-center gap-1"
+              >
+                <span>پالیسی معلومات (Policy)</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+            <div className="flex items-center gap-2">
+              <h4 className="text-sm font-bold text-red-700">
+                خطرناک زون / اکاؤنٹ مستقل حذف کریں (Account Deletion)
+              </h4>
+              <ShieldAlert className="w-4 h-4 text-red-600 shrink-0" />
+            </div>
+          </div>
+
+          <p className="text-xs text-slate-600 leading-relaxed">
+            اگر آپ MasterMind Qureshi Enterprise سسٹم سے اپنا اکاؤنٹ، رابطہ معلومات اور تمام ذاتی ڈیٹا مکمل و مستقل طور پر ختم کرنا چاہتے ہیں تو آپ یہاں سے خودکار طریقے سے اپنا اکاؤنٹ فوری حذف کر سکتے ہیں۔
+          </p>
+
+          <div className="bg-white/80 p-3.5 rounded-2xl border border-red-100 space-y-2 text-[11px] text-slate-600">
+            <div className="flex items-start justify-end gap-2 text-right">
+              <div>
+                <strong className="text-red-700">کیا حذف ہوگا (What will be deleted):</strong>
+                <p className="mt-0.5 text-slate-500">
+                  فائر بیس لاگ ان اکاؤنٹ (Authentication)، آپ کی پروفائل (نام، موبائل نمبر، شہر، ای میل) اور تمام غیر حل شدہ مطالبات (Demands) ہمیشہ کے لیے مٹ جائیں گے۔
+                </p>
+              </div>
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 shrink-0"></span>
+            </div>
+
+            <div className="flex items-start justify-end gap-2 text-right">
+              <div>
+                <strong className="text-slate-700">قانونی و مالیاتی ڈیٹا کا تحفظ (Data Retention):</strong>
+                <p className="mt-0.5 text-slate-500">
+                  ماضی کی قرعہ اندازیوں کے مالیاتی ٹرانزیکشنز اور بکنگ ریکارڈز قانون، ٹیکس اور دھوکہ دہی کی روک تھام کے تقاضوں کے تحت شناخت کے بغیر سیکیور سسٹم آرکائیو میں محفوظ رہتے ہیں۔
+                </p>
+              </div>
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0"></span>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2">
+            {isUserSuperOwner ? (
+              <span className="text-xs text-amber-700 font-bold bg-amber-100/70 border border-amber-300 px-4 py-2 rounded-xl">
+                سپر اونر (Super Owner) اکاؤنٹ کی سیکیورٹی کی وجہ سے اسے حذف نہیں کیا جا سکتا۔
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteError('');
+                  setDeleteSuccess('');
+                  setDeletePassword('');
+                  setConfirmKeyword('');
+                  setConfirmCheckbox(false);
+                  setRequiresRecentLogin(false);
+                  setIsDeleteModalOpen(true);
+                }}
+                className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2.5 px-5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer hover:-translate-y-0.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>میرا اکاؤنٹ مستقل حذف کریں (Delete My Account)</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Modal: Interactive Two-Step Secure Account Deletion */}
+        {isDeleteModalOpen && (
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white max-w-lg w-full rounded-3xl border border-red-200 shadow-2xl p-6 sm:p-8 text-right font-sans animate-in fade-in max-h-[90vh] overflow-y-auto">
+              {/* Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
+                <button
+                  type="button"
+                  onClick={() => setIsDeleteModalOpen(false)}
+                  disabled={isDeleting}
+                  className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-base font-bold text-red-600">
+                    اکاؤنٹ مستقل حذف کرنے کی تصدیق
+                  </h4>
+                  <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
+                </div>
+              </div>
+
+              {/* Status alerts */}
+              {deleteError && (
+                <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs mb-4 text-right flex items-start justify-end gap-2">
+                  <span>{deleteError}</span>
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
+                </div>
+              )}
+
+              {deleteSuccess && (
+                <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs mb-4 text-right flex items-center justify-end gap-2 font-bold">
+                  <span>{deleteSuccess}</span>
+                  <CheckCircle className="w-4 h-4 shrink-0 text-emerald-600" />
+                </div>
+              )}
+
+              {/* Body */}
+              <div className="space-y-4 mb-6 text-xs text-slate-600 leading-relaxed">
+                <div className="bg-slate-50 border border-slate-200 p-3 rounded-2xl space-y-1 text-right">
+                  <div className="text-[11px] text-slate-500 font-mono">
+                    ای میل: <strong className="text-slate-800">{user.email}</strong>
+                  </div>
+                  <div className="text-[11px] text-slate-500 font-mono">
+                    صارف کی شناخت (UID): <strong className="text-slate-800">{user.uid}</strong>
+                  </div>
+                </div>
+
+                <p className="text-slate-700">
+                  کیا آپ واقعی اپنا اکاؤنٹ اور تمام ذاتی ڈیٹا حذف کرنا چاہتے ہیں؟ یہ عمل مستقل ہے اور اسے واپس نہیں لایا جا سکتا۔
+                </p>
+
+                {/* Password / Google Re-authentication */}
+                <div className="space-y-3 pt-2 border-t border-slate-100">
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1.5 text-right">
+                      پاس ورڈ کی تصدیق (Password Verification):
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="password"
+                        placeholder="اپنا پاس ورڈ درج کریں"
+                        value={deletePassword}
+                        onChange={(e) => setDeletePassword(e.target.value)}
+                        disabled={isDeleting}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm font-sans focus:outline-none focus:border-red-500 focus:bg-white text-right"
+                      />
+                      <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                    </div>
+                  </div>
+
+                  {requiresRecentLogin && (
+                    <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl space-y-2">
+                      <p className="text-amber-800 text-[11px] font-semibold">
+                        اگر آپ گوگل کے ذریعے لاگ ان ہوئے تھے، تو نیچے دیے گئے بٹن پر کلک کر کے گوگل تصدیق کریں:
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleGoogleDelete}
+                        disabled={isDeleting}
+                        className="w-full bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-sm transition-all"
+                      >
+                        <Award className="w-4 h-4 text-amber-500" />
+                        <span>گوگل کے ساتھ دوبارہ تصدیق کر کے حذف کریں (Google Re-auth)</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Confirmation Keyword */}
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1.5 text-right">
+                      تصدیق کے لیے انگریزی میں <span className="text-red-600 font-mono">DELETE</span> لکھیں:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="DELETE"
+                      value={confirmKeyword}
+                      onChange={(e) => setConfirmKeyword(e.target.value)}
+                      disabled={isDeleting}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-red-500 focus:bg-white text-center font-bold tracking-widest uppercase"
+                    />
+                  </div>
+
+                  {/* Checkbox agreement */}
+                  <label className="flex items-start gap-2.5 pt-2 cursor-pointer text-right flex-row-reverse">
+                    <input
+                      type="checkbox"
+                      checked={confirmCheckbox}
+                      onChange={(e) => setConfirmCheckbox(e.target.checked)}
+                      disabled={isDeleting}
+                      className="mt-1 w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500 cursor-pointer shrink-0"
+                    />
+                    <span className="text-[11px] text-slate-700 select-none">
+                      میں تصدیق کرتا/کرتی ہوں کہ میں اپنا اکاؤنٹ، رابطہ نمبر اور تمام ذاتی پروفائل ہمیشہ کے لیے ختم کرنا چاہتا/چاہتی ہوں۔
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsDeleteModalOpen(false)}
+                  disabled={isDeleting}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold transition-all cursor-pointer"
+                >
+                  منسوخ کریں (Cancel)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDeleteAccount}
+                  disabled={isDeleting || !confirmCheckbox || confirmKeyword.trim() !== 'DELETE'}
+                  className="px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:bg-slate-300 text-white text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-md disabled:cursor-not-allowed hover:-translate-y-0.5"
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>اکاؤنٹ حذف کیا جا رہا ہے...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      <span>مستقل حذف کریں (Confirm Delete)</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

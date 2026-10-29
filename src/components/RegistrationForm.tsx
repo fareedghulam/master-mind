@@ -482,6 +482,27 @@ export default function RegistrationForm({ onRegister, onLoginWithCredentials, o
               <MessageCircle className="w-3.5 h-3.5 text-white" />
               <span>ایڈمن سے رابطہ کریں (WhatsApp)</span>
             </a>
+
+            {/* Public Compliance & Deletion Links */}
+            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-center gap-3 text-[11px] text-slate-500 font-sans">
+              <a
+                href="/privacy-policy.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-amber-600 transition-colors underline"
+              >
+                رازداری کی پالیسی (Privacy Policy)
+              </a>
+              <span>•</span>
+              <a
+                href="/delete-account.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-red-600 transition-colors underline"
+              >
+                اکاؤنٹ خاتمہ (Delete Account)
+              </a>
+            </div>
           </div>
         </div>
       </div>
